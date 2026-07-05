@@ -1,265 +1,203 @@
-# Perfect Dev Agent Workflow — Agent Guide
+# Perfect Dev Agent Workflow — Architecture
 
-> This file defines the standard workflow for AI coding agents. Every agent working on this repository MUST follow this workflow. No phase may be skipped.
+> **Orchestrator:** PiBot (OpenClaw) | **Board:** GitHub Issues | **Worker:** OpenCode Serve (:18765)
+
+## System Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                     GitHub (Board)                                │
+│                                                                   │
+│  Issue #42 "Feature X"                                           │
+│  Labels: workflow/available → research → plan → ... → done       │
+│  Kanban view → K monitors in real-time                            │
+│                                                                   │
+│  PRs: research-PR → plan-PR → implement-PR                       │
+└────────────────────────┬──────────────────────────────────────────┘
+                         │ GitHub API (poll every 5 min)
+                         ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                  PiBot (OpenClaw Cron)                            │
+│                                                                   │
+│  1. Poll GitHub for issues with workflow/available               │
+│  2. Claim issue → add workflow/research label                    │
+│  3. Spawn sub-agent for current stage                            │
+│  4. Sub-agent completes → opens PR                               │
+│  5. PiBot reviews PR against quality gate                        │
+│  6. Pass → auto-merge → spawn next stage agent                   │
+│  7. Fail → comment on PR → agent revises → re-review             │
+│  8. All stages done → status/done                                │
+│  9. Blocked/error → status/blocked → Feishu notify K             │
+└────────────────────────┬──────────────────────────────────────────┘
+                         │ sessions_spawn (isolated)
+                         ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                     Sub-Agents                                    │
+│                                                                   │
+│  research-agent    → 读 Issue → 填模板 → 写 PRD → 开 PR          │
+│  plan-agent        → 读 PRD → 写 DESIGN → 生成测试用例 → 开 PR   │
+│  implement-agent   → 读 DESIGN → TDD → 调 OpenCode → 开 PR      │
+│  test-agent        → 跑测试 → 报告结果                            │
+│  self-correct-agent → 分析失败 → 修复 → 重跑                      │
+│  deploy-agent      → 触发 Vercel 部署                             │
+└────────────────────────┬──────────────────────────────────────────┘
+                         │ REST API
+                         ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                OpenCode Serve (:18765)                            │
+│                Code generation + test execution                   │
+└──────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## Workflow Architecture
+## PiBot's Gatekeeping Rules
+
+PiBot (I) review every PR before auto-merge. Here are the criteria for each stage:
+
+### Research PR Gate
+
+| Check | Criterion | Action if fail |
+|-------|-----------|----------------|
+| Problem definition | Current vs expected behavior stated | Comment + request revision |
+| Root cause | Why does current behavior exist? | Comment + request revision |
+| Impact analysis | Specific files/modules listed | Comment + request revision |
+| Alternatives | ≥2 approaches compared | Comment + request revision |
+| Boundary conditions | ≥3 edge cases | Comment + request revision |
+| Dependencies | Listed with status | Comment + request revision |
+| PR title format | "Research: <name> (parent #N)" | Auto-fix |
+| No closing keywords | No Closes/Fixes/Resolves in body | Auto-fix |
+
+**Auto-merge decision:** All checks pass → merge. 1-2 minor issues → merge with comment. ≥3 issues → request revision, do NOT merge.
+
+### Plan PR Gate
+
+| Check | Criterion | Action if fail |
+|-------|-----------|----------------|
+| Design doc exists | `docs/DESIGN/<N>-*.md` present | Request creation |
+| Architecture clear | Module responsibilities stated | Request clarification |
+| Phased tasks | ≥3 phases with concrete tasks | Request detail |
+| Test cases generated | Actual test code in `tests/`, not placeholders | Request real tests |
+| Edge cases covered | Tests include boundary conditions from research | Request additions |
+| Plan issue created | Consolidated plan issue exists | Request creation |
+
+**Auto-merge decision:** All core checks (design, tasks, tests) pass → merge. Tests missing → block until added.
+
+### Implement PR Gate
+
+| Check | Criterion | Action if fail |
+|-------|-----------|----------------|
+| All tests pass | CI green (verified via GitHub API) | Block — trigger self-correct |
+| Scope compliance | Only planned features implemented | Comment on scope creep |
+| Edge cases handled | Test coverage for boundary conditions | Request additions |
+| Closes keywords | Body has "Closes #<parent>" AND "Closes #<plan>" | Auto-fix |
+| No regressions | Existing tests still pass | Block |
+
+**Auto-merge decision:** Tests all pass + scope OK → merge. Tests fail → self-correct loop. Scope creep → comment + request trim.
+
+---
+
+## Self-Correct Loop (PiBot Managed)
 
 ```
-Issue opened (GitHub)
+Test failure detected
     │
-    ▼ [auto: opencode.yml]
-┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────┐     ┌──────────┐     ┌────────┐
-│ Research │ ──→ │   Plan   │ ──→ │Implement │ ──→ │ Test │ ──→ │  Deploy  │
-│          │     │          │     │  (TDD)   │     │      │     │          │
-│ docs/    │     │docs/     │     │ Phase 1: │     │Run   │     │ Merge   │
-│ PRD/     │     │DESIGN/   │     │  Tests   │     │tests │     │ + ship  │
-│ docs/    │     │Plan      │     │ Phase 2: │     │      │     │          │
-│ TASKS/   │     │Issue     │     │  Data    │     │  ↓   │     │          │
-│          │     │          │     │ Phase 3: │     │ pass? │     │          │
-│ Research │     │ Plan PR  │     │  Logic   │     │  │   │     │          │
-│   PR     │     │          │     │ Phase 4: │     │  ├─yes→│     │          │
-└──────────┘     └──────────┘     │  UI      │     │  │   │     │          │
-     │                 │          └────┬─────┘     │  │   │     │          │
-     │ PR merge        │ PR merge      │          │  │   │     │          │
-     │ auto-chain      │ auto-chain    │          │  │   │     │          │
-     └─────────────────┘              │          │  │   │     │          │
-                                      │          │  └───┤     │          │
-                                      │          │  no  │     │          │
-                                      │          │  ↓   │     │          │
-                                      │          │  ┌───┴─────┴──┐       │
-                                      │          │  │Self-correct│       │
-                                      │          │  │ (max 3x)   │       │
-                                      │          │  │ analyze →  │       │
-                                      │          │  │ fix →      │       │
-                                      │          │  │ retest     │       │
-                                      │          │  └────────────┘       │
-                                      │          │                        │
-```
-
-**Phase gates:** Each phase produces a PR. When that PR is merged, the next phase triggers automatically via GitHub Actions. Manual restart is always supported via `gh workflow run`.
-
----
-
-## Stage 0: Pre-Research Context Collection (MANDATORY)
-
-Before beginning any research, the agent MUST gather context:
-
-### Context Checklist
-- [ ] Read any related `docs/DESIGN/*.md` for architectural constraints
-- [ ] Read any related `docs/REFERENCE/*.md` for project conventions
-- [ ] `git log --oneline -20 -- <potentially-affected-files>`
-- [ ] `git blame` on key files to understand why code looks the way it does
-- [ ] Check existing test files for behavioral contracts
-- [ ] Check if the issue references any knowledge base or design notes
-
----
-
-## Stage 1: /research
-
-**Trigger:** Issue opened (auto) or `gh workflow run -f issue=<N>`
-
-**Goal:** Deep understanding before any code is written.
-
-### Output Requirements
-- `docs/PRD/<issue-number>-<feature-name>.md` — structured per RESEARCH_TEMPLATE.md
-- `docs/TASKS/<issue-number>-<feature-name>.md` — modules, impacts, dependencies
-
-### Research Quality Gate (auto-validated)
-The research must pass these checks before merge:
-
-| Check | Requirement |
-|-------|-------------|
-| Problem definition | Current vs expected behavior, with concrete scenarios |
-| Root cause / Design intent | Why does current behavior exist? Why change? |
-| Impact analysis | Direct + indirect affected modules listed with file paths |
-| Alternatives | At least 2 approaches compared (pros/cons/risk/effort) |
-| Boundary conditions | ≥3 edge cases identified (normal, edge, failure) |
-| Dependencies | What this depends on, what depends on this |
-
-### PR Rules
-- **NEVER** use `Closes`, `Fixes`, or `Resolves` in research PR title/body
-- Title format: `Research: <feature-name> (parent #<N>)`
-- Push changes to a branch, open PR via `gh pr create`
-- After creating, verify: `gh pr view <N> --json title,body` — no closing keywords
-
----
-
-## Stage 2: /plan
-
-**Trigger:** Research PR merged (auto) or manual
-
-**Goal:** Concrete implementation strategy with phased tasks.
-
-### Output Requirements
-- `docs/DESIGN/<issue-number>-<feature-name>.md` — architecture, data structures, module design
-- `docs/TASKS/<issue-number>-<feature-name>.md` — updated with phased breakdown
-- **Consolidated Plan Issue** — single issue with all phases as checklist
-  ```
-  gh issue create --title "[<parent>] Plan: <feature-name>" \
-    --label "workflow/plan" \
-    --body "Parent: #<parent>\n\n### Phase 1: Tests\n- [ ] ...\n\n### Phase 2: Implementation\n- [ ] ...\n\n..."
-  ```
-
-### Design Must Include
-- [ ] Architecture diagram or description
-- [ ] Module responsibilities and interfaces
-- [ ] Data flow (what changes, when, who triggers)
-- [ ] Key decision with rationale (why this approach over alternatives)
-- [ ] Test strategy: what gets tested, what level (unit/integration/e2e)
-
-### Test Case Generation (TDD)
-During plan phase, the agent MUST generate initial test cases:
-- Based on acceptance criteria from research
-- Covering boundary conditions identified in research
-- Written to `tests/<feature>.test.js` (or appropriate path)
-
----
-
-## Stage 3: /implement
-
-**Trigger:** Plan PR merged (auto) or manual
-
-**Goal:** Execute phased implementation with strict TDD.
-
-### Rules
-- **No scope creep** — implement only what's in the plan
-- **TDD mandatory** — write tests before/alongside implementation
-- **Phase-gated commits** — commit after each completed phase
-- **Check off tasks** — update plan issue body after each task
-
-### Phase Order
-1. **Tests** — write all test cases first (they WILL fail initially)
-2. **Core logic** — implement the actual functionality
-3. **Integration** — wire up with existing modules
-4. **Polish** — edge cases, error handling, cleanup
-
-### After Each Phase
-```bash
-git add -A && git commit -m "feat: <phase name> (#<parent-issue>)"
-gh issue edit <plan-issue> --body '<updated checklist>'
-```
-
-### After All Phases
-Open implementation PR:
-```bash
-gh pr create --title "<feature-name>" \
-  --body "Closes #<parent-issue>\nCloses #<plan-issue>\n\n<summary>"
-```
-Verify: `gh pr view <N> --json body` must contain both `Closes` references.
-
----
-
-## Stage 4: /test
-
-**Trigger:** Implementation PR opened (auto via opencode-review.yml)
-
-**Goal:** Verify all tests pass. If not, enter self-correct loop.
-
-### Process
-1. Agent runs `npm test` (or project's test command)
-2. All tests pass → proceed to deploy
-3. Any test fails → enter self-correct
-
-### Test Quality Requirements
-- [ ] All generated test cases pass
-- [ ] No regression in existing tests
-- [ ] Coverage at acceptable level
-- [ ] Edge cases from research are covered
-
----
-
-## Stage 5: Self-correct Loop
-
-**Trigger:** Test failure
-
-**Goal:** Automatic fix with escalating escalation.
-
-### Rules
-- **Max 3 attempts** per failure
-- Each attempt: analyze failure → fix → verify all tests pass
-- Track attempt count in plan issue comment
-
-### Process
-```
-Attempt 1: analyze failure → apply fix → run tests
-  ├── pass → proceed to deploy
-  └── fail → Attempt 2: deeper analysis → fix → run tests
-       ├── pass → proceed to deploy
-       └── fail → Attempt 3: root cause analysis → fix → run tests
-            ├── pass → proceed to deploy (with note)
-            └── fail → mark issue `status/blocked` → notify human
-```
-
-### Escalation Format (when blocked)
-```
-## Self-correct exhausted (3 attempts)
-- Issue: #<N>
-- Test failures: <list>
-- Attempts: <summarize each attempt + why it failed>
-- Known unknowns: <what agent can't figure out>
-- Suggested human action: <concrete recommendation>
+    ▼
+PiBot spawns self-correct-agent (attempt N)
+    │
+    ├── Agent analyzes failure + applies fix
+    ├── Agent re-runs tests
+    │
+    ├── All pass → PiBot merges PR → proceed to deploy
+    └── Still fail → N++ 
+         ├── N ≤ 3 → retry (upgrade model: flash → pro for attempt 3)
+         └── N > 3 → PiBot marks status/blocked → Feishu notify K
 ```
 
 ---
 
-## Stage 6: /deploy
+## Sub-Agent Specifications
 
-**Trigger:** Tests all passing
+### research-agent
 
-**Goal:** Merge and deploy.
-
-1. Final check: `git status`, uncommitted changes
-2. Push all changes
-3. Merge PR (auto via GitHub if CI green)
-4. Deploy (project-specific, defined in `deploy.yml`)
-5. Update issue labels to `status/done`
-6. Post completion summary comment
-
----
-
-## Workflow Labels
-
-| Label | Stage | Meaning |
-|-------|-------|---------|
-| `workflow/research` | Stage 1 | Research in progress |
-| `workflow/plan` | Stage 2 | Planning in progress |
-| `workflow/implement` | Stage 3 | Implementation in progress |
-| `workflow/test` | Stage 4 | Testing in progress |
-| `workflow/self-correct` | Stage 5 | Auto-fixing failures |
-| `workflow/deploy` | Stage 6 | Deploying |
-| `status/done` | Complete | Workflow finished |
-| `status/blocked` | Any | Needs human intervention |
-
----
-
-## Git Conventions
-
-### Commits
 ```
-feat: <description> (#<issue>)
-fix: <description> (#<issue>)
-research: <description> (#<issue>)
-plan: <description> (#<issue>)
-docs: <description> (#<issue>)
+Role: Deep analysis, no code
+Input: Issue #N title + body + project context
+Output: docs/PRD/<N>-<slug>.md + docs/TASKS/<N>-<slug>.md
+Actions: 
+  - Fill RESEARCH_TEMPLATE.md (all 7 sections)
+  - git log/blame on affected files
+  - Read existing docs/DESIGN/ for architectural constraints
+  - Open research PR via gh CLI
+Rules: No Closes/Fixes/Resolves in PR body
 ```
 
-### PR Flow
-- Research PR: NO closing keywords
-- Plan PR: NO closing keywords
-- Implement PR: MUST include `Closes #<parent>` and `Closes #<plan>`
+### plan-agent
 
-Always `git pull --rebase && git push` before creating a PR.
+```
+Role: Design + test case generation (TDD)
+Input: docs/PRD/<N>-*.md + docs/TASKS/<N>-*.md
+Output: docs/DESIGN/<N>-<slug>.md + tests/<feature>.test.js + Plan Issue
+Actions:
+  - Create architecture design doc
+  - Generate test cases covering all boundary conditions from research
+  - Create consolidated plan issue via gh CLI
+  - Open plan PR via gh CLI
+Rules: Tests must be real, runnable code (not comments)
+```
+
+### implement-agent
+
+```
+Role: TDD implementation
+Input: docs/DESIGN/<N>-*.md + tests/<feature>.test.js + Plan Issue
+Output: Feature code + passing tests + Implement PR
+Actions:
+  - Phase 1: Ensure tests are complete (they should fail)
+  - Phase 2: Implement core logic (via OpenCode Serve REST API)
+  - Phase 3: Integration
+  - Phase 4: Polish + edge cases
+  - Commit after each phase
+  - Open implement PR with Closes #<parent> + Closes #<plan>
+Rules: TDD mandatory. No scope creep. Pull before push.
+```
 
 ---
 
-## Project-Specific Configuration
+## Deployment (Vercel)
 
-Agent runtimes, test commands, and deploy targets vary per project. Configure in `.github/workflows/`:
+On implement PR merge to main:
+- Vercel auto-detects push → builds → deploys
+- PiBot monitors deploy status
+- On success: update issue → `status/done`, post summary
+- On failure: mark `status/blocked`, notify K
 
-- `opencode.yml` — set `model`, API keys, agent backend
-- `opencode-review.yml` — set test command, timeout
-- `deploy.yml` — set deployment target
+`vercel.json`:
+```json
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": null
+}
+```
 
-See `templates/` for reusable workflow fragments.
+---
+
+## File Structure (in target project)
+
+```
+project/
+├── .github/
+│   └── workflows/
+│       └── review.yml          # CI self-healing only (test → fix → push)
+├── docs/
+│   ├── PRD/                    # Research output
+│   ├── DESIGN/                 # Architecture & decisions
+│   ├── TASKS/                  # Task breakdowns
+│   └── REFERENCE/              # Project conventions
+├── templates/
+│   └── RESEARCH_TEMPLATE.md    # 7-section research template
+├── tests/                      # Test cases (plan → implement)
+├── AGENTS.md                   # This file
+└── vercel.json                 # Vercel config
+```

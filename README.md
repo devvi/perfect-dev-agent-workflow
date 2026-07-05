@@ -1,61 +1,65 @@
 # Perfect Dev Agent Workflow
 
-AI-driven development workflow for autonomous coding agents.
+AI-driven development workflow. PiBot orchestrates. GitHub is the board. OpenCode ships.
 
 ```
-Issue created ──→ Research ──→ Plan ──→ Implement ──→ Test ──→ Deploy
-                     ↑                       │            │
-                     └───────────────────────┘            │
-                              Self-correct ←──────────────┘
+K creates Issue ──→ PiBot polls GitHub
+                        │
+          ┌─────────────┼─────────────┐
+          ▼             ▼             ▼
+     ┌─────────┐  ┌─────────┐  ┌─────────┐
+     │Research │  │  Plan   │  │Implement│
+     │ Agent   │  │ Agent   │  │ Agent   │
+     └────┬────┘  └────┬────┘  └────┬────┘
+          │            │            │
+          ▼            ▼            ▼
+     ┌─────────────────────────────────────┐
+     │         PiBot Review Gate            │
+     │  research PR → 审核 → auto-merge    │
+     │  plan PR     → 审核 → auto-merge    │
+     │  implement PR → 审核 → auto-merge   │
+     │  test fail   → self-correct loop    │
+     └─────────────────────────────────────┘
+                       │
+                       ▼
+                 ┌──────────┐
+                 │  Vercel  │
+                 │  Deploy  │
+                 └──────────┘
 ```
+
+## Architecture
+
+| Layer | Component | Role |
+|-------|-----------|------|
+| **Board** | GitHub Issues + Labels + Kanban | K creates issues, watches progress |
+| **Orchestrator** | PiBot (OpenClaw cron) | Polls issues, dispatches agents, reviews PRs, auto-merges |
+| **Workers** | OpenCode Serve (:18765) | Writes code, runs tests (via sub-agent spawn) |
+| **CI** | GitHub Actions | Self-healing: test → fix → push |
+| **Deploy** | Vercel | Auto-deploy on merge to main |
 
 ## Workflow Stages
 
-| Stage | Trigger | Output | Label |
-|-------|---------|--------|-------|
-| **Research** | Issue opened | `docs/PRD/`, `docs/TASKS/`, Research PR | `workflow/research` |
-| **Plan** | Research PR merged | `docs/DESIGN/`, Plan Issue, Plan PR | `workflow/plan` |
-| **Implement** | Plan PR merged | Code, Test PR | `workflow/implement` |
-| **Test** | Implement complete | Test report | `workflow/test` |
-| **Self-correct** | Tests failing | Fixes (max 3 attempts) | `workflow/self-correct` |
-| **Deploy** | Tests passing | Merged + deployed | `workflow/deploy` |
-
-## Key Principles
-
-- **TDD mandatory** — test cases written before implementation
-- **Self-correcting** — failed tests trigger auto-fix (3 attempts, then escalate)
-- **Quality-gated** — research must pass completeness check before plan phase
-- **Documented** — every stage produces committed docs in `docs/`
-- **Auditable** — all decisions traceable through Issues, PRs, and commits
+| # | Stage | Agent | Output | Gate (PiBot) |
+|---|-------|-------|--------|--------------|
+| 1 | Research | `research-agent` | `docs/PRD/`, Research PR | 7-section completeness check |
+| 2 | Plan | `plan-agent` | `docs/DESIGN/`, Test cases, Plan PR | Design quality + test coverage |
+| 3 | Implement | `implement-agent` | Code, Implement PR (via OpenCode) | Tests pass + review |
+| 4 | Test | CI self-healing | Test report | All green |
+| 5 | Self-correct | `self-correct-agent` | Fixes (max 3 attempts) | Re-test after each |
+| 6 | Deploy | Vercel | Live deploy | — |
 
 ## Quick Start
 
-1. Apply this workflow to your repo by adding it as a submodule or copying the `.github/` directory
-2. Configure your AI agent in `.github/workflows/opencode.yml`
-3. Set up GitHub secrets: `DEEPSEEK_API_KEY`, `MY_GITHUB_TOKEN`
-4. Create an Issue — the workflow auto-starts
+```bash
+# 1. Add workflow labels
+bash scripts/setup-labels.sh
 
-## Project Structure
+# 2. Set up Vercel
+npx vercel link
+npx vercel env add
 
+# 3. Set up OpenClaw cron (PiBot handles this)
+
+# 4. Create an Issue — PiBot picks it up automatically
 ```
-project/
-├── .github/
-│   ├── workflows/          # CI/CD pipelines
-│   │   ├── opencode.yml    # Main workflow (research→plan→implement)
-│   │   ├── opencode-review.yml  # Self-healing CI + auto-review
-│   │   ├── research-gate.yml    # Research quality validation
-│   │   └── deploy.yml      # Deployment pipeline
-│   └── ISSUE_TEMPLATE/     # Standardized issue templates
-├── docs/
-│   ├── PRD/                # Product requirements (research output)
-│   ├── DESIGN/             # Architecture & design decisions
-│   ├── TASKS/              # Phased task breakdowns
-│   └── REFERENCE/          # Project-wide reference docs
-├── templates/
-│   └── RESEARCH_TEMPLATE.md  # Standardized research template
-└── AGENTS.md               # Agent instructions (workflow definition)
-```
-
-## License
-
-MIT

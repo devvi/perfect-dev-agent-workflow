@@ -1,72 +1,23 @@
 name: deploy
-# Perfect Dev Agent Workflow — Stage 6: Deploy
-# Triggers when implementation PR is merged (tests passed)
+# Vercel auto-deploy on merge to main
 
 on:
-  pull_request_target:
-    types: [closed]
+  push:
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      pr_number:
-        description: 'PR number to deploy'
-        required: false
 
 jobs:
   deploy:
-    # Only run if merged AND the PR is an implementation (not research/plan)
-    if: |
-      github.event.pull_request.merged == true &&
-      !startsWith(github.event.pull_request.title, 'Research:') &&
-      !startsWith(github.event.pull_request.title, 'Plan:')
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+      contents: read
     steps:
       - uses: actions/checkout@v6
+
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
         with:
-          fetch-depth: 0
-
-      - name: Extract parent issue
-        id: parent
-        run: |
-          PR_BODY="${{ github.event.pull_request.body }}"
-          PARENT=$(echo "$PR_BODY" | grep -oP '#\K\d+' | head -1)
-          echo "issue_num=$PARENT" >> $GITHUB_OUTPUT
-          echo "Deploying from PR #${{ github.event.pull_request.number }} for issue #$PARENT"
-
-      - name: Update issue to done
-        if: steps.parent.outputs.issue_num != ''
-        env:
-          GH_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
-        run: |
-          ISSUE=${{ steps.parent.outputs.issue_num }}
-          gh issue edit "$ISSUE" \
-            --remove-label "workflow/implement,workflow/test,workflow/self-correct" \
-            --add-label "workflow/deploy,status/done" \
-            --repo "$GITHUB_REPOSITORY"
-          
-          # Post completion comment
-          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "
-          ## ✅ Workflow Complete
-
-          | Stage | Status |
-          |-------|--------|
-          | Research | ✅ |
-          | Plan | ✅ |
-          | Implement | ✅ |
-          | Test | ✅ |
-          | Deploy | ✅ |
-
-          **PR:** #${{ github.event.pull_request.number }}
-          **Merged by:** ${{ github.event.pull_request.merged_by.login }}
-          **Time:** $(date -u +'%Y-%m-%d %H:%M UTC')
-          "
-
-      - name: Project-specific deploy
-        # Override this step per project
-        run: |
-          echo "Placeholder for project-specific deployment"
-          echo "Examples: GitHub Pages, Docker build, npm publish, etc."
-          echo "See deploy.yml for customization points."
+          vercel-token: *** secrets.VERCEL_TOKEN }}
+          vercel-org-id: *** secrets.VERCEL_ORG_ID }}
+          vercel-project-id: *** secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--prod'
