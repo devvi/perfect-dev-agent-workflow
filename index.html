@@ -1,326 +1,88 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pixel Snake</title>
+<title>像素贪吃蛇</title>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    background: #1a1a2e;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 100vh;
-    font-family: 'Courier New', monospace;
-    overflow: hidden;
-  }
-
-  .game-wrapper {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 16px;
-  }
-
-  .score-board {
-    font-size: 24px;
-    color: #e94560;
-    text-shadow: 2px 2px 0 #0f3460;
-    letter-spacing: 2px;
-  }
-
-  canvas {
-    width: min(90vw, 90vh, 480px);
-    height: min(90vw, 90vh, 480px);
-    image-rendering: pixelated;
-    image-rendering: crisp-edges;
-    border: 3px solid #0f3460;
-    border-radius: 4px;
-    box-shadow: 0 0 20px rgba(233, 69, 96, 0.3);
-    cursor: pointer;
-  }
-
-  .game-over-overlay {
-    display: none;
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.75);
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    gap: 16px;
-    z-index: 10;
-  }
-
-  .game-over-overlay.visible {
-    display: flex;
-  }
-
-  .game-over-overlay h1 {
-    color: #e94560;
-    font-size: 32px;
-    text-shadow: 3px 3px 0 #000;
-    letter-spacing: 4px;
-  }
-
-  .game-over-overlay .final-score {
-    color: #fff;
-    font-size: 20px;
-  }
-
-  .game-over-overlay button {
-    background: #e94560;
-    color: #fff;
-    border: none;
-    padding: 12px 32px;
-    font-size: 18px;
-    font-family: 'Courier New', monospace;
-    cursor: pointer;
-    border-radius: 4px;
-    transition: background 0.15s;
-    letter-spacing: 2px;
-  }
-
-  .game-over-overlay button:hover {
-    background: #ff6b81;
-  }
-
-  .game-over-overlay button:active {
-    transform: scale(0.96);
-  }
-
-  .controls-hint {
-    color: #5a5a7e;
-    font-size: 13px;
-    letter-spacing: 1px;
-  }
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a1a;display:flex;justify-content:center;align-items:center;height:100vh;font-family:monospace;flex-direction:column}
+h1{color:#e94560;font-size:28px;margin-bottom:10px;letter-spacing:4px;text-shadow:2px 2px #000}
+.score{color:#0f3460;font-size:18px;margin-bottom:16px}
+canvas{border:3px solid #16213e;image-rendering:pixelated;background:#1a1a2e}
+.overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);justify-content:center;align-items:center;flex-direction:column;z-index:10}
+.overlay.active{display:flex}
+.overlay h2{color:#fff;font-size:32px;margin-bottom:12px}
+.overlay p{color:#ccc;font-size:18px;margin-bottom:20px}
+.overlay button{background:#e94560;color:#fff;border:none;padding:10px 30px;font-size:16px;cursor:pointer;font-family:monospace;letter-spacing:2px}
+.overlay button:hover{background:#ff6b81}
 </style>
 </head>
 <body>
-
-<div class="game-wrapper">
-  <div class="score-board">SCORE: <span id="score">0</span></div>
-  <div style="position:relative;">
-    <canvas id="gameCanvas" width="400" height="400"></canvas>
-    <div class="game-over-overlay" id="gameOverOverlay">
-      <h1 id="gameOverTitle">GAME OVER</h1>
-      <div class="final-score">Score: <span id="finalScore">0</span></div>
-      <button id="restartBtn">PLAY AGAIN</button>
-    </div>
-  </div>
-  <div class="controls-hint">← ↑ → ↓</div>
+<h1>🐍 像素贪吃蛇</h1>
+<div class="score">分数: <span id="score">0</span></div>
+<canvas id="game" width="400" height="400"></canvas>
+<div class="overlay" id="overlay">
+  <h2 id="overlayTitle">游戏结束</h2>
+  <p id="overlayScore"></p>
+  <button id="restartBtn" onclick="restart()">重新开始</button>
 </div>
+<script>
+const COLS=20,ROWS=20,CELL=20,SPEED=150;
+let snake,dir,nextDir,food,score,loop,gameOver;
 
-<script type="module">
-import {
-  createInitialState,
-  tick,
-  changeDirection,
-  GRID_COLS,
-  GRID_ROWS,
-} from './public/snake-game.js';
-
-// --- Rendering Constants ---
-const CANVAS_SIZE = 400;
-const CELL_SIZE = CANVAS_SIZE / GRID_COLS; // 20px
-
-// --- DOM Elements ---
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
-const scoreSpan = document.getElementById('score');
-const finalScoreSpan = document.getElementById('finalScore');
-const overlay = document.getElementById('gameOverOverlay');
-const gameOverTitle = document.getElementById('gameOverTitle');
-const restartBtn = document.getElementById('restartBtn');
-
-// --- Game State ---
-let state = createInitialState();
-let gameLoopTimer = null;
-let gameRunning = false;
-
-// --- Rendering ---
-function drawGrid() {
-  ctx.fillStyle = '#16213e';
-  ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-
-  // Subtle grid lines
-  ctx.strokeStyle = '#1a1a3e';
-  ctx.lineWidth = 0.5;
-  for (let x = 0; x <= GRID_COLS; x++) {
-    ctx.beginPath();
-    ctx.moveTo(x * CELL_SIZE, 0);
-    ctx.lineTo(x * CELL_SIZE, CANVAS_SIZE);
-    ctx.stroke();
-  }
-  for (let y = 0; y <= GRID_ROWS; y++) {
-    ctx.beginPath();
-    ctx.moveTo(0, y * CELL_SIZE);
-    ctx.lineTo(CANVAS_SIZE, y * CELL_SIZE);
-    ctx.stroke();
-  }
+function init(){
+  snake=[{x:10,y:10},{x:9,y:10},{x:8,y:10}];
+  dir={x:1,y:0};nextDir={x:1,y:0};
+  score=0;gameOver=false;
+  document.getElementById('score').textContent=0;
+  document.getElementById('overlay').classList.remove('active');
+  spawnFood();
+  clearInterval(loop);
+  loop=setInterval(tick,SPEED);
 }
 
-function drawSnake() {
-  state.snake.forEach((seg, i) => {
-    if (i === 0) {
-      // Head
-      ctx.fillStyle = '#0f3460';
-    } else {
-      // Body: alternate shades
-      ctx.fillStyle = i % 2 === 0 ? '#1a5276' : '#1a4a6e';
-    }
-    ctx.fillRect(
-      seg.x * CELL_SIZE + 1,
-      seg.y * CELL_SIZE + 1,
-      CELL_SIZE - 2,
-      CELL_SIZE - 2
-    );
-  });
-
-  // Draw eyes on head
-  const head = state.snake[0];
-  if (head && !state.gameOver) {
-    const eyeSize = 3;
-    const eyeOffset = 5;
-    ctx.fillStyle = '#fff';
-    if (state.direction.x === 1) {
-      // Right
-      ctx.fillRect(head.x * CELL_SIZE + CELL_SIZE - eyeOffset - eyeSize, head.y * CELL_SIZE + 5, eyeSize, eyeSize);
-      ctx.fillRect(head.x * CELL_SIZE + CELL_SIZE - eyeOffset - eyeSize, head.y * CELL_SIZE + CELL_SIZE - 5 - eyeSize, eyeSize, eyeSize);
-    } else if (state.direction.x === -1) {
-      // Left
-      ctx.fillRect(head.x * CELL_SIZE + eyeOffset, head.y * CELL_SIZE + 5, eyeSize, eyeSize);
-      ctx.fillRect(head.x * CELL_SIZE + eyeOffset, head.y * CELL_SIZE + CELL_SIZE - 5 - eyeSize, eyeSize, eyeSize);
-    } else if (state.direction.y === -1) {
-      // Up
-      ctx.fillRect(head.x * CELL_SIZE + 5, head.y * CELL_SIZE + eyeOffset, eyeSize, eyeSize);
-      ctx.fillRect(head.x * CELL_SIZE + CELL_SIZE - 5 - eyeSize, head.y * CELL_SIZE + eyeOffset, eyeSize, eyeSize);
-    } else {
-      // Down
-      ctx.fillRect(head.x * CELL_SIZE + 5, head.y * CELL_SIZE + CELL_SIZE - eyeOffset - eyeSize, eyeSize, eyeSize);
-      ctx.fillRect(head.x * CELL_SIZE + CELL_SIZE - 5 - eyeSize, head.y * CELL_SIZE + CELL_SIZE - eyeOffset - eyeSize, eyeSize, eyeSize);
-    }
-  }
+function spawnFood(){
+  do{food={x:Math.floor(Math.random()*COLS),y:Math.floor(Math.random()*ROWS)}}
+  while(snake.some(s=>s.x===food.x&&s.y===food.y));
 }
 
-function drawFood() {
-  const f = state.food;
-  if (!f) return;
-
-  // Glow effect
-  ctx.shadowColor = '#e94560';
-  ctx.shadowBlur = 12;
-
-  ctx.fillStyle = '#e94560';
-  ctx.fillRect(f.x * CELL_SIZE + 2, f.y * CELL_SIZE + 2, CELL_SIZE - 4, CELL_SIZE - 4);
-
-  // Inner highlight
-  ctx.fillStyle = '#ff6b81';
-  ctx.fillRect(f.x * CELL_SIZE + 4, f.y * CELL_SIZE + 4, CELL_SIZE - 8, CELL_SIZE - 8);
-
-  ctx.shadowBlur = 0;
-}
-
-function draw() {
-  drawGrid();
-  drawFood();
-  drawSnake();
-  updateScore();
-}
-
-function updateScore() {
-  scoreSpan.textContent = state.score;
-}
-
-// --- Game Loop ---
-function gameLoop() {
-  if (!gameRunning || state.gameOver) return;
-
-  state = tick(state);
-
-  if (state.gameOver) {
-    showGameOver();
-    return;
-  }
-
+function tick(){
+  dir=nextDir;
+  let head={x:snake[0].x+dir.x,y:snake[0].y+dir.y};
+  if(head.x<0||head.x>=COLS||head.y<0||head.y>=ROWS||snake.some(s=>s.x===head.x&&s.y===head.y))return end();
+  snake.unshift(head);
+  if(head.x===food.x&&head.y===food.y){score+=10;document.getElementById('score').textContent=score;spawnFood()}
+  else snake.pop();
   draw();
-  scheduleTick();
 }
 
-function scheduleTick() {
-  clearTimeout(gameLoopTimer);
-  gameLoopTimer = setTimeout(gameLoop, 150);
+function draw(){
+  let c=document.getElementById('game'),ctx=c.getContext('2d');
+  ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,400,400);
+  ctx.fillStyle='#16213e';
+  for(let x=0;x<COLS;x++)for(let y=0;y<ROWS;y++)if((x+y)%2)ctx.fillRect(x*CELL,y*CELL,CELL,CELL);
+  snake.forEach((s,i)=>{ctx.fillStyle=i===0?'#e94560':'#0f3460';ctx.fillRect(s.x*CELL+1,s.y*CELL+1,CELL-2,CELL-2)});
+  ctx.fillStyle='#f0c040';ctx.fillRect(food.x*CELL+4,food.y*CELL+4,CELL-8,CELL-8);
 }
 
-// --- Game Over ---
-function showGameOver() {
-  gameOverTitle.textContent = state.won ? 'YOU WIN!' : 'GAME OVER';
-  finalScoreSpan.textContent = state.score;
-  overlay.classList.add('visible');
-  draw(); // Final draw with game over state
+function end(){
+  gameOver=true;clearInterval(loop);
+  document.getElementById('overlayTitle').textContent='游戏结束';
+  document.getElementById('overlayScore').textContent='最终分数: '+score;
+  document.getElementById('overlay').classList.add('active');
 }
 
-// --- Game Control ---
-function startGame() {
-  state = createInitialState();
-  overlay.classList.remove('visible');
-  gameRunning = true;
-  draw();
-  scheduleTick();
-}
+function restart(){init()}
 
-function stopGame() {
-  gameRunning = false;
-  clearTimeout(gameLoopTimer);
-}
-
-// --- Keyboard Input ---
-const KEY_MAP = {
-  ArrowUp:    { x: 0, y: -1 },
-  ArrowDown:  { x: 0, y: 1 },
-  ArrowLeft:  { x: -1, y: 0 },
-  ArrowRight: { x: 1, y: 0 },
-};
-
-document.addEventListener('keydown', (e) => {
-  if (e.key.startsWith('Arrow')) {
-    e.preventDefault();
-
-    const newDir = KEY_MAP[e.key];
-    if (!newDir) return;
-
-    if (state.gameOver) {
-      startGame();
-      return;
-    }
-
-    const validated = changeDirection(newDir, state.direction);
-    state.nextDirection = validated;
-  }
-
-  if (e.key === ' ' || e.key === 'Space') {
-    e.preventDefault();
-    if (state.gameOver) {
-      startGame();
-    }
-  }
+document.addEventListener('keydown',e=>{
+  if(gameOver&&e.code==='Space'){restart();return}
+  let k={ArrowUp:{x:0,y:-1},ArrowDown:{x:0,y:1},ArrowLeft:{x:-1,y:0},ArrowRight:{x:1,y:0}}[e.code];
+  if(k&&!(k.x+dir.x===0&&k.y+dir.y===0))nextDir=k;
+  e.preventDefault();
 });
 
-// --- Restart Button ---
-restartBtn.addEventListener('click', startGame);
-
-// --- Canvas Click to focus (for keyboard) ---
-canvas.addEventListener('click', () => canvas.focus());
-canvas.setAttribute('tabindex', '0');
-
-// --- Start Game ---
-startGame();
-
+init();
 </script>
 </body>
 </html>
