@@ -1,0 +1,330 @@
+name: workflow
+# Perfect Dev Agent Workflow — Research → Plan → Implement
+# Auto-triggers on issue open, comment commands, and PR merge chain
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: 'Issue number to process'
+        required: false
+      stage:
+        description: 'Stage to run (research|plan|implement)'
+        required: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.issue.number || github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  AGENT_MODEL: deepseek/deepseek-v4-flash
+  RESEARCH_TEMPLATE: templates/RESEARCH_TEMPLATE.md
+
+jobs:
+  # ─── STAGE 1: Research on Issue Opened ───
+  research:
+    if: github.event_name == 'issues' && github.event.action == 'opened'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "opencode-agent[bot]"
+          git config user.email "opencode-agent[bot]@users.noreply.github.com"
+
+      - name: Collect pre-research context
+        id: context
+        env:
+          GH_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+        run: |
+          ISSUE_NUM=${{ github.event.issue.number }}
+          echo "issue_num=$ISSUE_NUM" >> $GITHUB_OUTPUT
+
+          # Gather git context for the agent
+          echo "## Pre-Research Context" > /tmp/context.md
+          echo "" >> /tmp/context.md
+          echo "### Recent commits" >> /tmp/context.md
+          git log --oneline -20 >> /tmp/context.md
+          echo "" >> /tmp/context.md
+          echo "### Existing design docs" >> /tmp/context.md
+          find docs/DESIGN docs/REFERENCE -name "*.md" 2>/dev/null | head -20 >> /tmp/context.md || echo "(none)" >> /tmp/context.md
+          echo "" >> /tmp/context.md
+          echo "### Issue Template" >> /tmp/context.md
+          cat templates/RESEARCH_TEMPLATE.md >> /tmp/context.md
+          echo "" >> /tmp/context.md
+          cat /tmp/context.md
+
+      - name: Run research
+        uses: anomalyco/opencode/github@latest
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+          PARENT_ISSUE: ${{ github.event.issue.number }}
+        with:
+          model: ${{ env.AGENT_MODEL }}
+          use_github_token: true
+          prompt: |
+            ## Perfect Dev Agent Workflow — Stage 1: Research
+            
+            Read issue #${{ env.PARENT_ISSUE }} title and body.
+            
+            ### Context (pre-collected):
+            The pre-research context (git history, existing docs, research template)
+            has been prepared at /tmp/context.md. Read it first.
+
+            ### Instructions:
+            1. Read the issue and context thoroughly
+            2. Create docs/PRD/${{ env.PARENT_ISSUE }}-<feature-slug>.md using the 
+               template structure from templates/RESEARCH_TEMPLATE.md
+               Fill in ALL sections: Problem, Root Cause, Impact, Alternatives, 
+               Edge Cases, Dependencies
+            3. Create docs/TASKS/${{ env.PARENT_ISSUE }}-<feature-slug>.md with
+               affected modules, impacts, and task summary
+            4. Commit and push to a new branch
+            5. Open a research PR with title: "Research: <feature-name> (parent #${{ env.PARENT_ISSUE }})"
+            
+            ### Critical Rules:
+            - The PR body MUST NOT contain Closes/Fixes/Resolves for the parent issue
+            - Use "Parent: #${{ env.PARENT_ISSUE }}" format instead
+            - The PR title MUST start with "Research:"
+            - Use ${{ env.PARENT_ISSUE }} as the issue number — do not guess
+
+      - name: Validate research PR
+        env:
+          GH_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+          ISSUE_NUM: ${{ github.event.issue.number }}
+        run: |
+          sleep 5
+          RESEARCH_PR=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --json number,title,headRefName \
+            --jq 'map(select(.headRefName | test("opencode/issue'"$ISSUE_NUM"'"))) | last | .number')
+          if [ -z "$RESEARCH_PR" ] || [ "$RESEARCH_PR" = "null" ]; then
+            echo "No research PR found, skipping validation"
+            exit 0
+          fi
+          CURRENT_TITLE=$(gh pr view "$RESEARCH_PR" --repo "$GITHUB_REPOSITORY" --json title --jq '.title')
+          if [[ "$CURRENT_TITLE" == Research:* ]]; then
+            echo "✓ Research PR title valid: '$CURRENT_TITLE'"
+          else
+            echo "Fixing research PR #$RESEARCH_PR title"
+            NEW_TITLE="Research: $CURRENT_TITLE (parent #$ISSUE_NUM)"
+            gh pr edit "$RESEARCH_PR" --repo "$GITHUB_REPOSITORY" --title "$NEW_TITLE"
+          fi
+          # Add workflow labels
+          gh issue edit "$ISSUE_NUM" --add-label "workflow/research" --repo "$GITHUB_REPOSITORY"
+
+  # ─── STAGE 2: Plan on Research PR Merge ───
+  plan:
+    if: |
+      github.event_name == 'pull_request_target' && 
+      github.event.action == 'closed' && 
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.title, 'Research:')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Configure git
+        run: |
+          git config user.name "opencode-agent[bot]"
+          git config user.email "opencode-agent[bot]@users.noreply.github.com"
+
+      - name: Extract parent issue
+        id: parent
+        run: |
+          PR_BODY="${{ github.event.pull_request.body }}"
+          PARENT=$(echo "$PR_BODY" | grep -oP 'Parent:\s*#\K\d+' | head -1)
+          [ -z "$PARENT" ] && PARENT=$(echo "${{ github.event.pull_request.title }}" | grep -oP 'parent #\K\d+')
+          echo "issue_num=$PARENT" >> $GITHUB_OUTPUT
+          echo "Parent issue: #$PARENT"
+
+      - name: Run plan
+        uses: anomalyco/opencode/github@latest
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+          PARENT_ISSUE: ${{ steps.parent.outputs.issue_num }}
+        with:
+          model: ${{ env.AGENT_MODEL }}
+          use_github_token: true
+          prompt: |
+            ## Perfect Dev Agent Workflow — Stage 2: Plan
+
+            Read the research from docs/PRD/${{ env.PARENT_ISSUE }}-*.md 
+            and docs/TASKS/${{ env.PARENT_ISSUE }}-*.md.
+
+            ### Instructions:
+            1. Create docs/DESIGN/${{ env.PARENT_ISSUE }}-<feature-slug>.md with:
+               - Architecture / module design
+               - Data structures
+               - Key decisions with rationale
+               - Test strategy
+            2. Update docs/TASKS/${{ env.PARENT_ISSUE }}-*.md with phased breakdown:
+               - Phase 1: Tests (write test cases first — TDD)
+               - Phase 2: Core implementation
+               - Phase 3: Integration
+               - Phase 4: Polish & edge cases
+            3. Generate initial test cases in tests/ directory
+            4. Create ONE consolidated plan issue via gh CLI:
+               gh issue create --title "[${{ env.PARENT_ISSUE }}] Plan: <feature-name>" \
+                 --label "workflow/plan" \
+                 --body "Parent: #${{ env.PARENT_ISSUE }}\n\n### Phase 1: Tests\n- [ ] ...\n..."
+               Record the returned issue number.
+            5. Commit design docs and push
+            6. Open plan PR with title: "Plan: <feature-name> (parent #${{ env.PARENT_ISSUE }})"
+
+            ### Critical Rules:
+            - PR body must NOT close the parent issue
+            - Generate real test cases (not placeholder comments)
+            - Cover boundary conditions from research
+
+      - name: Update issue labels
+        env:
+          GH_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+          ISSUE_NUM: ${{ steps.parent.outputs.issue_num }}
+        run: |
+          gh issue edit "$ISSUE_NUM" --remove-label "workflow/research" --add-label "workflow/plan" --repo "$GITHUB_REPOSITORY"
+
+  # ─── STAGE 3: Implement on Plan PR Merge ───
+  implement:
+    if: |
+      github.event_name == 'pull_request_target' && 
+      github.event.action == 'closed' && 
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.title, 'Plan:')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Configure git
+        run: |
+          git config user.name "opencode-agent[bot]"
+          git config user.email "opencode-agent[bot]@users.noreply.github.com"
+
+      - name: Extract parent issue
+        id: parent
+        run: |
+          PR_BODY="${{ github.event.pull_request.body }}"
+          PARENT=$(echo "$PR_BODY" | grep -oP 'Parent:\s*#\K\d+' | head -1)
+          [ -z "$PARENT" ] && PARENT=$(echo "${{ github.event.pull_request.title }}" | grep -oP 'parent #\K\d+')
+          echo "issue_num=$PARENT" >> $GITHUB_OUTPUT
+          echo "Parent issue: #$PARENT"
+
+      - name: Run implement
+        uses: anomalyco/opencode/github@latest
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+          PARENT_ISSUE: ${{ steps.parent.outputs.issue_num }}
+        with:
+          model: ${{ env.AGENT_MODEL }}
+          use_github_token: true
+          prompt: |
+            ## Perfect Dev Agent Workflow — Stage 3: Implement
+
+            Read the plan issue and docs/TASKS/${{ env.PARENT_ISSUE }}-*.md.
+            Read the design at docs/DESIGN/${{ env.PARENT_ISSUE }}-*.md.
+
+            ### TDD is MANDATORY. Execute phase by phase:
+
+            **Phase 1: Tests first**
+            - Write/finalize test cases from the plan
+            - Cover ALL edge cases from research
+            - Tests will FAIL initially — this is expected
+
+            **Phase 2: Core implementation**
+            - Implement the actual functionality
+            - Run tests: npm test (or project test command)
+
+            **Phase 3: Integration**
+            - Wire up with existing modules
+            - Run full test suite
+
+            **Phase 4: Polish**
+            - Edge case handling
+            - Error states
+            - Clean up
+
+            After each phase: commit and push with message like
+            "implement: <phase name> (#${{ env.PARENT_ISSUE }})"
+
+            After ALL phases: open the final PR with title "<feature-name>" and
+            body MUST include "Closes #${{ env.PARENT_ISSUE }}" and
+            "Closes #<plan-issue>".
+
+            ### Rules:
+            - NO scope creep — implement only what's in the plan
+            - Test before code, always
+            - Commit after each phase
+
+      - name: Update issue labels
+        env:
+          GH_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+          ISSUE_NUM: ${{ steps.parent.outputs.issue_num }}
+        run: |
+          gh issue edit "$ISSUE_NUM" --remove-label "workflow/plan" --add-label "workflow/implement" --repo "$GITHUB_REPOSITORY"
+
+  # ─── Manual /opencode comment commands ───
+  handle-comment:
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '/opencode'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Parse command
+        id: cmd
+        run: |
+          BODY="${{ github.event.comment.body }}"
+          STAGE=$(echo "$BODY" | grep -oP '/opencode\s+\K\w+')
+          ISSUE=$(echo "$BODY" | grep -oP '#\K\d+' | head -1)
+          [ -z "$ISSUE" ] && ISSUE=${{ github.event.issue.number }}
+          echo "stage=$STAGE" >> $GITHUB_OUTPUT
+          echo "issue=$ISSUE" >> $GITHUB_OUTPUT
+          echo "Command: /opencode $STAGE on issue #$ISSUE"
+
+      - name: Run manual stage
+        if: steps.cmd.outputs.stage != ''
+        uses: anomalyco/opencode/github@latest
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+          PARENT_ISSUE: ${{ steps.cmd.outputs.issue }}
+          STAGE: ${{ steps.cmd.outputs.stage }}
+        with:
+          model: ${{ env.AGENT_MODEL }}
+          use_github_token: true
+          prompt: |
+            Execute the ${{ env.STAGE }} stage of the Perfect Dev Agent Workflow
+            for issue #${{ env.PARENT_ISSUE }}. Follow the instructions in AGENTS.md
+            for this stage exactly.

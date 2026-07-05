@@ -1,0 +1,87 @@
+name: research-gate
+# Research quality validation before plan phase can proceed
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'docs/PRD/**'
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Find research doc
+        id: find-doc
+        run: |
+          # Find the PRD file changed in this PR
+          DOC=$(git diff --name-only origin/main...HEAD -- docs/PRD/*.md | head -1)
+          if [ -z "$DOC" ]; then
+            echo "No PRD doc found in PR"
+            exit 0
+          fi
+          echo "doc=$DOC" >> $GITHUB_OUTPUT
+          echo "Checking: $DOC"
+
+      - name: Check problem definition
+        id: check1
+        run: |
+          grep -q "Problem Definition\|Current Behavior\|Expected Behavior" "${{ steps.find-doc.outputs.doc }}" && echo "✓ Problem definition" || echo "✗ Missing problem definition"
+
+      - name: Check root cause
+        id: check2
+        run: |
+          grep -q "Root Cause\|Design Intent" "${{ steps.find-doc.outputs.doc }}" && echo "✓ Root cause analysis" || echo "✗ Missing root cause analysis"
+
+      - name: Check impact analysis
+        id: check3
+        run: |
+          grep -q "Impact Analysis\|Affected Modules" "${{ steps.find-doc.outputs.doc }}" && echo "✓ Impact analysis" || echo "✗ Missing impact analysis"
+
+      - name: Check alternatives
+        id: check4
+        run: |
+          COUNT=$(grep -c "Approach [A-Z]:" "${{ steps.find-doc.outputs.doc }}" 2>/dev/null || echo 0)
+          if [ "$COUNT" -ge 2 ]; then
+            echo "✓ $COUNT alternatives compared"
+          else
+            echo "✗ Need at least 2 approaches (found $COUNT)"
+          fi
+
+      - name: Check boundary conditions
+        id: check5
+        run: |
+          grep -q "Boundary Conditions\|Edge Cases\|边" "${{ steps.find-doc.outputs.doc }}" && echo "✓ Boundary conditions" || echo "✗ Missing boundary conditions"
+
+      - name: Post gate result
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+        run: |
+          PR_NUM=${{ github.event.pull_request.number }}
+          
+          # Simple pass/fail check (non-blocking for now — just informational)
+          cat >> /tmp/gate.md << 'EOF'
+          ## 🔍 Research Quality Gate
+
+          | Check | Status |
+          |-------|--------|
+          EOF
+          
+          echo "| Problem definition | $([[ '${{ steps.check1.outcome }}' == 'success' ]] && echo '✅' || echo '❌') |" >> /tmp/gate.md
+          echo "| Root cause | $([[ '${{ steps.check2.outcome }}' == 'success' ]] && echo '✅' || echo '❌') |" >> /tmp/gate.md
+          echo "| Impact analysis | $([[ '${{ steps.check3.outcome }}' == 'success' ]] && echo '✅' || echo '❌') |" >> /tmp/gate.md
+          echo "| ≥2 alternatives | $([[ '${{ steps.check4.outcome }}' == 'success' ]] && echo '✅' || echo '❌') |" >> /tmp/gate.md
+          echo "| Boundary conditions | $([[ '${{ steps.check5.outcome }}' == 'success' ]] && echo '✅' || echo '❌') |" >> /tmp/gate.md
+          
+          echo "" >> /tmp/gate.md
+          echo "> This is an informational check. Missing items will be auto-fixed before plan phase." >> /tmp/gate.md
+
+          gh pr comment "$PR_NUM" --body-file /tmp/gate.md --repo "$GITHUB_REPOSITORY"

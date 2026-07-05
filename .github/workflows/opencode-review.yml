@@ -1,0 +1,210 @@
+name: review
+# Perfect Dev Agent Workflow — Self-Healing CI + Auto-Review
+# Stage 4 (Test) + Stage 5 (Self-correct loop)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-heal:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Configure git
+        run: |
+          git config user.name "opencode-agent[bot]"
+          git config user.email "opencode-agent[bot]@users.noreply.github.com"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci 2>/dev/null || npm install
+
+      # ─── STAGE 4: Test ───
+      - name: Run tests
+        id: test
+        run: |
+          npm test 2>&1 | tee test-output.log
+          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Extract test failures
+        if: steps.test.outputs.exit_code != '0'
+        id: failures
+        run: |
+          # Count failed tests
+          FAILED=$(grep -c 'FAIL\|failed' test-output.log 2>/dev/null || echo "0")
+          echo "count=$FAILED" >> $GITHUB_OUTPUT
+          # Extract failure summary
+          grep -A5 'FAIL\|Error:\|AssertionError' test-output.log | head -50 > /tmp/failures.txt
+          echo "Test failures ($FAILED):"
+          cat /tmp/failures.txt
+
+      # ─── STAGE 5: Self-correct (Attempt 1) ───
+      - name: Self-correct — Attempt 1
+        if: steps.test.outputs.exit_code != '0'
+        uses: anomalyco/opencode/github@latest
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+        with:
+          model: deepseek/deepseek-v4-flash
+          use_github_token: true
+          timeout-minutes: 15
+          prompt: |
+            ## Self-correct Attempt 1
+
+            Tests are failing on this branch. Read /tmp/failures.txt for
+            the failure details.
+
+            1. Analyze the root cause of each failure
+            2. Fix the code (NOT the tests, unless the test itself is wrong)
+            3. Run `npm test` to verify all pass
+            4. If all pass: commit with message "fix: self-correct test failures (#<issue>)"
+               and push to the same branch
+            5. If tests still fail: do NOT push. Just report what's still failing.
+            
+            Do NOT create a new PR. Push to the existing branch.
+
+      - name: Re-run tests after attempt 1
+        if: steps.test.outputs.exit_code != '0'
+        id: test2
+        run: |
+          npm test 2>&1 | tee test-output-2.log
+          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      # ─── Self-correct (Attempt 2) ───
+      - name: Self-correct — Attempt 2
+        if: steps.test2.outputs.exit_code != '0'
+        uses: anomalyco/opencode/github@latest
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+        with:
+          model: deepseek/deepseek-v4-pro
+          use_github_token: true
+          timeout-minutes: 15
+          prompt: |
+            ## Self-correct Attempt 2 (DEEPER ANALYSIS)
+
+            Attempt 1 failed. Read test-output-2.log for current failures.
+
+            1. Compare with the first attempt failures
+            2. Do a deeper root cause analysis — check:
+               - Are there hidden assumptions in the code?
+               - Do the tests correctly reflect the design?
+               - Is there a mismatch between test expectations and implementation?
+            3. Fix the REAL problem (not just symptoms)
+            4. Run `npm test` to verify
+            5. If all pass: commit with "fix: self-correct round 2 (#<issue>)" and push
+            6. If still failing: report remaining failures clearly
+
+      - name: Re-run tests after attempt 2
+        if: steps.test2.outputs.exit_code != '0'
+        id: test3
+        run: |
+          npm test 2>&1 | tee test-output-3.log
+          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      # ─── Self-correct (Attempt 3 — LAST) ───
+      - name: Self-correct — Attempt 3 (LAST)
+        if: steps.test3.outputs.exit_code != '0'
+        uses: anomalyco/opencode/github@latest
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+        with:
+          model: deepseek/deepseek-v4-pro
+          use_github_token: true
+          timeout-minutes: 15
+          prompt: |
+            ## Self-correct Attempt 3 — FINAL ATTEMPT
+
+            Previous 2 attempts failed. Read test-output-3.log.
+
+            1. If you can identify a clear fix: implement it, verify, commit, push
+            2. If you CANNOT fix it: DO NOT push. Instead, write a detailed
+               analysis comment on the PR explaining:
+               - What's failing and why
+               - What you tried (summarize 3 attempts)
+               - What you don't understand
+               - What a human needs to decide
+            
+            After committing/pushing (if fix succeeded): also post a summary comment.
+
+      - name: Re-run tests after attempt 3
+        if: steps.test3.outputs.exit_code != '0'
+        id: test4
+        run: |
+          npm test 2>&1 | tee test-output-4.log
+          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      # ─── Block escalation ───
+      - name: Escalate — all attempts exhausted
+        if: steps.test4.outputs.exit_code != '0'
+        env:
+          GH_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+        run: |
+          PR_NUM=${{ github.event.pull_request.number }}
+          ISSUE_NUM=$(echo "${{ github.event.pull_request.body }}" | grep -oP '#\K\d+' | head -1)
+
+          # Add blocked label to parent issue
+          if [ -n "$ISSUE_NUM" ]; then
+            gh issue edit "$ISSUE_NUM" --add-label "status/blocked" --repo "$GITHUB_REPOSITORY"
+          fi
+
+          # Post escalation comment on PR
+          cat >> /tmp/escalation.md << 'EOF'
+          ## ⚠️ Self-correct exhausted (3 attempts)
+
+          All automated fix attempts have failed. Human review required.
+
+          ### Summary
+          See the test outputs above for detailed failure logs.
+
+          ### What the agent needs
+          - Clarification on expected behavior
+          - Decision on approach (modify tests or modify implementation)
+          - Manual fix or guidance
+          EOF
+
+          gh pr comment "$PR_NUM" --body-file /tmp/escalation.md --repo "$GITHUB_REPOSITORY"
+
+      # ─── Review (tests passing) ───
+      - name: Post review
+        if: |
+          (steps.test.outputs.exit_code == '0') || 
+          (steps.test2.outcome == 'success' && steps.test2.outputs.exit_code == '0') ||
+          (steps.test3.outcome == 'success' && steps.test3.outputs.exit_code == '0') ||
+          (steps.test4.outcome == 'success' && steps.test4.outputs.exit_code == '0')
+        uses: anomalyco/opencode/github@latest
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+        with:
+          model: deepseek/deepseek-v4-flash
+          use_github_token: true
+          prompt: |
+            All tests pass. Post a brief code review comment on this PR:
+            1. Summary of what changed
+            2. Any concerns (security, performance, readability)
+            3. Ready to merge? (yes/no with brief reason)
+            
+            Keep it concise — this is a lightweight sanity check.
