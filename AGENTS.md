@@ -116,6 +116,59 @@ PiBot spawns self-correct-agent (attempt N)
 
 ---
 
+## Merge Conflict Resolution (PiBot Managed)
+
+When PiBot auto-merges a PR, conflicts can happen if multiple branches touch the same files.
+
+### Conflict Detection
+```bash
+# Before merging, check if branch is behind main
+gh pr view <N> --json mergeable,mergeStateStatus
+# If mergeStateStatus is DIRTY or BLOCKED → conflict detected
+```
+
+### Conflict Resolution Flow
+```
+Merge conflict detected
+    │
+    ▼
+PiBot spawns conflict-resolver-agent
+    │
+    ├── 1. git fetch origin main
+    ├── 2. git rebase origin/main (or merge)
+    ├── 3. Identify conflicts: git diff --name-only --diff-filter=U
+    ├── 4. For each conflicted file:
+    │     - Read both versions
+    │     - Determine correct resolution based on:
+    │       a. Design intent from docs/DESIGN/
+    │       b. Which changes are more recent/authoritative
+    │       c. Test expectations (preserve test changes)
+    │     - Apply resolution
+    ├── 5. git add resolved files + git rebase --continue
+    ├── 6. Run tests to verify resolution didn't break anything
+    ├── 7. Force-push resolved branch
+    │
+    ├── Resolution successful + tests pass → PiBot retries merge ✅
+    │
+    └── Cannot resolve automatically →
+        PiBot comments on PR with:
+        - Which files conflict
+        - What changed on main vs branch
+        - Why automatic resolution failed
+        - Suggested manual resolution
+        → Marks PR with label `status/blocked`
+        → Notifies K via Feishu
+```
+
+### Conflict Agent Rules
+- Always prefer main's changes for infrastructure files (.github/, configs)
+- Always preserve test changes from the feature branch
+- For business logic: prefer the version that aligns with design docs
+- If uncertain: flag for human, do NOT guess on business logic
+- After resolution: MUST run full test suite before pushing
+
+---
+
 ## Sub-Agent Specifications
 
 ### research-agent
