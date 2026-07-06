@@ -107,6 +107,57 @@ async function testPage(browser, pageName) {
     if (/404|Failed to load|Error|Cannot find|Module.*not found/i.test(bodyText)) {
       errors.push({ type: 'dom_error_text', text: `Error text in page body: "${bodyText.slice(0, 200)}"` });
     }
+
+    // ── ACTUAL PLAY TEST: simulate gameplay ──
+    try {
+      // Step 1: Start the game (Space/Enter)
+      await page.keyboard.press('Space');
+      await page.waitForTimeout(400);  // let 2-3 game ticks pass
+
+      // Step 2: Move the snake
+      await page.keyboard.press('ArrowDown');
+      await page.waitForTimeout(200);
+      await page.keyboard.press('ArrowRight');
+      await page.waitForTimeout(600);  // several ticks
+      await page.keyboard.press('ArrowUp');
+      await page.waitForTimeout(200);
+      await page.keyboard.press('ArrowLeft');
+      await page.waitForTimeout(300);
+
+      // Step 3: Check score is rendered (even if 0, it proves game ran)
+      const scoreText = await page.evaluate(() => {
+        const el = document.getElementById('scoreDisplay');
+        return el ? el.textContent : null;
+      });
+
+      if (scoreText === null) {
+        errors.push({ type: 'playtest_no_score', text: 'Score element not found after gameplay simulation' });
+      } else if (!scoreText.includes('SCORE')) {
+        errors.push({ type: 'playtest_score_format', text: `Unexpected score format: "${scoreText}"` });
+      } else {
+        console.log(`      🎮 Gameplay OK — score display: ${scoreText}`);
+      }
+
+      // Step 4: Verify canvas has rendered content (not blank)
+      const hasPixels = await page.evaluate(() => {
+        const c = document.querySelector('canvas');
+        if (!c) return false;
+        const ctx = c.getContext('2d');
+        if (!ctx) return false;
+        const data = ctx.getImageData(0, 0, c.width, c.height).data;
+        // Check if any non-background pixels exist
+        for (let i = 3; i < data.length; i += 4) {
+          if (data[i] > 0) return true; // alpha > 0 = something drawn
+        }
+        return false;
+      });
+
+      if (!hasPixels) {
+        errors.push({ type: 'playtest_blank_canvas', text: 'Canvas is blank — no pixels rendered after gameplay simulation' });
+      }
+    } catch (playErr) {
+      errors.push({ type: 'playtest_crash', text: `Play simulation crashed: ${playErr.message}` });
+    }
   }
 
   await page.close();
