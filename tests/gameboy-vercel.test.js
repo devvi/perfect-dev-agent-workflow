@@ -1,14 +1,10 @@
 // FILE: tests/gameboy-vercel.test.js
 // Vercel deployment verification tests for GameBoy 404 fix (Issue #11)
 //
-// Plan stage: these tests run BEFORE the implement phase moves the engine.
-// Some tests intentionally document the current failing state (canary tests)
-// to confirm they will pass once the implement PR applies the fix.
-//
-// After implement applies the fix:
-//   1. src/gameboy-snake-engine.js → public/src/gameboy-snake-engine.js
-//   2. gameboy.html import: '../src/...' → './src/...'
-//   3. test imports update accordingly
+// Implement stage: fix has been applied.
+//   1. src/gameboy-snake-engine.js → public/src/gameboy-snake-engine.js ✅
+//   2. gameboy.html import: '../src/...' → './src/...' ✅
+//   3. test imports updated accordingly ✅
 //
 // Run with: npx vitest run tests/gameboy-vercel.test.js
 
@@ -26,43 +22,30 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 // ---------------------------------------------------------------------------
 describe('Vercel deployment root cause (canary tests)', () => {
   // Canary 1: Engine is NOT in the deployable directory yet
-  it('[CANARY] should eventually have engine.js under public/src/ after fix', () => {
+  it('[CANARY] should have engine.js under public/src/ after fix', () => {
     const newPath = path.join(PROJECT_ROOT, 'public', 'src', 'gameboy-snake-engine.js');
     const exists = fs.existsSync(newPath);
-    // This will be false in plan stage, must be true after implement
-    if (!exists) {
-      console.log('⚠️  Engine not yet in public/src/. Will be fixed in implement phase.');
-    }
-    // We just document; this is expected to be false now
-    expect(exists).toBe(false);
+    expect(exists).toBe(true);
   });
 
   // Canary 2: Import in HTML still uses ../src/ (the 404-causing path)
-  it('[CANARY] should eventually import with ./src/ instead of ../src/', () => {
+  it('[CANARY] should import with ./src/ instead of ../src/ after fix', () => {
     const htmlPath = path.join(PROJECT_ROOT, 'public', 'gameboy.html');
     const html = fs.readFileSync(htmlPath, 'utf-8');
 
     const oldPattern = /from\s+['"]\.\.\/src\/gameboy-snake-engine\.js['"]/;
     const hasOldImport = oldPattern.test(html);
-    // Currently true (bug), must become false after implement
-    if (hasOldImport) {
-      console.log('⚠️  HTML still imports from ../src/. Will be fixed to ./src/ in implement phase.');
-    }
-    expect(hasOldImport).toBe(true);
+    expect(hasOldImport).toBe(false);
   });
 
   // Canary 3: HTML does not yet have the new import path
-  it('[CANARY] should have ./src/ import after implement', () => {
+  it('[CANARY] should have ./src/ import after fix', () => {
     const htmlPath = path.join(PROJECT_ROOT, 'public', 'gameboy.html');
     const html = fs.readFileSync(htmlPath, 'utf-8');
 
     const newPattern = /from\s+['"]\.\/src\/gameboy-snake-engine\.js['"]/;
     const hasNewImport = newPattern.test(html);
-    // Currently false (bug), must become true after implement
-    if (!hasNewImport) {
-      console.log('⚠️  HTML lacks ./src/ import. Will be added in implement phase.');
-    }
-    expect(hasNewImport).toBe(false);
+    expect(hasNewImport).toBe(true);
   });
 });
 
@@ -206,12 +189,11 @@ describe('file move path mapping', () => {
 // Section 5: Pre-implementation snapshot — ensure baseline before changes
 // ---------------------------------------------------------------------------
 describe('pre-implementation baseline', () => {
-  it('gameboy-snake.test.js should exist and import from current src/ location (will point to public/src/ after implement)', () => {
+  it('gameboy-snake.test.js should exist and import from public/src/ location after implement', () => {
     const testPath = path.join(PROJECT_ROOT, 'tests', 'gameboy-snake.test.js');
     expect(fs.existsSync(testPath)).toBe(true);
     const content = fs.readFileSync(testPath, 'utf-8');
-    // Currently imports from ../src/ — after implement this will change to ../public/src/
-    expect(content).toContain('../src/gameboy-snake-engine.js');
+    expect(content).toContain('../public/src/gameboy-snake-engine.js');
   });
 
   it('should have the deploy workflow file unchanged', () => {
