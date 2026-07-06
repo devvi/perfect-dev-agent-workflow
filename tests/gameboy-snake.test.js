@@ -14,7 +14,7 @@ import {
   TOTAL_CELLS,
   POINTS_PER_FOOD,
   DIR,
-} from '../src/gameboy-snake-engine.js';
+} from '../public/src/gameboy-snake-engine.js';
 
 function stateWithSnake(snake, overrides = {}) {
   return {
