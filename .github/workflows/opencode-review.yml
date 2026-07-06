@@ -61,3 +61,20 @@ jobs:
         if: steps.test.outputs.exit_code != '0'
         run: npm test
         continue-on-error: true
+
+      - name: Install Playwright browsers
+        if: success() || failure()
+        run: npx playwright install chromium 2>&1
+
+      - name: E2E Play Test 🎮
+        id: playtest
+        if: success() || failure()
+        run: npm run test:e2e
+        continue-on-error: true
+
+      - name: Play Test gate — block merge on runtime errors
+        if: steps.playtest.outcome != 'success'
+        run: |
+          echo "❌ Play Test failed — runtime errors found in HTML pages."
+          echo "    Fix the issues (missing modules, 404s, JS errors) before merging."
+          exit 1
