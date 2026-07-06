@@ -1,0 +1,98 @@
+name: workflow-chain
+# Webhook: instantly advance workflow stage when a PR is merged
+# No more waiting for the next poll cycle.
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  advance:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: read
+    steps:
+      - name: Advance issue workflow label on PR merge
+        uses: actions/github-script@v7
+        with:
+          # Uses GITHUB_TOKEN (needs issues: write only)
+          script: |
+            const pr = context.payload.pull_request;
+            const prLabels = pr.labels.map(l => l.name);
+
+            // Only process workflow/* PRs
+            const workflowLabels = ['workflow/research', 'workflow/plan', 'workflow/implement'];
+            const activeLabel = workflowLabels.find(l => prLabels.includes(l));
+            if (!activeLabel) {
+              console.log(`PR #${pr.number} has no workflow label — skipping`);
+              return;
+            }
+
+            // Find parent issue from PR body (Closes #N or parent #N)
+            const body = pr.body || '';
+            const parentMatch = body.match(/(?:Closes|parent)\s*#(\d+)/i);
+            if (!parentMatch) {
+              console.log(`PR #${pr.number}: no parent issue reference in body — can't advance`);
+              return;
+            }
+            const parentNumber = parseInt(parentMatch[1]);
+
+            // Label → next stage mapping
+            const nextStage = {
+              'workflow/research':  'workflow/plan',
+              'workflow/plan':      'workflow/implement',
+              'workflow/implement': null,  // implement → done (close issue)
+            };
+
+            const nextLabel = nextStage[activeLabel];
+
+            if (nextLabel) {
+              // Advance to next stage
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: parentNumber,
+                labels: [nextLabel],
+              });
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: parentNumber,
+                name: activeLabel,
+              }).catch(() => {});  // label might not exist anymore
+
+              console.log(`PR #${pr.number} merged → Issue #${parentNumber}: ${activeLabel} → ${nextLabel}`);
+
+              // Add workflow comment to trigger attention
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: parentNumber,
+                body: `⏩ PR #${pr.number} (${activeLabel}) merged → advancing to **${nextLabel}**`,
+              });
+            } else {
+              // Implement → Done: close the issue
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: parentNumber,
+                state: 'closed',
+              });
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: parentNumber,
+                name: activeLabel,
+              }).catch(() => {});
+
+              console.log(`PR #${pr.number} merged → Issue #${parentNumber} closed (implement → done)`);
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: parentNumber,
+                body: `🎉 Issue resolved — PR #${pr.number} (implement) merged and deployed.`,
+              });
+            }
