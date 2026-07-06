@@ -1,10 +1,10 @@
 name: review
-# Self-healing CI: test → auto-fix → push
-# PiBot monitors results for the self-correct loop
+# CI testing — runs ONLY on implement-stage PRs
+# Self-healing: test → auto-fix → push (implement PRs only)
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
@@ -12,6 +12,7 @@ concurrency:
 
 jobs:
   test-and-heal:
+    if: contains(github.event.pull_request.labels.*.name, 'workflow/implement')
     runs-on: ubuntu-latest
     permissions:
       contents: write
