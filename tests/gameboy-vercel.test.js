@@ -206,12 +206,12 @@ describe('file move path mapping', () => {
 // Section 5: Pre-implementation snapshot — ensure baseline before changes
 // ---------------------------------------------------------------------------
 describe('pre-implementation baseline', () => {
-  it('gameboy-snake.test.js should exist and import from the new public/src/ location', () => {
+  it('gameboy-snake.test.js should exist and import from current src/ location (will point to public/src/ after implement)', () => {
     const testPath = path.join(PROJECT_ROOT, 'tests', 'gameboy-snake.test.js');
     expect(fs.existsSync(testPath)).toBe(true);
     const content = fs.readFileSync(testPath, 'utf-8');
-    // Already updated to use new path (research PR pre-applied the change)
-    expect(content).toContain('../public/src/gameboy-snake-engine.js');
+    // Currently imports from ../src/ — after implement this will change to ../public/src/
+    expect(content).toContain('../src/gameboy-snake-engine.js');
   });
 
   it('should have the deploy workflow file unchanged', () => {
