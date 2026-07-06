@@ -1,4 +1,4 @@
-// FILE: src/gameboy-snake-engine.js
+// gameboy-snake-engine.js — Core game engine for GameBoy-style snake
 
 export const GRID_SIZE = 20;
 export const TOTAL_CELLS = GRID_SIZE * GRID_SIZE;
@@ -15,26 +15,26 @@ function isOpposite(a, b) {
   return a.x + b.x === 0 && a.y + b.y === 0;
 }
 
-function cloneState(state) {
-  return structuredClone(state);
-}
-
 function randomInt(max) {
   return Math.floor(Math.random() * max);
 }
 
+function centerX() {
+  return Math.floor(GRID_SIZE / 2);
+}
+
 export function createInitialState() {
-  const centerX = Math.floor(GRID_SIZE / 2);
+  const cx = centerX();
   const snake = [
-    { x: centerX, y: 10 },
-    { x: centerX - 1, y: 10 },
-    { x: centerX - 2, y: 10 },
+    { x: cx, y: 10 },
+    { x: cx - 1, y: 10 },
+    { x: cx - 2, y: 10 },
   ];
   return {
     gameState: 'idle',
     snake,
-    direction: DIR.RIGHT,
-    nextDirection: DIR.RIGHT,
+    direction: { x: 1, y: 0 },
+    nextDirection: { x: 1, y: 0 },
     food: spawnFood(snake),
     score: 0,
     tickCount: 0,
@@ -42,7 +42,7 @@ export function createInitialState() {
 }
 
 export function startGame(state) {
-  const next = cloneState(state);
+  const next = structuredClone(state);
   next.gameState = 'playing';
   return next;
 }
@@ -52,14 +52,17 @@ export function resetGame() {
 }
 
 export function changeDirection(state, dir) {
+  // Lock during idle/won/gameover — return same state reference
   if (state.gameState !== 'playing') {
     return state;
   }
-  const currentDir = state.nextDirection;
-  if (isOpposite(currentDir, dir)) {
-    return cloneState(state);
+
+  // Check reverse direction against buffered nextDirection
+  if (isOpposite(state.nextDirection, dir)) {
+    return state;
   }
-  const next = cloneState(state);
+
+  const next = structuredClone(state);
   next.nextDirection = dir;
   return next;
 }
@@ -84,39 +87,59 @@ export function tick(state) {
     return state;
   }
 
-  const next = cloneState(state);
-  next.tickCount++;
+  const direction = state.nextDirection;
 
-  const dir = next.nextDirection;
-  next.direction = dir;
+  // Calculate new head position
+  const head = state.snake[0];
+  const newHead = { x: head.x + direction.x, y: head.y + direction.y };
 
-  const head = next.snake[0];
-  const newHead = { x: head.x + dir.x, y: head.y + dir.y };
-
-  const collision = checkCollision(newHead, next.snake);
-  if (collision === 'wall' || collision === 'self') {
-    next.gameState = 'gameover';
-    return next;
+  // Check wall/self collision
+  if (checkCollision(newHead, state.snake) !== 'none') {
+    return {
+      ...structuredClone(state),
+      direction,
+      gameState: 'gameover',
+      tickCount: state.tickCount + 1,
+    };
   }
 
-  const ateFood = newHead.x === next.food.x && newHead.y === next.food.y;
+  // Check food collision
+  const ateFood = newHead.x === state.food.x && newHead.y === state.food.y;
+
+  let newSnake;
+  let newScore;
+  let newFood;
+  let newGameState;
 
   if (ateFood) {
-    next.snake = [newHead, ...next.snake];
-    next.score += POINTS_PER_FOOD;
-
-    if (next.snake.length >= TOTAL_CELLS) {
-      next.snake = next.snake.slice(0, TOTAL_CELLS);
-      next.gameState = 'won';
-      return next;
+    newSnake = structuredClone(state.snake);
+    newSnake.unshift(newHead);
+    newScore = state.score + POINTS_PER_FOOD;
+    // Cap snake at TOTAL_CELLS and check victory
+    if (newSnake.length >= TOTAL_CELLS) {
+      newSnake = newSnake.slice(0, TOTAL_CELLS);
+      newFood = state.food;
+      newGameState = 'won';
+    } else {
+      newFood = spawnFood(newSnake);
+      newGameState = 'playing';
     }
-
-    next.food = spawnFood(next.snake);
   } else {
-    next.snake = [newHead, ...next.snake.slice(0, -1)];
+    newSnake = [newHead, ...state.snake.slice(0, -1)];
+    newScore = state.score;
+    newFood = state.food;
+    newGameState = 'playing';
   }
 
-  return next;
+  return {
+    ...structuredClone(state),
+    snake: newSnake,
+    direction,
+    score: newScore,
+    food: newFood,
+    gameState: newGameState,
+    tickCount: state.tickCount + 1,
+  };
 }
 
 export function isVictory(state) {
@@ -124,6 +147,9 @@ export function isVictory(state) {
 }
 
 export function spawnFood(snake) {
+  if (snake.length >= TOTAL_CELLS) {
+    return null;
+  }
   const occupied = new Set(snake.map(s => `${s.x},${s.y}`));
   const empty = [];
   for (let x = 0; x < GRID_SIZE; x++) {
