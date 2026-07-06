@@ -1,6 +1,9 @@
 // FILE: tests/gameboy-snake.test.js
 
 import { describe, it, expect } from 'vitest';
+import { existsSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import {
   createInitialState,
   startGame,
@@ -14,7 +17,32 @@ import {
   TOTAL_CELLS,
   POINTS_PER_FOOD,
   DIR,
-} from '../src/gameboy-snake-engine.js';
+} from '../public/src/gameboy-snake-engine.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+describe('deployment path verification', () => {
+  it('should resolve the engine module without error', async () => {
+    await expect(import('../public/src/gameboy-snake-engine.js')).resolves.toBeDefined();
+  });
+
+  it('should have the engine file at public/src/gameboy-snake-engine.js', () => {
+    const enginePath = resolve(__dirname, '..', 'public', 'src', 'gameboy-snake-engine.js');
+    expect(existsSync(enginePath)).toBe(true);
+  });
+
+  it('should NOT have the engine file at src/gameboy-snake-engine.js (old location)', () => {
+    const oldPath = resolve(__dirname, '..', 'src', 'gameboy-snake-engine.js');
+    expect(existsSync(oldPath)).toBe(false);
+  });
+
+  it('should use a relative import path that works with static HTTP servers', () => {
+    const importPath = '../public/src/gameboy-snake-engine.js';
+    expect(importPath).not.toMatch(/^\/src\//);
+    expect(importPath).not.toMatch(/^\.\.\/src\//);
+  });
+});
 
 function stateWithSnake(snake, overrides = {}) {
   return {
