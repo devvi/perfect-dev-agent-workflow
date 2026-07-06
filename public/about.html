@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>About - Pixel Snake Game</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #1a1a2e;
+      color: #c0c0c0;
+      font-family: 'Courier New', monospace;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      max-width: 560px;
+      text-align: center;
+      border: 2px solid #00ff88;
+      padding: 40px 30px;
+      image-rendering: pixelated;
+    }
+    h1 {
+      color: #00ff88;
+      font-size: 28px;
+      text-transform: uppercase;
+      letter-spacing: 4px;
+      margin-bottom: 12px;
+      text-shadow: 0 0 8px rgba(0,255,136,0.4);
+    }
+    .divider {
+      width: 60px;
+      height: 2px;
+      background: #00ff88;
+      margin: 16px auto;
+      box-shadow: 0 0 6px #00ff88;
+    }
+    p {
+      font-size: 14px;
+      line-height: 1.8;
+      margin-bottom: 14px;
+    }
+    .accent { color: #00ff88; }
+    .back-link {
+      display: inline-block;
+      margin-top: 20px;
+      color: #00ff88;
+      text-decoration: none;
+      border: 1px solid #00ff88;
+      padding: 10px 24px;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      transition: background 0.2s, color 0.2s;
+    }
+    .back-link:hover {
+      background: #00ff88;
+      color: #1a1a2e;
+    }
+    .pixel-snake {
+      font-size: 32px;
+      letter-spacing: 2px;
+      margin-bottom: 8px;
+      filter: drop-shadow(0 0 4px #00ff88);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="pixel-snake">🐍</div>
+    <h1>Pixel Snake Game</h1>
+    <div class="divider"></div>
+    <p>A retro <span class="accent">pixel-art</span> snake game built with vanilla JavaScript and HTML5 Canvas.</p>
+    <p>Eat the food, grow longer, and avoid crashing into walls or yourself.</p>
+    <p>Inspired by the classic Nokia 3310 era — minimalist, crunchy, and addictive.</p>
+    <div class="divider"></div>
+    <a href="index.html" class="back-link">Back to Game</a>
+  </div>
+</body>
+</html>
