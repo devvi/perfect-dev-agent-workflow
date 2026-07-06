@@ -120,23 +120,38 @@ jobs:
               itemId = addResult.addProjectV2ItemById.item.id;
             }
 
+            // Stage → Agent Status mapping
+            const agentStatusMap = {
+              'Available':  '4691b96e',  // ⏳ Waiting
+              'Research':   '69efa5d7',  // 🔄 Working
+              'Plan':       '69efa5d7',  // 🔄 Working
+              'Implement':  '69efa5d7',  // 🔄 Working
+              'Done':       'fcaea879',  // ✅ Ready
+            };
+
+            const agentStatusField = project.fields.nodes.find(f => f.name === 'Agent Status');
+
             // Update the Stage field
-            const updateMutation = `mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
-              updateProjectV2ItemFieldValue(
-                input: {
-                  projectId: $projectId
-                  itemId: $itemId
-                  fieldId: $fieldId
-                  value: { singleSelectOptionId: $optionId }
-                }
+            const updateMutation = `mutation($projectId: ID!, $itemId: ID!, $stageFieldId: ID!, $stageOptionId: String!, $agentFieldId: ID!, $agentOptionId: String!) {
+              stage: updateProjectV2ItemFieldValue(
+                input: {projectId: $projectId, itemId: $itemId, fieldId: $stageFieldId, value: { singleSelectOptionId: $stageOptionId }}
+              ) { projectV2Item { id } }
+              agent: updateProjectV2ItemFieldValue(
+                input: {projectId: $projectId, itemId: $itemId, fieldId: $agentFieldId, value: { singleSelectOptionId: $agentOptionId }}
               ) { projectV2Item { id } }
             }`;
+
+            const stageOptionId = option.id;
+            const agentOptionId = agentStatusMap[stage] || '4691b96e';
+            const agentFieldId = agentStatusField ? agentStatusField.id : stageField.id;
 
             await github.graphql(updateMutation, {
               projectId: project.id,
               itemId: itemId,
-              fieldId: stageField.id,
-              optionId: option.id
+              stageFieldId: stageField.id,
+              stageOptionId: stageOptionId,
+              agentFieldId: agentFieldId,
+              agentOptionId: agentOptionId,
             });
 
-            console.log(`✅ Issue #${issue.number} → Stage: ${stage}`);
+            console.log(`✅ Issue #${issue.number} → Stage: ${stage}, Agent: ${stage === 'Available' ? '⏳ Waiting' : stage === 'Done' ? '✅ Ready' : '🔄 Working'}`);
