@@ -47,8 +47,8 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
-            // Query for the project and issue item
-            const query = `query($owner: String!, $number: Int!) {
+            // Query project + find matching item for this issue
+            const query = `query($owner: String!, $number: Int!, $issueId: ID!) {
               user(login: $owner) {
                 projectV2(number: $number) {
                   id
@@ -61,21 +61,27 @@ jobs:
                       }
                     }
                   }
-                }
-              }
-              repository(owner: $owner, name: "${repo}") {
-                issue(number: ${issue.number}) {
-                  id
-                  projectItems(first: 10) {
-                    nodes { id }
+                  items(first: 100) {
+                    nodes {
+                      id
+                      content {
+                        ... on Issue { id }
+                      }
+                    }
                   }
                 }
               }
+              node(id: $issueId) {
+                ... on Issue { id }
+              }
             }`;
 
-            const result = await github.graphql(query, { owner, number: projectNumber });
+            const result = await github.graphql(query, {
+              owner,
+              number: projectNumber,
+              issueId: context.payload.issue.node_id
+            });
             const project = result.user.projectV2;
-            const issueData = result.repository.issue;
 
             // Find the Stage field
             const stageField = project.fields.nodes.find(f => f.name === 'Stage');
@@ -92,12 +98,16 @@ jobs:
             }
 
             // Find existing project item for this issue
+            const issueNodeId = context.payload.issue.node_id;
             let itemId = null;
-            if (issueData.projectItems.nodes.length > 0) {
-              itemId = issueData.projectItems.nodes[0].id;
+            for (const item of project.items.nodes) {
+              if (item.content && item.content.id === issueNodeId) {
+                itemId = item.id;
+                break;
+              }
             }
 
-            // Add item if not already in project
+            // Add item if not already in this project
             if (!itemId) {
               const addResult = await github.graphql(
                 `mutation($projectId: ID!, $contentId: ID!) {
@@ -105,7 +115,7 @@ jobs:
                     item { id }
                   }
                 }`,
-                { projectId: project.id, contentId: issueData.id }
+                { projectId: project.id, contentId: issueNodeId }
               );
               itemId = addResult.addProjectV2ItemById.item.id;
             }
