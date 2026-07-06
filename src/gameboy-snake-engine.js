@@ -1,8 +1,7 @@
-// gameboy-snake-engine.js — Core game engine for GameBoy-style snake
-// This is a STUB for TDD purposes. Implement-agent will fill in logic.
+// FILE: src/gameboy-snake-engine.js
 
 export const GRID_SIZE = 20;
-export const TOTAL_CELLS = GRID_SIZE * GRID_SIZE; // 400
+export const TOTAL_CELLS = GRID_SIZE * GRID_SIZE;
 export const POINTS_PER_FOOD = 10;
 
 export const DIR = {
@@ -12,46 +11,128 @@ export const DIR = {
   RIGHT: { x:  1, y:  0 },
 };
 
-/** Create initial game state: snake length 3, centered, idle */
+function isOpposite(a, b) {
+  return a.x + b.x === 0 && a.y + b.y === 0;
+}
+
+function cloneState(state) {
+  return structuredClone(state);
+}
+
+function randomInt(max) {
+  return Math.floor(Math.random() * max);
+}
+
 export function createInitialState() {
-  // STUB — returns empty state
-  return {};
+  const centerX = Math.floor(GRID_SIZE / 2);
+  const snake = [
+    { x: centerX, y: 10 },
+    { x: centerX - 1, y: 10 },
+    { x: centerX - 2, y: 10 },
+  ];
+  return {
+    gameState: 'idle',
+    snake,
+    direction: DIR.RIGHT,
+    nextDirection: DIR.RIGHT,
+    food: spawnFood(snake),
+    score: 0,
+    tickCount: 0,
+  };
 }
 
-/** Transition from idle to playing */
 export function startGame(state) {
-  // STUB — returns state unchanged
-  return state;
+  const next = cloneState(state);
+  next.gameState = 'playing';
+  return next;
 }
 
-/** Reset to fresh state */
 export function resetGame() {
   return createInitialState();
 }
 
-/** Set nextDirection; reject reverse; lock during idle/won/gameover */
 export function changeDirection(state, dir) {
-  // STUB — returns state unchanged
-  return state;
+  if (state.gameState !== 'playing') {
+    return state;
+  }
+  const currentDir = state.nextDirection;
+  if (isOpposite(currentDir, dir)) {
+    return cloneState(state);
+  }
+  const next = cloneState(state);
+  next.nextDirection = dir;
+  return next;
 }
 
-/** Check collision type: 'wall' | 'self' | 'food' | 'none' */
-export function checkCollision(head, snake) {
+export function checkCollision(head, snake, food) {
+  if (head.x < 0 || head.x >= GRID_SIZE || head.y < 0 || head.y >= GRID_SIZE) {
+    return 'wall';
+  }
+  for (let i = 1; i < snake.length; i++) {
+    if (snake[i].x === head.x && snake[i].y === head.y) {
+      return 'self';
+    }
+  }
+  if (food && head.x === food.x && head.y === food.y) {
+    return 'food';
+  }
   return 'none';
 }
 
-/** Main game tick — advance one step */
 export function tick(state) {
-  // STUB — returns state unchanged
-  return state;
+  if (state.gameState !== 'playing') {
+    return state;
+  }
+
+  const next = cloneState(state);
+  next.tickCount++;
+
+  const dir = next.nextDirection;
+  next.direction = dir;
+
+  const head = next.snake[0];
+  const newHead = { x: head.x + dir.x, y: head.y + dir.y };
+
+  const collision = checkCollision(newHead, next.snake);
+  if (collision === 'wall' || collision === 'self') {
+    next.gameState = 'gameover';
+    return next;
+  }
+
+  const ateFood = newHead.x === next.food.x && newHead.y === next.food.y;
+
+  if (ateFood) {
+    next.snake = [newHead, ...next.snake];
+    next.score += POINTS_PER_FOOD;
+
+    if (next.snake.length >= TOTAL_CELLS) {
+      next.snake = next.snake.slice(0, TOTAL_CELLS);
+      next.gameState = 'won';
+      return next;
+    }
+
+    next.food = spawnFood(next.snake);
+  } else {
+    next.snake = [newHead, ...next.snake.slice(0, -1)];
+  }
+
+  return next;
 }
 
-/** Check if snake fills entire grid */
 export function isVictory(state) {
-  return false;
+  return state.snake.length >= TOTAL_CELLS;
 }
 
-/** Spawn food at random position not on snake */
 export function spawnFood(snake) {
-  return { x: 5, y: 5 };
+  const occupied = new Set(snake.map(s => `${s.x},${s.y}`));
+  const empty = [];
+  for (let x = 0; x < GRID_SIZE; x++) {
+    for (let y = 0; y < GRID_SIZE; y++) {
+      if (!occupied.has(`${x},${y}`)) {
+        empty.push({ x, y });
+      }
+    }
+  }
+  if (empty.length === 0) return null;
+  return empty[randomInt(empty.length)];
 }

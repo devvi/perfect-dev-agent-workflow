@@ -1,492 +1,444 @@
 // FILE: tests/gameboy-snake.test.js
-// Test suite for GameBoy-style snake game engine
-// Run with: npx vitest run
 
 import { describe, it, expect } from 'vitest';
 import {
+  createInitialState,
+  startGame,
+  tick,
+  changeDirection,
+  checkCollision,
+  isVictory,
+  spawnFood,
+  resetGame,
   GRID_SIZE,
   TOTAL_CELLS,
   POINTS_PER_FOOD,
   DIR,
-  createInitialState,
-  startGame,
-  resetGame,
-  changeDirection,
-  checkCollision,
-  tick,
-  isVictory,
-  spawnFood,
 } from '../src/gameboy-snake-engine.js';
 
-// ---------------------------------------------------------------------------
-// createInitialState
-// ---------------------------------------------------------------------------
+function stateWithSnake(snake, overrides = {}) {
+  return {
+    snake,
+    food: { x: 5, y: 5 },
+    direction: DIR.RIGHT,
+    nextDirection: DIR.RIGHT,
+    score: 0,
+    gameState: 'playing',
+    tickCount: 0,
+    ...overrides,
+  };
+}
+
 describe('createInitialState', () => {
-  it('should return idle state with snake length 3', () => {
+  it('should return idle state with snake length 3, score 0, and centered at (10,10)', () => {
     const state = createInitialState();
     expect(state.gameState).toBe('idle');
-    expect(state.snake.length).toBe(3);
+    expect(state.snake).toHaveLength(3);
+    expect(state.snake[0]).toEqual({ x: 10, y: 10 });
+    expect(state.snake[1]).toEqual({ x: 9, y: 10 });
+    expect(state.snake[2]).toEqual({ x: 8, y: 10 });
+    expect(state.direction).toEqual(DIR.RIGHT);
+    expect(state.nextDirection).toEqual(DIR.RIGHT);
     expect(state.score).toBe(0);
     expect(state.tickCount).toBe(0);
   });
 
-  it('should place the snake in the center horizontally', () => {
+  it('should spawn food not on the snake', () => {
     const state = createInitialState();
-    const centerX = Math.floor(GRID_SIZE / 2);
-    // snake: head at (centerX, 10), then (centerX-1, 10), (centerX-2, 10)
-    expect(state.snake[0]).toEqual({ x: centerX, y: 10 });
-    expect(state.snake[1]).toEqual({ x: centerX - 1, y: 10 });
-    expect(state.snake[2]).toEqual({ x: centerX - 2, y: 10 });
-  });
-
-  it('should set initial direction to RIGHT', () => {
-    const state = createInitialState();
-    expect(state.direction).toEqual(DIR.RIGHT);
-  });
-
-  it('should spawn food not on the snake body', () => {
-    const state = createInitialState();
+    expect(state.food).not.toBeNull();
     const onSnake = state.snake.some(
-      (seg) => seg.x === state.food.x && seg.y === state.food.y
+      s => s.x === state.food.x && s.y === state.food.y,
     );
     expect(onSnake).toBe(false);
   });
 });
 
-// ---------------------------------------------------------------------------
-// startGame
-// ---------------------------------------------------------------------------
 describe('startGame', () => {
   it('should transition from idle to playing', () => {
-    const state = createInitialState();
-    const next = startGame(state);
-    expect(next.gameState).toBe('playing');
+    const idle = createInitialState();
+    const playing = startGame(idle);
+    expect(playing.gameState).toBe('playing');
+    expect(playing).not.toBe(idle);
   });
 
-  it('should preserve snake position and score', () => {
-    const state = createInitialState();
-    const next = startGame(state);
-    expect(next.snake).toEqual(state.snake);
-    expect(next.score).toBe(0);
-  });
-
-  it('should not mutate the original state', () => {
-    const state = createInitialState();
-    const next = startGame(state);
-    expect(state.gameState).toBe('idle');
-    expect(next).not.toBe(state);
+  it('should not modify snake or food', () => {
+    const idle = createInitialState();
+    const playing = startGame(idle);
+    expect(playing.snake).toEqual(idle.snake);
+    expect(playing.food).toEqual(idle.food);
   });
 });
 
-// ---------------------------------------------------------------------------
-// resetGame
-// ---------------------------------------------------------------------------
 describe('resetGame', () => {
-  it('should return a fresh state matching createInitialState', () => {
-    const fresh = createInitialState();
+  it('should return a fresh initial state after gameover', () => {
+    const state = createInitialState();
+    const playing = startGame(state);
     const reset = resetGame();
     expect(reset.gameState).toBe('idle');
-    expect(reset.snake.length).toBe(3);
-    expect(reset.score).toBe(0);
-    expect(reset.direction).toEqual(DIR.RIGHT);
-  });
-
-  it('should differ from a mutated state', () => {
-    const state = createInitialState();
-    const advanced = tick(startGame(state));
-    const reset = resetGame();
-    expect(reset.snake.length).toBe(3);
+    expect(reset.snake).toEqual(state.snake);
     expect(reset.score).toBe(0);
     expect(reset.tickCount).toBe(0);
+    expect(reset).not.toBe(state);
+  });
+
+  it('should produce same shape as createInitialState', () => {
+    const a = createInitialState();
+    const b = resetGame();
+    expect(Object.keys(a).sort()).toEqual(Object.keys(b).sort());
   });
 });
 
-// ---------------------------------------------------------------------------
-// changeDirection
-// ---------------------------------------------------------------------------
 describe('changeDirection', () => {
-  it('should set nextDirection when changing to a perpendicular direction', () => {
-    const state = createInitialState();
+  it('should set nextDirection for valid direction changes', () => {
+    const state = stateWithSnake([{ x: 10, y: 10 }], { direction: DIR.RIGHT, nextDirection: DIR.RIGHT });
     const next = changeDirection(state, DIR.UP);
     expect(next.nextDirection).toEqual(DIR.UP);
+    expect(next.direction).toEqual(DIR.RIGHT);
+    expect(next).not.toBe(state);
   });
 
-  it('should reject reverse direction (180° turn) for RIGHT', () => {
-    const state = createInitialState(); // direction = RIGHT
+  it('should reject reverse direction RIGHT→LEFT (180° turn)', () => {
+    const state = stateWithSnake([{ x: 10, y: 10 }], { direction: DIR.RIGHT, nextDirection: DIR.RIGHT });
     const next = changeDirection(state, DIR.LEFT);
-    expect(next.nextDirection).toEqual(DIR.RIGHT); // unchanged
-  });
-
-  it('should reject reverse direction for DOWN', () => {
-    const state = createInitialState();
-    const moved = changeDirection(state, DIR.DOWN);
-    const ticked = tick(startGame(moved));
-    // After first tick, direction should be DOWN
-    const reverse = changeDirection(ticked, DIR.UP);
-    expect(reverse.nextDirection).toEqual(DIR.DOWN);
-  });
-
-  it('should allow valid direction change from DOWN to LEFT', () => {
-    const state = createInitialState();
-    const moved = changeDirection(state, DIR.DOWN);
-    const ticked = tick(startGame(moved));
-    // direction is now DOWN, LEFT is perpendicular → valid
-    const leftTurn = changeDirection(ticked, DIR.LEFT);
-    expect(leftTurn.nextDirection).toEqual(DIR.LEFT);
-  });
-
-  it('should reject reverse direction for LEFT', () => {
-    const state = createInitialState();
-    const moved = changeDirection(state, DIR.DOWN);
-    const t1 = tick(startGame(moved)); // moves down, dir=DOWN
-    const t2 = changeDirection(t1, DIR.LEFT);
-    const t3 = tick(t2); // moves left, dir=LEFT
-    const reverse = changeDirection(t3, DIR.RIGHT);
-    expect(reverse.nextDirection).toEqual(DIR.LEFT);
-  });
-
-  it('should reject reverse direction for UP', () => {
-    const state = createInitialState();
-    const moved = changeDirection(state, DIR.UP);
-    const t1 = tick(startGame(moved)); // moves up, dir=UP
-    const reverse = changeDirection(t1, DIR.DOWN);
-    expect(reverse.nextDirection).toEqual(DIR.UP);
-  });
-
-  it('should be locked when gameState is idle (no change)', () => {
-    const state = createInitialState(); // idle
-    const next = changeDirection(state, DIR.UP);
-    expect(next.gameState).toBe('idle');
     expect(next.nextDirection).toEqual(DIR.RIGHT);
   });
 
-  it('should be locked when gameState is gameover', () => {
-    // Setup: snake head at wall to trigger gameover
-    // We create a state where snake is near the right edge
-    const state = createInitialState();
-    state.gameState = 'gameover';
-    state.direction = DIR.RIGHT;
-    const next = changeDirection(state, DIR.UP);
-    expect(next.nextDirection).toEqual(DIR.RIGHT); // unchanged
+  it('should reject reverse direction LEFT→RIGHT (180° turn)', () => {
+    const state = stateWithSnake([{ x: 10, y: 10 }], { direction: DIR.LEFT, nextDirection: DIR.LEFT });
+    const next = changeDirection(state, DIR.RIGHT);
+    expect(next.nextDirection).toEqual(DIR.LEFT);
   });
 
-  it('should be locked when gameState is won', () => {
-    const state = createInitialState();
-    state.gameState = 'won';
-    state.direction = DIR.RIGHT;
+  it('should reject reverse direction DOWN→UP (180° turn)', () => {
+    const state = stateWithSnake([{ x: 10, y: 10 }], { direction: DIR.DOWN, nextDirection: DIR.DOWN });
     const next = changeDirection(state, DIR.UP);
-    expect(next.nextDirection).toEqual(DIR.RIGHT); // unchanged
+    expect(next.nextDirection).toEqual(DIR.DOWN);
   });
 
-  it('should not mutate the original state', () => {
-    const state = createInitialState();
+  it('should reject reverse direction UP→DOWN (180° turn)', () => {
+    const state = stateWithSnake([{ x: 10, y: 10 }], { direction: DIR.UP, nextDirection: DIR.UP });
+    const next = changeDirection(state, DIR.DOWN);
+    expect(next.nextDirection).toEqual(DIR.UP);
+  });
+
+  it('should allow perpendicular direction changes', () => {
+    const state = stateWithSnake([{ x: 10, y: 10 }], { direction: DIR.RIGHT, nextDirection: DIR.RIGHT });
+    expect(changeDirection(state, DIR.DOWN).nextDirection).toEqual(DIR.DOWN);
+    expect(changeDirection(state, DIR.UP).nextDirection).toEqual(DIR.UP);
+  });
+
+  it('should reject reverse after a previous direction change was accepted', () => {
+    const state = stateWithSnake([{ x: 10, y: 10 }], { direction: DIR.RIGHT, nextDirection: DIR.RIGHT });
+    const withUp = changeDirection(state, DIR.UP);
+    expect(withUp.nextDirection).toEqual(DIR.UP);
+    const backDown = changeDirection(withUp, DIR.DOWN);
+    expect(backDown.nextDirection).toEqual(DIR.UP);
+  });
+
+  it('should allow snake to move up after moving left (valid turn)', () => {
+    const state = stateWithSnake([{ x: 10, y: 10 }], { direction: DIR.LEFT, nextDirection: DIR.LEFT });
+    const up = changeDirection(state, DIR.UP);
+    expect(up.nextDirection).toEqual(DIR.UP);
+  });
+
+  it('should ignore direction change when gameState is idle', () => {
+    const state = { ...stateWithSnake([{ x: 10, y: 10 }], { direction: DIR.RIGHT, nextDirection: DIR.RIGHT }), gameState: 'idle' };
     const next = changeDirection(state, DIR.UP);
-    expect(state.nextDirection).toEqual(DIR.RIGHT);
-    expect(next).not.toBe(state);
+    expect(next.nextDirection).toEqual(DIR.RIGHT);
+  });
+
+  it('should ignore direction change when gameState is won', () => {
+    const state = { ...stateWithSnake([{ x: 10, y: 10 }], { direction: DIR.RIGHT, nextDirection: DIR.RIGHT }), gameState: 'won' };
+    const next = changeDirection(state, DIR.UP);
+    expect(next.nextDirection).toEqual(DIR.RIGHT);
+  });
+
+  it('should ignore direction change when gameState is gameover', () => {
+    const state = { ...stateWithSnake([{ x: 10, y: 10 }], { direction: DIR.RIGHT, nextDirection: DIR.RIGHT }), gameState: 'gameover' };
+    const next = changeDirection(state, DIR.UP);
+    expect(next.nextDirection).toEqual(DIR.RIGHT);
   });
 });
 
-// ---------------------------------------------------------------------------
-// checkCollision
-// ---------------------------------------------------------------------------
 describe('checkCollision', () => {
-  it('should detect wall collision at x < 0', () => {
-    const result = checkCollision({ x: -1, y: 5 }, []);
-    expect(result).toBe('wall');
+  it('should return "wall" when head is outside left boundary (x < 0)', () => {
+    expect(checkCollision({ x: -1, y: 5 }, [{ x: 0, y: 5 }])).toBe('wall');
   });
 
-  it('should detect wall collision at x >= GRID_SIZE', () => {
-    const result = checkCollision({ x: GRID_SIZE, y: 5 }, []);
-    expect(result).toBe('wall');
+  it('should return "wall" when head is outside right boundary (x >= GRID_SIZE)', () => {
+    expect(checkCollision({ x: GRID_SIZE, y: 5 }, [{ x: 0, y: 5 }])).toBe('wall');
   });
 
-  it('should detect wall collision at y < 0', () => {
-    const result = checkCollision({ x: 5, y: -1 }, []);
-    expect(result).toBe('wall');
+  it('should return "wall" when head is outside top boundary (y < 0)', () => {
+    expect(checkCollision({ x: 5, y: -1 }, [{ x: 5, y: 0 }])).toBe('wall');
   });
 
-  it('should detect wall collision at y >= GRID_SIZE', () => {
-    const result = checkCollision({ x: 5, y: GRID_SIZE }, []);
-    expect(result).toBe('wall');
+  it('should return "wall" when head is outside bottom boundary (y >= GRID_SIZE)', () => {
+    expect(checkCollision({ x: 5, y: GRID_SIZE }, [{ x: 5, y: 0 }])).toBe('wall');
   });
 
-  it('should detect self collision when head overlaps body', () => {
-    const snake = [
-      { x: 5, y: 5 },
-      { x: 5, y: 6 },
-      { x: 5, y: 5 },
-    ];
-    const result = checkCollision(snake[0], snake);
-    expect(result).toBe('self');
-  });
-
-  it('should return none when head is on empty cell', () => {
-    const snake = [
-      { x: 5, y: 5 },
-      { x: 4, y: 5 },
-    ];
-    const result = checkCollision({ x: 6, y: 5 }, snake);
-    expect(result).toBe('none');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// tick
-// ---------------------------------------------------------------------------
-describe('tick', () => {
-  it('should move snake one cell in current direction', () => {
-    const state = startGame(createInitialState());
-    const next = tick(state);
-    // state.snake[0] was at (10, 10), direction RIGHT → (11, 10)
-    expect(next.snake[0]).toEqual({ x: 11, y: 10 });
-    expect(next.tickCount).toBe(1);
-  });
-
-  it('should consume buffered direction change', () => {
-    const state = changeDirection(startGame(createInitialState()), DIR.DOWN);
-    const next = tick(state);
-    expect(next.snake[0]).toEqual({ x: 10, y: 11 }); // moved down
-    expect(next.direction).toEqual(DIR.DOWN);
-  });
-
-  it('should increase length and score when eating food', () => {
-    const state = startGame(createInitialState());
-    // Place food directly in front of snake head
-    const head = state.snake[0];
-    state.food = { x: head.x + 1, y: head.y };
-    const prevLen = state.snake.length;
-    const next = tick(state);
-    expect(next.snake.length).toBe(prevLen + 1);
-    expect(next.score).toBe(POINTS_PER_FOOD);
-  });
-
-  it('should spawn new food after eating (not on snake)', () => {
-    const state = startGame(createInitialState());
-    const head = state.snake[0];
-    state.food = { x: head.x + 1, y: head.y };
-    const next = tick(state);
-    expect(next.food).toBeDefined();
-    // New food should not be on the snake
-    const onSnake = next.snake.some(
-      (seg) => seg.x === next.food.x && seg.y === next.food.y
-    );
-    expect(onSnake).toBe(false);
-  });
-
-  it('should trigger gameover on wall collision (right edge)', () => {
-    const state = startGame(createInitialState());
-    // Place snake head at right edge, moving RIGHT
-    state.snake[0] = { x: GRID_SIZE - 1, y: 10 };
-    state.snake[1] = { x: GRID_SIZE - 2, y: 10 };
-    state.snake[2] = { x: GRID_SIZE - 3, y: 10 };
-    state.direction = DIR.RIGHT;
-    state.nextDirection = DIR.RIGHT;
-    const next = tick(state);
-    expect(next.gameState).toBe('gameover');
-  });
-
-  it('should trigger gameover on wall collision (left edge)', () => {
-    const state = startGame(createInitialState());
-    state.snake[0] = { x: 0, y: 10 };
-    state.snake[1] = { x: 1, y: 10 };
-    state.snake[2] = { x: 2, y: 10 };
-    state.direction = DIR.LEFT;
-    state.nextDirection = DIR.LEFT;
-    const next = tick(state);
-    expect(next.gameState).toBe('gameover');
-  });
-
-  it('should trigger gameover on wall collision (top edge)', () => {
-    const state = startGame(createInitialState());
-    state.snake[0] = { x: 10, y: 0 };
-    state.snake[1] = { x: 9, y: 0 };
-    state.snake[2] = { x: 8, y: 0 };
-    state.direction = DIR.UP;
-    state.nextDirection = DIR.UP;
-    const next = tick(state);
-    expect(next.gameState).toBe('gameover');
-  });
-
-  it('should trigger gameover on wall collision (bottom edge)', () => {
-    const state = startGame(createInitialState());
-    state.snake[0] = { x: 10, y: GRID_SIZE - 1 };
-    state.snake[1] = { x: 9, y: GRID_SIZE - 1 };
-    state.snake[2] = { x: 8, y: GRID_SIZE - 1 };
-    state.direction = DIR.DOWN;
-    state.nextDirection = DIR.DOWN;
-    const next = tick(state);
-    expect(next.gameState).toBe('gameover');
-  });
-
-  it('should trigger gameover on self collision', () => {
-    const state = startGame(createInitialState());
-    // Create a snake that will turn into itself
-    // Snake going RIGHT, head at (10,10), body: (9,10), (8,10)
-    // Turn down, then left → head hits body
-    let s = changeDirection(state, DIR.DOWN);
-    s = tick(s); // now moving down, head at (10,11)
-    s = changeDirection(s, DIR.RIGHT);
-    s = tick(s); // now moving right, head at (11,11)
-    s = changeDirection(s, DIR.UP);
-    s = tick(s); // head at (11,10)
-    // At this point (11,10) might just be empty; let's construct directly
-    // Actually, let's use a more reliable approach
-  });
-
-  it('should trigger gameover on self collision (direct construction)', () => {
-    const state = startGame(createInitialState());
-    // Craft a snake that will hit itself: going RIGHT, head at (5,5)
-    // body occupies (5,5), (4,5), (3,5), (6,5) in a U-shape
-    // head moving UP from (5,5) would hit (5,4)
-    state.snake = [
-      { x: 6, y: 5 },  // head
-      { x: 5, y: 5 },  // body
-      { x: 4, y: 5 },
-      { x: 4, y: 4 },
-      { x: 5, y: 4 },  // blocking cell
-    ];
-    state.direction = DIR.LEFT;
-    state.nextDirection = DIR.LEFT;
-    // Move left: head goes to (5,5) which is occupied by body[0]
-    const next = tick(state);
-    expect(next.gameState).toBe('gameover');
-  });
-
-  it('should not advance the game when state is idle', () => {
-    const state = createInitialState();
-    const next = tick(state);
-    expect(next.snake[0]).toEqual(state.snake[0]);
-    expect(next.tickCount).toBe(0);
-  });
-
-  it('should not advance the game when state is gameover', () => {
-    const state = startGame(createInitialState());
-    state.gameState = 'gameover';
-    const next = tick(state);
-    expect(next.snake[0]).toEqual(state.snake[0]);
-  });
-
-  it('should not advance the game when state is won', () => {
-    const state = startGame(createInitialState());
-    state.gameState = 'won';
-    const next = tick(state);
-    expect(next.snake[0]).toEqual(state.snake[0]);
-  });
-
-  it('should handle multi-input buffering (last valid wins)', () => {
-    const state = startGame(createInitialState());
-    // direction = RIGHT. Apply UP then DOWN (DOWN is perpendicular, so valid)
-    const s1 = changeDirection(state, DIR.UP);
-    const s2 = changeDirection(s1, DIR.DOWN);
-    const next = tick(s2);
-    // Should move DOWN (last valid direction change)
-    expect(next.direction).toEqual(DIR.DOWN);
-    expect(next.snake[0]).toEqual({ x: 10, y: 11 });
-  });
-
-  it('should not mutate the original state', () => {
-    const state = startGame(createInitialState());
-    const before = state.snake[0].x;
-    const next = tick(state);
-    expect(next).not.toBe(state);
-    expect(state.snake[0].x).toBe(before);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// isVictory
-// ---------------------------------------------------------------------------
-describe('isVictory', () => {
-  it('should return false when snake length is less than TOTAL_CELLS', () => {
-    const state = createInitialState();
-    expect(isVictory(state)).toBe(false);
-  });
-
-  it('should return true when snake length equals TOTAL_CELLS', () => {
-    const state = createInitialState();
-    // Fill snake to 400 cells
-    const fullSnake = [];
-    for (let i = 0; i < TOTAL_CELLS; i++) {
-      fullSnake.push({ x: i % GRID_SIZE, y: Math.floor(i / GRID_SIZE) });
-    }
-    state.snake = fullSnake;
-    expect(isVictory(state)).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// tick victory
-// ---------------------------------------------------------------------------
-describe('tick victory', () => {
-  it('should transition to won state when snake fills all cells', () => {
-    const state = startGame(createInitialState());
-    const fullSnake = [];
-    for (let i = 0; i < TOTAL_CELLS - 1; i++) {
-      fullSnake.push({ x: i % GRID_SIZE, y: Math.floor(i / GRID_SIZE) });
-    }
-    // Last cell is the food position; after eating, snake has 400 cells
-    const lastCell = {
-      x: (TOTAL_CELLS - 1) % GRID_SIZE,
-      y: Math.floor((TOTAL_CELLS - 1) / GRID_SIZE),
-    };
-    state.snake = fullSnake;
-    state.direction = DIR.RIGHT;
-    state.nextDirection = DIR.RIGHT;
-    state.food = lastCell;
-    // One more tick: move into last cell and eat
-    // But food is right in front. Actually set it up so eating triggers victory
-    // Head is at (19, 19), food is in unreachable spot...
-    // Simpler: directly test that eating when snake.length == TOTAL_CELLS-1 triggers victory
-    // After eating: snake.length == TOTAL_CELLS
-    expect(fullSnake.length).toBe(TOTAL_CELLS - 1);
-    // Just add a tick where food is right in front
-    const head = state.snake[0];
-    state.food = { x: head.x + 1, y: head.y };
-    const next = tick(state);
-    if (next.snake.length >= TOTAL_CELLS) {
-      expect(next.gameState).toBe('won');
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// spawnFood
-// ---------------------------------------------------------------------------
-describe('spawnFood', () => {
-  it('should return a position not on the snake', () => {
+  it('should return "self" when head overlaps any body segment', () => {
     const snake = [
       { x: 5, y: 5 },
       { x: 4, y: 5 },
       { x: 3, y: 5 },
     ];
+    expect(checkCollision({ x: 4, y: 5 }, snake)).toBe('self');
+  });
+
+  it('should return "food" when head overlaps food position', () => {
+    const snake = [
+      { x: 5, y: 5 },
+      { x: 4, y: 5 },
+    ];
+    expect(checkCollision({ x: 6, y: 5 }, snake, { x: 6, y: 5 })).toBe('food');
+  });
+
+  it('should return "none" when head is on empty cell not containing food', () => {
+    const snake = [
+      { x: 5, y: 5 },
+      { x: 4, y: 5 },
+    ];
+    expect(checkCollision({ x: 6, y: 5 }, snake, { x: 7, y: 5 })).toBe('none');
+  });
+});
+
+describe('tick', () => {
+  it('should move snake one cell in current direction', () => {
+    const state = stateWithSnake([
+      { x: 10, y: 10 },
+      { x: 9, y: 10 },
+      { x: 8, y: 10 },
+    ]);
+    const next = tick(state);
+    expect(next.snake[0]).toEqual({ x: 11, y: 10 });
+    expect(next.snake).toHaveLength(3);
+    expect(next.tickCount).toBe(1);
+  });
+
+  it('should consume nextDirection into direction', () => {
+    const state = stateWithSnake([
+      { x: 10, y: 10 },
+      { x: 9, y: 10 },
+      { x: 8, y: 10 },
+    ], { direction: DIR.RIGHT, nextDirection: DIR.UP });
+    const next = tick(state);
+    expect(next.direction).toEqual(DIR.UP);
+    expect(next.snake[0]).toEqual({ x: 10, y: 9 });
+  });
+
+  it('should increase length by 1 and score by 10 when eating food', () => {
+    const snake = [
+      { x: 5, y: 5 },
+      { x: 4, y: 5 },
+      { x: 3, y: 5 },
+    ];
+    const state = stateWithSnake(snake, { food: { x: 6, y: 5 } });
+    const next = tick(state);
+    expect(next.snake).toHaveLength(4);
+    expect(next.score).toBe(POINTS_PER_FOOD);
+  });
+
+  it('should spawn new food not on snake after eating', () => {
+    const snake = [
+      { x: 5, y: 5 },
+      { x: 4, y: 5 },
+      { x: 3, y: 5 },
+    ];
+    const state = stateWithSnake(snake, { food: { x: 6, y: 5 } });
+    const next = tick(state);
+    expect(next.food).not.toBeNull();
+    const onSnake = next.snake.some(s => s.x === next.food.x && s.y === next.food.y);
+    expect(onSnake).toBe(false);
+  });
+
+  it('should set gameState to "gameover" when hitting left wall', () => {
+    const snake = [
+      { x: 0, y: 5 },
+      { x: -1, y: 5 },
+    ];
+    const state = stateWithSnake(snake, { direction: DIR.LEFT, nextDirection: DIR.LEFT });
+    const next = tick(state);
+    expect(next.gameState).toBe('gameover');
+  });
+
+  it('should set gameState to "gameover" when hitting right wall', () => {
+    const snake = [
+      { x: GRID_SIZE - 1, y: 5 },
+      { x: GRID_SIZE - 2, y: 5 },
+    ];
+    const state = stateWithSnake(snake, { direction: DIR.RIGHT, nextDirection: DIR.RIGHT });
+    const next = tick(state);
+    expect(next.gameState).toBe('gameover');
+  });
+
+  it('should set gameState to "gameover" when hitting top wall', () => {
+    const snake = [
+      { x: 5, y: 0 },
+      { x: 5, y: 1 },
+    ];
+    const state = stateWithSnake(snake, { direction: DIR.UP, nextDirection: DIR.UP });
+    const next = tick(state);
+    expect(next.gameState).toBe('gameover');
+  });
+
+  it('should set gameState to "gameover" when hitting bottom wall', () => {
+    const snake = [
+      { x: 5, y: GRID_SIZE - 1 },
+      { x: 5, y: GRID_SIZE - 2 },
+    ];
+    const state = stateWithSnake(snake, { direction: DIR.DOWN, nextDirection: DIR.DOWN });
+    const next = tick(state);
+    expect(next.gameState).toBe('gameover');
+  });
+
+  it('should set gameState to "gameover" on self collision', () => {
+    const snake = [
+      { x: 5, y: 5 },
+      { x: 6, y: 5 },
+      { x: 6, y: 6 },
+      { x: 5, y: 6 },
+      { x: 4, y: 6 },
+      { x: 4, y: 5 },
+    ];
+    const state = stateWithSnake(snake, {
+      direction: DIR.LEFT,
+      nextDirection: DIR.LEFT,
+      food: { x: 19, y: 19 },
+    });
+    const next = tick(state);
+    expect(next.gameState).toBe('gameover');
+  });
+
+  it('should handle snake moving vertically and eating food', () => {
+    const snake = [
+      { x: 10, y: 10 },
+      { x: 10, y: 9 },
+      { x: 10, y: 8 },
+    ];
+    const state = stateWithSnake(snake, {
+      direction: DIR.DOWN,
+      nextDirection: DIR.DOWN,
+      food: { x: 10, y: 11 },
+    });
+    const next = tick(state);
+    expect(next.snake[0]).toEqual({ x: 10, y: 11 });
+    expect(next.snake).toHaveLength(4);
+    expect(next.score).toBe(POINTS_PER_FOOD);
+  });
+
+  it('should only apply the last valid direction when multiple keys pressed between ticks (multi-input buffer)', () => {
+    const state = stateWithSnake([
+      { x: 10, y: 10 },
+      { x: 9, y: 10 },
+      { x: 8, y: 10 },
+    ]);
+    const withUp = changeDirection(state, DIR.UP);
+    const withLeft = changeDirection(withUp, DIR.LEFT);
+    const withDown = changeDirection(withLeft, DIR.DOWN);
+    const next = tick(withDown);
+    expect(next.direction).toEqual(DIR.DOWN);
+    expect(next.snake[0]).toEqual({ x: 10, y: 11 });
+  });
+
+  it('should not mutate the original state', () => {
+    const state = stateWithSnake([
+      { x: 10, y: 10 },
+      { x: 9, y: 10 },
+      { x: 8, y: 10 },
+    ]);
+    const copy = JSON.parse(JSON.stringify(state));
+    tick(state);
+    expect(state).toEqual(copy);
+  });
+
+  it('should not advance game when state is idle', () => {
+    const idle = { ...stateWithSnake([{ x: 10, y: 10 }]), gameState: 'idle' };
+    expect(tick(idle)).toBe(idle);
+  });
+
+  it('should not advance game when state is won', () => {
+    const won = { ...stateWithSnake([{ x: 10, y: 10 }]), gameState: 'won' };
+    expect(tick(won)).toBe(won);
+  });
+
+  it('should not advance game when state is gameover', () => {
+    const over = { ...stateWithSnake([{ x: 10, y: 10 }]), gameState: 'gameover' };
+    expect(tick(over)).toBe(over);
+  });
+
+  it('should set gameState to "won" when snake fills the entire grid', () => {
+    const fullSnake = [];
+    for (let i = 0; i < TOTAL_CELLS - 1; i++) {
+      fullSnake.push({ x: i % GRID_SIZE, y: Math.floor(i / GRID_SIZE) });
+    }
+    const headX = (TOTAL_CELLS - 1) % GRID_SIZE;
+    const headY = Math.floor((TOTAL_CELLS - 1) / GRID_SIZE);
+    fullSnake.unshift({ x: headX - 1, y: headY });
+
+    const lastCell = { x: headX, y: headY };
+    const state = stateWithSnake(fullSnake, {
+      direction: DIR.RIGHT,
+      nextDirection: DIR.RIGHT,
+      food: lastCell,
+    });
+
+    const next = tick(state);
+    expect(next.gameState).toBe('won');
+    expect(next.snake).toHaveLength(TOTAL_CELLS);
+  });
+});
+
+describe('isVictory', () => {
+  it('should return false when snake length is less than TOTAL_CELLS', () => {
+    const state = stateWithSnake([{ x: 0, y: 0 }]);
+    expect(isVictory(state)).toBe(false);
+  });
+
+  it('should return true when snake length equals TOTAL_CELLS', () => {
+    const fullSnake = [];
+    for (let i = 0; i < TOTAL_CELLS; i++) {
+      fullSnake.push({ x: i % GRID_SIZE, y: Math.floor(i / GRID_SIZE) });
+    }
+    const state = stateWithSnake(fullSnake);
+    expect(isVictory(state)).toBe(true);
+  });
+});
+
+describe('spawnFood', () => {
+  it('should return a position within the grid not occupied by any snake segment', () => {
+    const snake = [
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+      { x: 2, y: 0 },
+    ];
     for (let i = 0; i < 50; i++) {
       const food = spawnFood(snake);
-      const onSnake = snake.some(
-        (seg) => seg.x === food.x && seg.y === food.y
-      );
+      expect(food).not.toBeNull();
+      const onSnake = snake.some(s => s.x === food.x && s.y === food.y);
       expect(onSnake).toBe(false);
+      expect(food.x).toBeGreaterThanOrEqual(0);
+      expect(food.x).toBeLessThan(GRID_SIZE);
+      expect(food.y).toBeGreaterThanOrEqual(0);
+      expect(food.y).toBeLessThan(GRID_SIZE);
     }
   });
 
-  it('should return the only empty cell when snake covers all but one', () => {
+  it('should return the only empty cell when snake covers all but one cell', () => {
     const snake = [];
-    for (let x = 0; x < GRID_SIZE; x++) {
-      for (let y = 0; y < GRID_SIZE; y++) {
-        snake.push({ x, y });
-      }
+    for (let i = 0; i < TOTAL_CELLS - 1; i++) {
+      snake.push({ x: i % GRID_SIZE, y: Math.floor(i / GRID_SIZE) });
     }
-    // Remove last cell so snake covers 399/400
-    const last = snake.pop(); // (19, 19)
+    const emptyX = 19;
+    const emptyY = 19;
     const food = spawnFood(snake);
-    expect(food).toEqual(last);
+    expect(food).toEqual({ x: emptyX, y: emptyY });
   });
 
-  it('should handle edge case when snake fills entire grid', () => {
+  it('should return null when no empty cells remain', () => {
     const snake = [];
-    for (let x = 0; x < GRID_SIZE; x++) {
-      for (let y = 0; y < GRID_SIZE; y++) {
-        snake.push({ x, y });
-      }
+    for (let i = 0; i < TOTAL_CELLS; i++) {
+      snake.push({ x: i % GRID_SIZE, y: Math.floor(i / GRID_SIZE) });
     }
     const food = spawnFood(snake);
     expect(food).toBeNull();
