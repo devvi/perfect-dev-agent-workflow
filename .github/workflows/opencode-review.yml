@@ -1,6 +1,7 @@
 name: review
 # CI testing — runs ONLY on implement-stage PRs
-# Self-healing: test → auto-fix → push (implement PRs only)
+# Self-healing IS handled by PiBot Dispatcher (reads CI logs, fixes via OpenCode Serve)
+# This workflow only tests, reports, and gates the merge.
 
 on:
   pull_request:
@@ -11,19 +12,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-and-heal:
+  test-and-report:
     if: contains(github.event.pull_request.labels.*.name, 'workflow/implement')
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       pull-requests: write
+      actions: read
     steps:
       - uses: actions/checkout@v6
-
-      - name: Configure git
-        run: |
-          git config user.name "pibot[bot]"
-          git config user.email "pibot[bot]@users.noreply.github.com"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -41,26 +38,45 @@ jobs:
           echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
         continue-on-error: true
 
-      - name: Auto-fix failing tests
+      - name: Upload test output artifact
         if: steps.test.outputs.exit_code != '0'
-        uses: anomalyco/opencode/github@latest
-        env:
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/upload-artifact@v4
         with:
-          model: deepseek-v4-flash
-          use_github_token: true
-          timeout-minutes: 10
-          prompt: |
-            Tests are failing on this branch. Read test-output.log.
-            Fix ALL failures. Run `npm test` to verify.
-            Commit the fixes and push to the same branch.
-            Do NOT create a new PR.
+          name: test-output-${{ github.event.pull_request.number }}
+          path: test-output.log
+          retention-days: 3
 
-      - name: Re-run tests after auto-fix
+      - name: Comment failure summary on PR
         if: steps.test.outputs.exit_code != '0'
-        run: npm test
-        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const output = fs.readFileSync('test-output.log', 'utf8');
+            // Extract failure summary (last 30 lines with failures)
+            const lines = output.split('\n');
+            const failLines = lines.filter(l =>
+              l.includes('FAIL') || l.includes('AssertionError') ||
+              l.includes('×') || l.includes('⎯⎯') ||
+              l.includes('failed') || l.includes('exit code')
+            );
+            const summary = failLines.slice(-20).join('\n').substring(0, 1500);
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `🤖 Tests FAILED — PiBot will auto-fix via OpenCode Serve
+
+\`\`\`
+${summary || 'See run logs for details'}
+\`\`\`
+
+[View CI run](${runUrl})
+
+⏳ Wait for the next dispatcher cycle (runs every 5 min)`,
+            });
 
       - name: Install Playwright browsers
         if: success() || failure()
