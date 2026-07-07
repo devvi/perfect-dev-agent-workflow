@@ -367,7 +367,10 @@ function checkEnemyOverlap(state) {
   const room = getRoomAt(state.world, rx, ry);
   if (!room) return false;
 
-  return room.entities.enemies.some(e => e.x === head.x && e.y === head.y);
+  return room.entities.enemies.some(e =>
+    e.x === head.x && e.y === head.y ||
+    e.segments.some(s => s.x === head.x && s.y === head.y)
+  );
 }
 
 /**
