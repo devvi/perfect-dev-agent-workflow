@@ -8,7 +8,7 @@ import { generateWorldMap, findRoomOfType } from './generator.js';
 import { getRoomAt } from './world.js';
 import { createSnake } from './entities.js';
 import { worldToRoomCoords, roomToWorldCoords, getCellAt } from './world.js';
-import { checkSnakeCollision, checkProjectileCollision, checkRoomTransition } from './collision.js';
+import { checkSnakeCollision, checkProjectileCollision, checkRoomTransition, lineSweepProjectileCollision } from './collision.js';
 import { fireProjectile, updateProjectiles, applyProjectileDamage, updateCooldowns } from './combat.js';
 import { updateEnemies, emergencyFoodRespawn } from './ai.js';
 import { useGachaMachine, tickPowerUps } from './items.js';
@@ -298,7 +298,7 @@ function handleProjectileCollisions(state) {
   const projectilesToRemove = [];
 
   for (const proj of s.projectiles) {
-    const result = checkProjectileCollision(proj, s);
+    const result = lineSweepProjectileCollision(proj, s);
     if (result) {
       if (result.collisionType === 'enemy' && result.target) {
         s = applyProjectileDamage(s, proj.id, result.target);

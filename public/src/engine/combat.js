@@ -84,6 +84,8 @@ export function updateProjectiles(state) {
 
     active.push({
       ...proj,
+      prevX: proj.x,
+      prevY: proj.y,
       x: proj.x + proj.dir.x * proj.speed,
       y: proj.y + proj.dir.y * proj.speed,
       remainingRange: remaining,

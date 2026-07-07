@@ -110,6 +110,87 @@ export function checkProjectileCollision(proj, state) {
 }
 
 /**
+ * Generate all cells along a straight line from (ax, ay) to (bx, by).
+ * Assumes axis-aligned movement (only x or y changes per step).
+ * Includes both start and end cells. Maximum 50 steps to prevent infinite loops.
+ */
+export function getCellsAlongLine(ax, ay, bx, by) {
+  const cells = [];
+  const dx = Math.sign(bx - ax);
+  const dy = Math.sign(by - ay);
+  let cx = ax, cy = ay;
+  let steps = 0;
+  const MAX_STEPS = 50;
+
+  while (steps < MAX_STEPS) {
+    cells.push({ x: cx, y: cy });
+    if (cx === bx && cy === by) break;
+    cx += dx;
+    cy += dy;
+    steps++;
+  }
+
+  return cells;
+}
+
+/**
+ * Check projectile collision at a specific cell (world coordinates).
+ * Includes enemy body segment detection.
+ * Returns collision info object or null.
+ */
+export function checkProjectileCollisionForCell(state, cellX, cellY, proj) {
+  const world = state?.world;
+  if (!world) return null;
+
+  const maxX = world.cols * ROOM_SIZE;
+  const maxY = world.rows * ROOM_SIZE;
+  if (cellX < 0 || cellX >= maxX || cellY < 0 || cellY >= maxY) {
+    return { collisionType: 'wall', target: null };
+  }
+
+  const cellType = getCellAt(world, cellX, cellY);
+  if (cellType === CELL.WALL || cellType === CELL.STONE_WALL) {
+    return { collisionType: 'wall', target: null };
+  }
+  if (cellType === CELL.CRACKED_WALL) {
+    return { collisionType: 'cracked_wall', target: null, cellX: cellX, cellY: cellY };
+  }
+
+  const { rx, ry } = worldToRoomCoords(cellX, cellY);
+  const room = getRoomAt(world, rx, ry);
+  if (room) {
+    const enemy = room.entities.enemies.find(e =>
+      e.x === cellX && e.y === cellY ||
+      e.segments.some(s => s.x === cellX && s.y === cellY)
+    );
+    if (enemy) {
+      return { collisionType: 'enemy', target: enemy, projId: proj.id };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Line-sweep continuous collision detection for a projectile.
+ * Checks every cell along the path from prev position to current position.
+ * Returns the first collision found, or null.
+ */
+export function lineSweepProjectileCollision(proj, state) {
+  if (proj.prevX === undefined || proj.prevY === undefined) {
+    return checkProjectileCollision(proj, state);
+  }
+
+  const cells = getCellsAlongLine(proj.prevX, proj.prevY, proj.x, proj.y);
+  for (const cell of cells) {
+    const result = checkProjectileCollisionForCell(state, cell.x, cell.y, proj);
+    if (result) return result;
+  }
+
+  return null;
+}
+
+/**
  * Check room transition - detect if head crosses a door boundary
  */
 export function checkRoomTransition(state, newHead) {
