@@ -141,10 +141,16 @@ export function buildSpanningTree(cols, rows, rng = Math.random) {
 
 /**
  * Add random extra doors to create loops (density 0-1)
+ * 
+ * IMPORTANT: Shuffles pairs, not individual keys, to prevent mismatched
+ * one-way doors. Previously, individual keys were shuffled and re-paired
+ * by index, which could pair key1 from one door with key2 from another,
+ * resulting in a door on one side but a wall on the other — causing
+ * instant death when the snake entered.
  */
 export function addRandomDoors(tree, cols, rows, rng = Math.random, density = 0.3) {
   const edges = new Set(tree);
-  const allPossible = [];
+  const doorPairs = [];
 
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
@@ -152,31 +158,29 @@ export function addRandomDoors(tree, cols, rows, rng = Math.random, density = 0.
         const key1 = `${x},${y}:right`;
         const key2 = `${x+1},${y}:left`;
         if (!edges.has(key1) && !edges.has(key2)) {
-          allPossible.push(key1, key2);
+          doorPairs.push({ key1, key2 });
         }
       }
       if (y < rows - 1) {
         const key1 = `${x},${y}:down`;
         const key2 = `${x},${y+1}:up`;
         if (!edges.has(key1) && !edges.has(key2)) {
-          allPossible.push(key1, key2);
+          doorPairs.push({ key1, key2 });
         }
       }
     }
   }
 
-  // Shuffle
-  for (let i = allPossible.length - 1; i > 0; i--) {
+  // Shuffle pairs (safe: both keys of a pair stay together)
+  for (let i = doorPairs.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
-    [allPossible[i], allPossible[j]] = [allPossible[j], allPossible[i]];
+    [doorPairs[i], doorPairs[j]] = [doorPairs[j], doorPairs[i]];
   }
 
-  const count = Math.floor(allPossible.length / 2 * density);
-  for (let i = 0; i < count && i < allPossible.length; i += 2) {
-    edges.add(allPossible[i]);
-    if (i + 1 < allPossible.length) {
-      edges.add(allPossible[i + 1]);
-    }
+  const count = Math.floor(doorPairs.length * density);
+  for (let i = 0; i < count && i < doorPairs.length; i++) {
+    edges.add(doorPairs[i].key1);
+    edges.add(doorPairs[i].key2);
   }
 
   return edges;
@@ -407,44 +411,69 @@ function bfsWithKeys(world) {
 export function generateRoomTiles(room, rng = Math.random) {
   const tiles = generateDefaultTiles();
 
-  // Add door passages in the border walls
+  // Add door passages in the border walls (5 cells wide for comfortable passage)
   for (const dir of ['up', 'down', 'left', 'right']) {
     if (room.doors[dir]) {
       const mid = Math.floor(ROOM_SIZE / 2);
       if (dir === 'up') {
-        for (let dx = -1; dx <= 1; dx++) {
+        for (let dx = -2; dx <= 2; dx++) {
           tiles[0][mid + dx] = CELL.DOOR;
         }
       } else if (dir === 'down') {
-        for (let dx = -1; dx <= 1; dx++) {
+        for (let dx = -2; dx <= 2; dx++) {
           tiles[ROOM_SIZE - 1][mid + dx] = CELL.DOOR;
         }
       } else if (dir === 'left') {
-        for (let dy = -1; dy <= 1; dy++) {
+        for (let dy = -2; dy <= 2; dy++) {
           tiles[mid + dy][0] = CELL.DOOR;
         }
       } else if (dir === 'right') {
-        for (let dy = -1; dy <= 1; dy++) {
+        for (let dy = -2; dy <= 2; dy++) {
           tiles[mid + dy][ROOM_SIZE - 1] = CELL.DOOR;
         }
       }
     }
   }
 
-  // Add some interior walls for cover
+  // Mark cells adjacent to doors as protected (prevent wall placement blocking door approaches)
+  const protectedCells = new Set();
+  for (const dir of ['up', 'down', 'left', 'right']) {
+    if (room.doors[dir]) {
+      const mid = Math.floor(ROOM_SIZE / 2);
+      if (dir === 'up') {
+        for (let dx = -2; dx <= 2; dx++) {
+          protectedCells.add(`1,${mid+dx}`);
+        }
+      } else if (dir === 'down') {
+        for (let dx = -2; dx <= 2; dx++) {
+          protectedCells.add(`${ROOM_SIZE-2},${mid+dx}`);
+        }
+      } else if (dir === 'left') {
+        for (let dy = -2; dy <= 2; dy++) {
+          protectedCells.add(`${mid+dy},1`);
+        }
+      } else if (dir === 'right') {
+        for (let dy = -2; dy <= 2; dy++) {
+          protectedCells.add(`${mid+dy},${ROOM_SIZE-2}`);
+        }
+      }
+    }
+  }
+
+  // Add some interior walls for cover (skip protected cells near doors)
   const wallCount = 3 + Math.floor(rng() * 5);
   for (let i = 0; i < wallCount; i++) {
     const wx = 2 + Math.floor(rng() * (ROOM_SIZE - 4));
     const wy = 2 + Math.floor(rng() * (ROOM_SIZE - 4));
-    // Don't place walls on doors or center gacha spot
+    // Don't place walls on doors, protected door approaches, or center gacha spot
     const isCenter = wx === Math.floor(ROOM_SIZE / 2) && wy === Math.floor(ROOM_SIZE / 2);
-    if (!isCenter && tiles[wy][wx] === CELL.FLOOR) {
+    if (!isCenter && tiles[wy][wx] === CELL.FLOOR && !protectedCells.has(`${wy},${wx}`)) {
       // Small clusters
       const len = 1 + Math.floor(rng() * 3);
       for (let j = 0; j < len; j++) {
         const px = wx + (j % 2);
         const py = wy + Math.floor(j / 2);
-        if (py < ROOM_SIZE - 1 && px < ROOM_SIZE - 1 && tiles[py][px] === CELL.FLOOR) {
+        if (py < ROOM_SIZE - 1 && px < ROOM_SIZE - 1 && tiles[py][px] === CELL.FLOOR && !protectedCells.has(`${py},${px}`)) {
           tiles[py][px] = CELL.WALL;
         }
       }
