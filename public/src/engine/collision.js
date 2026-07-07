@@ -6,7 +6,7 @@ import { getRoomAt, getCellAt, worldToRoomCoords } from './world.js';
 
 /**
  * Check what the snake head collides with
- * Returns array of collision types: 'wall', 'self', 'food', 'enemy', 'door'
+ * Returns array of collision types: 'damage', 'death', 'self', 'food', 'enemy', 'door'
  */
 export function checkSnakeCollision(head, snake, state) {
   const world = state && state.world ? state.world : null;
@@ -98,7 +98,7 @@ export function checkProjectileCollision(proj, state) {
 
   // Check cell type
   const cellType = getCellAt(world, proj.x, proj.y);
-  if (cellType === CELL.WALL || cellType === CELL.STONE_WALL) {
+  if (cellType === CELL.WALL || cellType === CELL.STONE_WALL || cellType === CELL.DEATH_WALL) {
     return { collisionType: 'wall', target: null };
   }
   if (cellType === CELL.CRACKED_WALL) {
@@ -158,7 +158,7 @@ export function checkProjectileCollisionForCell(state, cellX, cellY, proj) {
   }
 
   const cellType = getCellAt(world, cellX, cellY);
-  if (cellType === CELL.WALL || cellType === CELL.STONE_WALL) {
+  if (cellType === CELL.WALL || cellType === CELL.STONE_WALL || cellType === CELL.DEATH_WALL) {
     return { collisionType: 'wall', target: null };
   }
   if (cellType === CELL.CRACKED_WALL) {

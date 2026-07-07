@@ -153,7 +153,7 @@ export function tick(state) {
   const collisions = checkSnakeCollision(newHead, s.snake, { ...s });
 
   // Wall collision (also applies without world)
-  if (collisions.includes('wall')) {
+  if (collisions.includes('death')) {
     s.gameState = 'gameover';
     return s;
   }
