@@ -18,8 +18,8 @@ export function checkSnakeCollision(head, snake, state) {
     maxX = world.cols * ROOM_SIZE;
     maxY = world.rows * ROOM_SIZE;
   }
-  if (head.x < 0 || head.y < 0) return ['wall'];
-  if (world && (head.x >= maxX || head.y >= maxY)) return ['wall'];
+  if (head.x < 0 || head.y < 0) return ['damage'];
+  if (world && (head.x >= maxX || head.y >= maxY)) return ['damage'];
 
   // Check cell type
   let cellType = -1;
@@ -27,13 +27,13 @@ export function checkSnakeCollision(head, snake, state) {
     cellType = getCellAt(world, head.x, head.y);
   }
   // Instant-death obstacles (spikes, stone walls)
-  if (cellType === CELL.SPIKE || cellType === CELL.STONE_WALL) {
-    return ['deadly'];
+  if (cellType === CELL.SPIKE || cellType === CELL.DEATH_WALL) {
+    return ['death'];
   }
 
   // Regular wall — damage but not death
-  if (cellType === CELL.WALL) {
-    return ['wall'];
+  if (cellType === CELL.WALL || cellType === CELL.STONE_WALL) {
+    return ['damage'];
   }
 
   // Check door (room transition)

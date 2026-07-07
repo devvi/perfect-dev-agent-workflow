@@ -33,7 +33,7 @@ import {
 import {
   checkSnakeCollision, checkProjectileCollision, checkRoomTransition,
   getCellsAlongLine, checkProjectileCollisionForCell,
-  lineSweepProjectileCollision,
+  lineSweepProjectileCollision, checkDoorPassable,
 } from '../public/src/engine/collision.js';
 
 // Combat system
@@ -277,7 +277,7 @@ describe('Phase 1c — Wall/Self/Food Collision', () => {
       state.direction = { x: -1, y: 0 };
       state.nextDirection = { x: -1, y: 0 };
       const result = checkSnakeCollision({ x: -1, y: 30 }, state.snake, state);
-      expect(result).toContain('wall');
+      expect(result).toContain('damage');
     });
 
     it('detects self-collision', () => {
@@ -984,7 +984,7 @@ describe('Phase 8 — Integration', () => {
           for (let ty = 0; ty < ROOM_SIZE; ty++) {
             expect(room.tiles[ty].length).toBe(ROOM_SIZE);
             for (let tx = 0; tx < ROOM_SIZE; tx++) {
-              expect([0, 1, 2, 3, 4, 5]).toContain(room.tiles[ty][tx]);
+              expect([0, 1, 2, 3, 4, 5, 6]).toContain(room.tiles[ty][tx]);
             }
           }
         }
