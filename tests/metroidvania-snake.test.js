@@ -656,6 +656,39 @@ describe('Phase 4 — Enemy AI', () => {
       const result = tick(state);
       expect(result.snake.length).toBe(state.snake.length - 1);
     });
+
+    it('reduces snake length by 1 when hitting enemy body segment (not head)', () => {
+      const world = {
+        rows: 3, cols: 3,
+        rooms: [
+          [createRoom(0,0), createRoom(1,0), createRoom(2,0)],
+          [createRoom(0,1), createRoom(1,1), createRoom(2,1)],
+          [createRoom(0,2), createRoom(1,2), createRoom(2,2)],
+        ],
+      };
+      const room = world.rooms[1][1];
+      room.entities.enemies.push({
+        id: 2,
+        x: 32, y: 30,
+        segments: [{ x: 32, y: 30 }, { x: 31, y: 30 }, { x: 30, y: 30 }],
+        hp: 3,
+        speedTicks: 2,
+        tickCounter: 0,
+        roomX: 1, roomY: 1,
+        chaseRange: 20,
+        aiState: 'idle',
+      });
+      const snake = [
+        { x: 29, y: 30 },
+        { x: 28, y: 30 },
+        { x: 27, y: 30 },
+      ];
+      const state = minimalState({ world, snake });
+      const result = tick(state);
+      expect(result.snake.length).toBe(snake.length - 1);
+      expect(result.snake[0].x).toBe(30);
+      expect(result.snake[0].y).toBe(30);
+    });
   });
 
   describe('Projectile hits enemy — (Test Case 15)', () => {

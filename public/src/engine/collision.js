@@ -26,7 +26,13 @@ export function checkSnakeCollision(head, snake, state) {
   if (world) {
     cellType = getCellAt(world, head.x, head.y);
   }
-  if (cellType === CELL.WALL || cellType === CELL.STONE_WALL) {
+  // Instant-death obstacles (spikes, stone walls)
+  if (cellType === CELL.SPIKE || cellType === CELL.STONE_WALL) {
+    return ['deadly'];
+  }
+
+  // Regular wall — damage but not death
+  if (cellType === CELL.WALL) {
     return ['wall'];
   }
 
@@ -49,8 +55,11 @@ export function checkSnakeCollision(head, snake, state) {
       const foodIdx = room.entities.food.findIndex(f => f.x === head.x && f.y === head.y);
       if (foodIdx >= 0) results.push('food');
 
-      const enemyIdx = room.entities.enemies.findIndex(e => e.x === head.x && e.y === head.y);
-      if (enemyIdx >= 0) results.push('enemy');
+      const enemyCollision = room.entities.enemies.some(e =>
+        e.x === head.x && e.y === head.y ||
+        e.segments.some(s => s.x === head.x && s.y === head.y)
+      );
+      if (enemyCollision) results.push('enemy');
 
       if (room.savePoint && head.x === room.x * ROOM_SIZE + room.savePoint.x &&
           head.y === room.y * ROOM_SIZE + room.savePoint.y) {
