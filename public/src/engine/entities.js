@@ -47,6 +47,8 @@ export function createProjectile(id, x, y, dir, speed, remainingRange, power) {
     id,
     x,
     y,
+    prevX: x,
+    prevY: y,
     dir,
     speed,
     remainingRange,

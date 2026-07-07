@@ -483,6 +483,26 @@ export function generateRoomTiles(room, rng = Math.random) {
     }
   }
 
+  // Add some DEATH_WALL cells in rooms far from start or in hidden rooms
+  const distFromStart = Math.abs(room.x - 0) + Math.abs(room.y - 0);
+  if (!room.gachaMachine && room.type !== ROOM_TYPE.START && room.type !== ROOM_TYPE.SAVE &&
+      !room.savePoint && (room.type === ROOM_TYPE.HIDDEN ||
+      (room.type === ROOM_TYPE.NORMAL && distFromStart >= 4 && rng() < 0.3))) {
+    const deathWallCount = 1 + Math.floor(rng() * 3);
+    for (let i = 0; i < deathWallCount; i++) {
+      const wx = 2 + Math.floor(rng() * (ROOM_SIZE - 4));
+      const wy = 2 + Math.floor(rng() * (ROOM_SIZE - 4));
+      if (tiles[wy][wx] === CELL.FLOOR) {
+        // Only place in corners/edges, not in the center path
+        const isCenterCorridor = wx > ROOM_SIZE / 2 - 2 && wx < ROOM_SIZE / 2 + 2 &&
+                                 wy > ROOM_SIZE / 2 - 2 && wy < ROOM_SIZE / 2 + 2;
+        if (!isCenterCorridor) {
+          tiles[wy][wx] = CELL.DEATH_WALL;
+        }
+      }
+    }
+  }
+
   // For start room, ensure center is clear
   if (room.type === ROOM_TYPE.START) {
     const sx = Math.floor(ROOM_SIZE / 2);

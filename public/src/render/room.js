@@ -56,6 +56,27 @@ export function renderRoom(ctx, state, world) {
           ctx.lineTo(px + 8, py + 10);
           ctx.stroke();
           break;
+
+        case CELL.DEATH_WALL:
+          // Red/lava glow
+          ctx.fillStyle = '#cc3300';
+          ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+          // Inner highlight
+          ctx.fillStyle = '#ff6633';
+          ctx.beginPath();
+          ctx.arc(px + CELL_SIZE / 2, py + CELL_SIZE / 2, 6, 0, Math.PI * 2);
+          ctx.fill();
+          // Spiky edges
+          ctx.strokeStyle = '#ff4400';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(px + 2, py + 18);
+          ctx.lineTo(px + 6, py + 12);
+          ctx.lineTo(px + 10, py + 18);
+          ctx.lineTo(px + 14, py + 12);
+          ctx.lineTo(px + 18, py + 18);
+          ctx.stroke();
+          break;
       }
     }
   }

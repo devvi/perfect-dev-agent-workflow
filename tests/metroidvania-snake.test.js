@@ -32,11 +32,14 @@ import {
 // Collision detection
 import {
   checkSnakeCollision, checkProjectileCollision, checkRoomTransition,
+  getCellsAlongLine, checkProjectileCollisionForCell,
+  lineSweepProjectileCollision,
 } from '../public/src/engine/collision.js';
 
 // Combat system
 import {
   fireProjectile, updateProjectiles, applyProjectileDamage, updateCooldowns,
+  resetProjCounter,
 } from '../public/src/engine/combat.js';
 
 // Enemy AI
@@ -417,6 +420,173 @@ describe('Phase 3 — Combat & Projectiles', () => {
       expect(changed).toBe(false);
     });
   });
+
+  // ===== Line-sweep collision detection — (Issue #21 fix) =====
+  describe('Line-sweep collision detection — (Issue #21 fix)', () => {
+    beforeEach(() => {
+      resetProjCounter();
+    });
+
+    it('saves prevX/prevY on updateProjectiles', () => {
+      const proj = createProjectile(1, 20, 30, { x: 1, y: 0 }, 2, 10, 1);
+      const state = minimalState({ projectiles: [proj] });
+      const result = updateProjectiles(state);
+      expect(result.projectiles[0].prevX).toBe(20);
+      expect(result.projectiles[0].prevY).toBe(30);
+      expect(result.projectiles[0].x).toBe(22);
+    });
+
+    it('getCellsAlongLine generates correct cells', () => {
+      const cells = getCellsAlongLine(10, 20, 13, 20);
+      expect(cells).toEqual([
+        { x: 10, y: 20 },
+        { x: 11, y: 20 },
+        { x: 12, y: 20 },
+        { x: 13, y: 20 },
+      ]);
+    });
+
+    it('getCellsAlongLine handles negative direction', () => {
+      const cells = getCellsAlongLine(13, 20, 10, 20);
+      expect(cells).toEqual([
+        { x: 13, y: 20 },
+        { x: 12, y: 20 },
+        { x: 11, y: 20 },
+        { x: 10, y: 20 },
+      ]);
+    });
+
+    it('getCellsAlongLine handles vertical movement', () => {
+      const cells = getCellsAlongLine(10, 5, 10, 8);
+      expect(cells).toEqual([
+        { x: 10, y: 5 },
+        { x: 10, y: 6 },
+        { x: 10, y: 7 },
+        { x: 10, y: 8 },
+      ]);
+    });
+
+    it('getCellsAlongLine handles no movement (dx=0, dy=0)', () => {
+      const cells = getCellsAlongLine(7, 7, 7, 7);
+      expect(cells).toEqual([{ x: 7, y: 7 }]);
+    });
+
+    it('line sweep detects enemy at intermediate cell (speed=2)', () => {
+      // Enemy at (12,10), bullet path: (11,10)→(13,10)
+      const world = {
+        rows: 3, cols: 3,
+        rooms: Array(3).fill(null).map(() => Array(3).fill(null).map(() => createRoom(0, 0))),
+      };
+      const room = world.rooms[0][0];
+      const enemy = createEnemy(1, 12, 10, 2, 2);
+      room.entities.enemies.push(enemy);
+      const proj = createProjectile(99, 13, 10, { x: 1, y: 0 }, 2, 8, 1);
+      proj.prevX = 11; proj.prevY = 10;
+      const state = minimalState({ world, projectiles: [proj] });
+      const result = lineSweepProjectileCollision(proj, state);
+      expect(result).not.toBeNull();
+      expect(result.collisionType).toBe('enemy');
+      expect(result.target.id).toBe(1);
+    });
+
+    it('line sweep detects body segment collision', () => {
+      // Enemy head at (15,10), segments: 3 cells
+      // Bullet lands on (14,10) which is a body segment
+      const world = {
+        rows: 3, cols: 3,
+        rooms: Array(3).fill(null).map(() => Array(3).fill(null).map(() => createRoom(0, 0))),
+      };
+      const room = world.rooms[0][0];
+      const enemy = createEnemy(1, 15, 10, 3, 2);
+      room.entities.enemies.push(enemy);
+      const proj = createProjectile(99, 14, 10, { x: 0, y: 0 }, 2, 5, 1);
+      proj.prevX = 14; proj.prevY = 10;
+      const state = minimalState({ world, projectiles: [proj] });
+      const result = lineSweepProjectileCollision(proj, state);
+      expect(result).not.toBeNull();
+      expect(result.collisionType).toBe('enemy');
+    });
+
+    it('line sweep prioritizes first collision along path (wall before enemy)', () => {
+      // Bullet path: (11,10)→(13,10), CRACKED_WALL at (12,10), enemy at (13,10)
+      const world = {
+        rows: 3, cols: 3,
+        rooms: Array(3).fill(null).map(() => Array(3).fill(null).map(() => createRoom(0, 0))),
+      };
+      const room = world.rooms[0][0];
+      room.tiles[10][12] = CELL.CRACKED_WALL;
+      const enemy = createEnemy(1, 13, 10, 1, 2);
+      room.entities.enemies.push(enemy);
+      const proj = createProjectile(99, 13, 10, { x: 1, y: 0 }, 2, 8, 1);
+      proj.prevX = 11; proj.prevY = 10;
+      const state = minimalState({ world, projectiles: [proj] });
+      const result = lineSweepProjectileCollision(proj, state);
+      expect(result).not.toBeNull();
+      expect(result.collisionType).toBe('cracked_wall');
+    });
+
+    it('handles missing prevX/prevY with graceful fallback', () => {
+      // A projectile without prev fields should still work
+      const world = {
+        rows: 3, cols: 3,
+        rooms: Array(3).fill(null).map(() => Array(3).fill(null).map(() => createRoom(0, 0))),
+      };
+      const room = world.rooms[0][0];
+      const enemy = createEnemy(1, 13, 10, 1, 2);
+      room.entities.enemies.push(enemy);
+      const proj = createProjectile(99, 13, 10, { x: 1, y: 0 }, 2, 8, 1);
+      delete proj.prevX;
+      delete proj.prevY;
+      const state = minimalState({ world, projectiles: [proj] });
+      const result = lineSweepProjectileCollision(proj, state);
+      expect(result).not.toBeNull();
+      expect(result.collisionType).toBe('enemy');
+    });
+
+    it('full integration: bullet hits enemy and hp decreases', () => {
+      const world = {
+        rows: 3, cols: 3,
+        rooms: Array(3).fill(null).map(() => Array(3).fill(null).map(() => createRoom(0, 0))),
+      };
+      const room = world.rooms[0][0];
+      const enemy = createEnemy(1, 12, 10, 2, 2);
+      room.entities.enemies.push(enemy);
+      const proj = createProjectile(99, 11, 10, { x: 1, y: 0 }, 2, 10, 1);
+      const state = minimalState({ world, projectiles: [proj] });
+
+      const updated = updateProjectiles(state);
+      const result = lineSweepProjectileCollision(updated.projectiles[0], updated);
+      expect(result).not.toBeNull();
+      expect(result.collisionType).toBe('enemy');
+
+      const damaged = applyProjectileDamage(updated, 99, enemy);
+      expect(enemy.hp).toBe(1);
+      expect(enemy.segments.length).toBe(1);
+      expect(damaged.score).toBe(5);
+      expect(damaged.projectiles.length).toBe(0);
+    });
+
+    it('enemy dies when hp reaches 0 (hp=1, one hit)', () => {
+      const world = {
+        rows: 3, cols: 3,
+        rooms: Array(3).fill(null).map(() => Array(3).fill(null).map(() => createRoom(0, 0))),
+      };
+      const room = world.rooms[0][0];
+      const enemy = createEnemy(1, 15, 10, 1, 2);
+      room.entities.enemies.push(enemy);
+      const proj = createProjectile(99, 15, 10, { x: 1, y: 0 }, 2, 10, 1);
+      proj.prevX = 15; proj.prevY = 10;
+      const state = minimalState({ world, projectiles: [proj] });
+
+      const result = lineSweepProjectileCollision(proj, state);
+      expect(result).not.toBeNull();
+      expect(result.collisionType).toBe('enemy');
+
+      const damaged = applyProjectileDamage(state, 99, enemy);
+      expect(enemy.hp).toBe(0);
+      expect(enemy.segments.length).toBe(0);
+    });
+  });
 });
 
 describe('Phase 4 — Enemy AI', () => {
@@ -781,7 +951,7 @@ describe('Phase 8 — Integration', () => {
           for (let ty = 0; ty < ROOM_SIZE; ty++) {
             expect(room.tiles[ty].length).toBe(ROOM_SIZE);
             for (let tx = 0; tx < ROOM_SIZE; tx++) {
-              expect([0, 1, 2, 3, 4]).toContain(room.tiles[ty][tx]);
+              expect([0, 1, 2, 3, 4, 5]).toContain(room.tiles[ty][tx]);
             }
           }
         }
