@@ -18,8 +18,17 @@ export function render(ctx, state) {
   ctx.fillStyle = PALETTE.BG;
   ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
-  // Render current room
+  // Render current room (with screen shake)
+  ctx.save();
+  if (state.screenShake && state.screenShake.intensity > 0.3) {
+    const { intensity } = state.screenShake;
+    ctx.translate(
+      (Math.random() - 0.5) * 2 * intensity,
+      (Math.random() - 0.5) * 2 * intensity
+    );
+  }
   renderRoom(ctx, state, world);
+  ctx.restore();
 
   // Render HUD
   renderHUD(ctx, state);

@@ -77,6 +77,21 @@ export function renderRoom(ctx, state, world) {
           ctx.lineTo(px + 18, py + 18);
           ctx.stroke();
           break;
+
+        case CELL.SPIKE:
+          // Dark base with red triangles
+          ctx.fillStyle = '#555';
+          ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+          ctx.fillStyle = '#aa3333';
+          for (let s = 0; s < 3; s++) {
+            const spx = px + 2 + s * 6;
+            ctx.beginPath();
+            ctx.moveTo(spx, py + CELL_SIZE - 2);
+            ctx.lineTo(spx + 3, py + 2);
+            ctx.lineTo(spx + 6, py + CELL_SIZE - 2);
+            ctx.fill();
+          }
+          break;
       }
     }
   }

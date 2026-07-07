@@ -8,7 +8,7 @@ import { generateWorldMap, findRoomOfType } from './generator.js';
 import { getRoomAt } from './world.js';
 import { createSnake } from './entities.js';
 import { worldToRoomCoords, roomToWorldCoords, getCellAt } from './world.js';
-import { checkSnakeCollision, checkProjectileCollision, checkRoomTransition, lineSweepProjectileCollision } from './collision.js';
+import { checkSnakeCollision, checkProjectileCollision, checkRoomTransition, checkDoorPassable, lineSweepProjectileCollision } from './collision.js';
 import { fireProjectile, updateProjectiles, applyProjectileDamage, updateCooldowns } from './combat.js';
 import { updateEnemies, emergencyFoodRespawn } from './ai.js';
 import { useGachaMachine, tickPowerUps } from './items.js';
@@ -152,10 +152,23 @@ export function tick(state) {
   // Check collision (now in correct room context after transition)
   const collisions = checkSnakeCollision(newHead, s.snake, { ...s });
 
-  // Wall collision (also applies without world)
-  if (collisions.includes('wall')) {
+  // Death collision - instant death (DEATH_WALL)
+  if (collisions.includes('death')) {
     s.gameState = 'gameover';
     return s;
+  }
+
+  // Damage collision - non-lethal obstacles (lose length instead of death)
+  if (collisions.includes('damage')) {
+    // Lose one segment and add screen shake
+    s.snake = s.snake.slice(0, -1);
+    s.screenShake = { duration: 10, intensity: 3 };
+    s.score = Math.max(0, s.score - 5);
+
+    if (s.snake.length === 0) {
+      s.gameState = 'gameover';
+      return s;
+    }
   }
 
   // Self collision — with protection during room transition
@@ -195,6 +208,7 @@ export function tick(state) {
   }
   if (enemyDamage) {
     s.snake = s.snake.slice(0, -1); // lose one segment
+    s.screenShake = { duration: 10, intensity: 3 };
     s.score = Math.max(0, s.score - 5);
 
     if (s.snake.length === 0) {
@@ -229,6 +243,14 @@ export function tick(state) {
 
   // Tick power-ups
   s = tickPowerUps(s);
+
+  // Tick down screen shake
+  if (s.screenShake && s.screenShake.duration > 0) {
+    s.screenShake.duration--;
+    if (s.screenShake.duration === 0) {
+      s.screenShake = null;
+    }
+  }
 
   // Check if snake length is 0 after all processing
   if (s.snake.length === 0) {

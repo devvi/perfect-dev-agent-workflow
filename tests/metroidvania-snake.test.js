@@ -1004,3 +1004,183 @@ describe('Phase 8 — Integration', () => {
     });
   });
 });
+
+
+// =====================================================================
+// Issue #19 — 一些门工作不正常 (Door bugs)
+// =====================================================================
+describe('Issue #19 — Door Fixes', () => {
+  describe('addRandomDoors — pair matching (Bug A)', () => {
+    it('generates 100 5x5 maps with no mismatched door pairs', () => {
+      for (let i = 0; i < 100; i++) {
+        const world = generateWorldMap(5, 5);
+        for (let y = 0; y < world.rows; y++) {
+          for (let x = 0; x < world.cols; x++) {
+            const room = world.rooms[y][x];
+            if (room.doors.right && x < world.cols - 1) {
+              expect(world.rooms[y][x+1].doors.left).toBeDefined();
+            }
+            if (room.doors.left && x > 0) {
+              expect(world.rooms[y][x-1].doors.right).toBeDefined();
+            }
+            if (room.doors.down && y < world.rows - 1) {
+              expect(world.rooms[y+1][x].doors.up).toBeDefined();
+            }
+            if (room.doors.up && y > 0) {
+              expect(world.rooms[y-1][x].doors.down).toBeDefined();
+            }
+          }
+        }
+      }
+    });
+  });
+
+  describe('Wider door passages (Bug B) — 5 cells', () => {
+    it('door passages are 5 cells wide (mid-2 to mid+2)', () => {
+      const world = generateWorldMap(5, 5);
+      const startRoom = world.rooms[0][0];
+      const mid = Math.floor(ROOM_SIZE / 2);
+      if (startRoom.doors.right) {
+        for (let dy = -2; dy <= 2; dy++) {
+          expect(startRoom.tiles[mid + dy][ROOM_SIZE - 1]).toBe(CELL.DOOR);
+        }
+      }
+      if (startRoom.doors.down) {
+        for (let dx = -2; dx <= 2; dx++) {
+          expect(startRoom.tiles[ROOM_SIZE - 1][mid + dx]).toBe(CELL.DOOR);
+        }
+      }
+    });
+
+    it('non-door cells at passage edge are WALL not DOOR', () => {
+      const world = generateWorldMap(5, 5);
+      const startRoom = world.rooms[0][0];
+      const mid = Math.floor(ROOM_SIZE / 2);
+      if (startRoom.doors.right) {
+        expect(startRoom.tiles[mid - 3][ROOM_SIZE - 1]).not.toBe(CELL.DOOR);
+        expect(startRoom.tiles[mid + 3][ROOM_SIZE - 1]).not.toBe(CELL.DOOR);
+      }
+    });
+  });
+
+  describe('No-build zone around doors (Bug C)', () => {
+    it('walls are not placed within 2 cells of door passages', () => {
+      const world = generateWorldMap(5, 5);
+      const mid = Math.floor(ROOM_SIZE / 2);
+      for (let y = 0; y < world.rows; y++) {
+        for (let x = 0; x < world.cols; x++) {
+          const room = world.rooms[y][x];
+          if (room.doors.right) {
+            for (let dy = -2; dy <= 2; dy++) {
+              for (let dx = -2; dx <= 0; dx++) {
+                const cx = ROOM_SIZE - 1 + dx;
+                const cy = mid + dy;
+                if (cx >= 0 && cx < ROOM_SIZE && cy >= 0 && cy < ROOM_SIZE) {
+                  if (Math.abs(cx - (ROOM_SIZE - 1)) <= 2 && Math.abs(cy - mid) <= 2) {
+                    expect(room.tiles[cy][cx]).not.toBe(CELL.WALL);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+  });
+
+  describe('Room transition order (Bug D) — transition before collision', () => {
+    it('snake transitions through door without dying', () => {
+      const world = generateWorldMap(3, 3);
+      let state = createInitialState(world);
+      state = startGame(state);
+      const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
+      const doorDir = Object.keys(room.doors).find(d => room.doors[d]?.connectedTo);
+      if (!doorDir) return;
+
+      const dirMap = { right: {x:1,y:0}, left: {x:-1,y:0}, up: {x:0,y:-1}, down: {x:0,y:1} };
+      const dir = dirMap[doorDir];
+      state = changeDirection(state, dir);
+
+      let result = state;
+      for (let i = 0; i < 25; i++) {
+        result = tick(result);
+        if (result.gameState !== 'playing') break;
+      }
+
+      expect(result.gameState).toBe('playing');
+    });
+  });
+
+  describe('Door constraint enforcement', () => {
+    it('locked door blocks passage without key', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      const room = world.rooms[1][1];
+      const doorDir = Object.keys(room.doors).find(d => room.doors[d]?.connectedTo);
+      if (!doorDir) return;
+      room.doors[doorDir].locked = true;
+      room.doors[doorDir].keyId = 'key_0';
+      state.currentRoom = { x: 1, y: 1 };
+
+      const result = checkDoorPassable(state, doorDir);
+      expect(result.passable).toBe(false);
+      expect(result.reason).toBe('locked');
+    });
+
+    it('locked door passes with correct key', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      state.inventory.keys = new Set(['key_0']);
+      const room = world.rooms[1][1];
+      const doorDir = Object.keys(room.doors).find(d => room.doors[d]?.connectedTo);
+      if (!doorDir) return;
+      room.doors[doorDir].locked = true;
+      room.doors[doorDir].keyId = 'key_0';
+      state.currentRoom = { x: 1, y: 1 };
+
+      const result = checkDoorPassable(state, doorDir);
+      expect(result.passable).toBe(true);
+    });
+
+    it('size gate blocks snake shorter than required length', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      state.snake = [{x:10,y:10},{x:9,y:10},{x:8,y:10}];
+      const room = world.rooms[1][1];
+      const doorDir = Object.keys(room.doors).find(d => room.doors[d]?.connectedTo);
+      if (!doorDir) return;
+      room.sizeGate = { requiredLength: 10, doorDir };
+      state.currentRoom = { x: 1, y: 1 };
+
+      const result = checkDoorPassable(state, doorDir);
+      expect(result.passable).toBe(false);
+      expect(result.reason).toBe('size_gate');
+    });
+
+    it('size gate passes when snake is long enough', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      const longSnake = [];
+      for (let i = 0; i < 15; i++) longSnake.push({x:20-i,y:10});
+      state.snake = longSnake;
+      const room = world.rooms[1][1];
+      const doorDir = Object.keys(room.doors).find(d => room.doors[d]?.connectedTo);
+      if (!doorDir) return;
+      room.sizeGate = { requiredLength: 10, doorDir };
+      state.currentRoom = { x: 1, y: 1 };
+
+      const result = checkDoorPassable(state, doorDir);
+      expect(result.passable).toBe(true);
+    });
+  });
+
+  describe('Map boundary safety', () => {
+    it('room at map edge has no outward door', () => {
+      const world = generateWorldMap(5, 5);
+      expect(world.rooms[0][0].doors.up).toBeNull();
+      expect(world.rooms[0][0].doors.left).toBeNull();
+      expect(world.rooms[4][4].doors.down).toBeNull();
+      expect(world.rooms[4][4].doors.right).toBeNull();
+    });
+  });
+});
