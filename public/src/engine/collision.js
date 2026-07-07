@@ -1,0 +1,137 @@
+// FILE: public/src/engine/collision.js
+// Collision detection (world coordinates)
+
+import { ROOM_SIZE, CELL, ROOM_TYPE } from './constants.js';
+import { getRoomAt, getCellAt, worldToRoomCoords } from './world.js';
+
+/**
+ * Check what the snake head collides with
+ * Returns array of collision types: 'wall', 'self', 'food', 'enemy', 'door'
+ */
+export function checkSnakeCollision(head, snake, state) {
+  const world = state && state.world ? state.world : null;
+  const results = [];
+
+  // Check world bounds (works with or without world)
+  let maxX = 9999, maxY = 9999;
+  if (world) {
+    maxX = world.cols * ROOM_SIZE;
+    maxY = world.rows * ROOM_SIZE;
+  }
+  if (head.x < 0 || head.y < 0) return ['wall'];
+  if (world && (head.x >= maxX || head.y >= maxY)) return ['wall'];
+
+  // Check cell type
+  let cellType = -1;
+  if (world) {
+    cellType = getCellAt(world, head.x, head.y);
+  }
+  if (cellType === CELL.WALL || cellType === CELL.STONE_WALL) {
+    return ['wall'];
+  }
+
+  // Check door (room transition)
+  if (cellType === CELL.DOOR) results.push('door');
+  if (cellType === CELL.CRACKED_WALL) results.push('cracked_wall');
+
+  // Check self collision (skip first segment which is head)
+  for (let i = 1; i < snake.length; i++) {
+    if (snake[i].x === head.x && snake[i].y === head.y) {
+      return ['self'];
+    }
+  }
+
+  // Check current room entities
+  if (world) {
+    const { rx, ry } = worldToRoomCoords(head.x, head.y);
+    const room = getRoomAt(world, rx, ry);
+    if (room) {
+      const foodIdx = room.entities.food.findIndex(f => f.x === head.x && f.y === head.y);
+      if (foodIdx >= 0) results.push('food');
+
+      const enemyIdx = room.entities.enemies.findIndex(e => e.x === head.x && e.y === head.y);
+      if (enemyIdx >= 0) results.push('enemy');
+
+      if (room.savePoint && head.x === room.x * ROOM_SIZE + room.savePoint.x &&
+          head.y === room.y * ROOM_SIZE + room.savePoint.y) {
+        results.push('save_point');
+      }
+
+      if (room.gachaMachine && head.x === room.x * ROOM_SIZE + room.gachaMachine.x &&
+          head.y === room.y * ROOM_SIZE + room.gachaMachine.y) {
+        results.push('gacha');
+      }
+    }
+  } else if (state && state.food) {
+    // Legacy: check single food property on state directly
+    if (head.x === state.food.x && head.y === state.food.y) {
+      results.push('food');
+    }
+  }
+
+  return results.length > 0 ? results : ['none'];
+}
+
+/**
+ * Check projectile collision with environment and entities
+ * Returns collision info or null
+ */
+export function checkProjectileCollision(proj, state) {
+  const world = state && state.world ? state.world : null;
+  if (!world) return null;
+
+  // Check world bounds
+  const maxX = world.cols * ROOM_SIZE;
+  const maxY = world.rows * ROOM_SIZE;
+  if (proj.x < 0 || proj.x >= maxX || proj.y < 0 || proj.y >= maxY) {
+    return { collisionType: 'wall', target: null };
+  }
+
+  // Check cell type
+  const cellType = getCellAt(world, proj.x, proj.y);
+  if (cellType === CELL.WALL || cellType === CELL.STONE_WALL) {
+    return { collisionType: 'wall', target: null };
+  }
+  if (cellType === CELL.CRACKED_WALL) {
+    return { collisionType: 'cracked_wall', target: null, cellX: proj.x, cellY: proj.y };
+  }
+
+  // Check enemies
+  const { rx, ry } = worldToRoomCoords(proj.x, proj.y);
+  const room = getRoomAt(world, rx, ry);
+  if (room) {
+    const enemy = room.entities.enemies.find(e => e.x === proj.x && e.y === proj.y);
+    if (enemy) {
+      return { collisionType: 'enemy', target: enemy, projId: proj.id };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Check room transition - detect if head crosses a door boundary
+ */
+export function checkRoomTransition(state, newHead) {
+  const { currentRoom, world } = state;
+  if (!world) return { entered: false };
+
+  const { rx: newRx, ry: newRy } = worldToRoomCoords(newHead.x, newHead.y);
+
+  // If room changed
+  if (newRx !== currentRoom.x || newRy !== currentRoom.y) {
+    const newRoom = getRoomAt(world, newRx, newRy);
+    if (newRoom) {
+      return {
+        entered: true,
+        roomX: newRx,
+        roomY: newRy,
+        room: newRoom,
+        previousRoomX: currentRoom.x,
+        previousRoomY: currentRoom.y,
+      };
+    }
+  }
+
+  return { entered: false };
+}
