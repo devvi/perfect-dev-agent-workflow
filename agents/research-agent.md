@@ -31,6 +31,27 @@ cat docs/DESIGN/*.md 2>/dev/null
 git log --oneline -10
 ```
 
+### Step 1.5: Search Personal Knowledge Base 🧠
+
+Before writing analysis, search K's personal Obsidian vault for relevant game design thinking:
+
+```bash
+# Extract key topics from the issue — run multiple searches
+# Game design patterns: bullets, damage, collision, enemy AI, level design
+ISSUE_TITLE=$(gh issue view $ISSUE_N --json title --jq '.title')
+
+# Search the wiki for semantically relevant content
+# (use tdai_memory_search tool for vector search on indexed wiki)
+```
+
+Use `tdai_memory_search` with queries derived from the issue title/description to find relevant existing knowledge from K's vault. Also grep directly:
+
+```bash
+grep -ril "$(echo $ISSUE_TITLE | sed 's/ /\\|/g')" /home/pi/workspace/Obsidian/Knowledge\ Ocean/wiki/ 2>/dev/null | head -10
+```
+
+Read the most relevant matches. Weave K's existing design philosophy and patterns into the research output — this keeps the research **personally aligned** with K's knowledge base, not just generic game dev theory.
+
 ### Step 2: Research & Analysis
 
 Read `templates/RESEARCH_TEMPLATE.md` and fill ALL 7 sections:
