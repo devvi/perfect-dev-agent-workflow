@@ -1,0 +1,17 @@
+[Unit]
+Description=PiBot GitHub Webhook Server (PDA event-driven dispatcher)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/workspace/perfect-dev-agent-workflow
+ExecStart=/usr/bin/node /home/pi/workspace/perfect-dev-agent-workflow/server/webhook-server.js
+EnvironmentFile=/home/pi/.pda-webhook.env
+Environment=PDA_REPO_DIR=/home/pi/workspace/perfect-dev-agent-workflow
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
