@@ -4,6 +4,7 @@ name: review
 # This workflow only tests, reports, and gates the merge.
 
 on:
+  workflow_dispatch:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, labeled]
 
@@ -51,59 +52,48 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
-            const output = fs.readFileSync('test-output.log', 'utf8');
-            // Extract failure summary (last 30 lines with failures)
-            const lines = output.split('\n');
-            const failLines = lines.filter(l =>
-              l.includes('FAIL') || l.includes('AssertionError') ||
-              l.includes('×') || l.includes('⎯⎯') ||
-              l.includes('failed') || l.includes('exit code')
-            );
-            const summary = failLines.slice(-20).join('\n').substring(0, 1500);
-            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
-
+            var fs = require('fs');
+            var output = fs.readFileSync('test-output.log', 'utf8');
+            var lines = output.split('\n');
+            var failLines = lines.filter(function(l) {
+              return l.includes('FAIL') || l.includes('AssertionError') || l.includes('failed');
+            });
+            var summary = failLines.slice(-15).join('\n').substring(0, 1000);
+            var baseUrl = process.env.GITHUB_SERVER_URL || 'https://github.com';
+            var runUrl = baseUrl + '/' + process.env.GITHUB_REPOSITORY + '/actions/runs/' + process.env.GITHUB_RUN_ID;
+            var body = 'Tests FAILED - PiBot will auto-fix\n\n```\n' + (summary || 'See run logs') + '\n```\n\n' + runUrl;
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: `🤖 Tests FAILED — PiBot will auto-fix via OpenCode Serve
-
-\`\`\`
-${summary || 'See run logs for details'}
-\`\`\`
-
-[View CI run](${runUrl})
-
-⏳ Wait for the next dispatcher cycle (runs every 5 min)`,
+              body: body
             });
 
       - name: Install Playwright browsers
         if: success() || failure()
         run: npx playwright install chromium 2>&1
 
-      - name: E2E Play Test 🎮
+      - name: E2E Play Test
         id: playtest
         if: success() || failure()
         run: npm run test:e2e
         continue-on-error: true
 
-      - name: Play Test gate — block merge on runtime errors
+      - name: Play Test gate
         if: steps.playtest.outcome != 'success'
         run: |
-          echo "❌ Play Test failed — runtime errors found in HTML pages."
-          echo "    Fix the issues (missing modules, 404s, JS errors) before merging."
+          echo "E2E Play Test failed - runtime errors found."
           exit 1
 
-      - name: Notify Feishu 💬
+      - name: Notify Feishu
         if: always()
         env:
           STATUS: ${{ job.status }}
           PR_NUM: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          EMOJI="✅"
-          [ "$STATUS" != "success" ] && EMOJI="❌"
+          EMOJI="[ok]"
+          [ "$STATUS" != "success" ] && EMOJI="[fail]"
           curl -s -X POST -H "Content-Type: application/json" \
             -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"${EMOJI} [PDA] review #${PR_NUM} ${STATUS} \\nPR: ${PR_TITLE}\"}}" \
             https://open.feishu.cn/open-apis/bot/v2/hook/390781d4-285c-4d66-afa4-1aadfb76a7b9
