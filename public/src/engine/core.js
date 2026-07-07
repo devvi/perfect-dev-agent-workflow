@@ -58,6 +58,8 @@ export function createInitialState(existingWorld = null) {
     currentTickInterval: BASE_TICK_INTERVAL,
     savePoint: null,
     gachaMessage: null,
+    doorMessage: null,
+    screenShake: null,
   };
 }
 
@@ -99,34 +101,34 @@ export function tick(state) {
     y: head.y + s.direction.y,
   };
 
-  // Check collision
-  const collisions = checkSnakeCollision(newHead, s.snake, { ...s });
-
-  // Wall collision (also applies without world)
-  if (collisions.includes('wall')) {
-    s.gameState = 'gameover';
-    return s;
-  }
-
-  // Self collision
-  if (collisions.includes('self')) {
-    s.gameState = 'gameover';
-    return s;
-  }
-
-  // Handle food collision (works with or without world-based room)
-  const collidedFood = collisions.includes('food');
-  const collidedEnemy = collisions.includes('enemy');
-
-  // Room transition
-  let transition = { entered: false };
+  // Room transition — check BEFORE collision so cells are evaluated
+  // in the correct room context
+  let transition = { entered: false, blocked: false };
+  let duringTransition = false;
   if (s.world) {
     transition = checkRoomTransition(s, newHead);
   }
+
+  if (transition.blocked) {
+    // Door blocked by lock, size gate, or direction mismatch
+    // Keep snake in current room, don't move
+    if (transition.reason === 'locked') {
+      s.doorMessage = 'NEEDS KEY';
+    } else if (transition.reason === 'size_gate') {
+      s.doorMessage = 'NEEDS LENGTH N+';
+    } else if (transition.reason === 'wrong_direction') {
+      s.doorMessage = null; // silently block
+    }
+    return s;
+  }
+
   if (transition.entered) {
+    duringTransition = true;
     const newRoom = transition.room;
+    const prevRoomX = transition.previousRoomX;
+    const prevRoomY = transition.previousRoomY;
     s.currentRoom = { x: transition.roomX, y: transition.roomY };
-    s.previousRoom = { x: transition.previousRoomX, y: transition.previousRoomY };
+    s.previousRoom = { x: prevRoomX, y: prevRoomY };
 
     // Mark room as explored
     if (!newRoom.explored) {
@@ -146,6 +148,25 @@ export function tick(state) {
       saveGame(s, s.world);
     }
   }
+
+  // Check collision (now in correct room context after transition)
+  const collisions = checkSnakeCollision(newHead, s.snake, { ...s });
+
+  // Wall collision (also applies without world)
+  if (collisions.includes('wall')) {
+    s.gameState = 'gameover';
+    return s;
+  }
+
+  // Self collision — with protection during room transition
+  if (collisions.includes('self') && !duringTransition) {
+    s.gameState = 'gameover';
+    return s;
+  }
+
+  // Handle food collision (works with or without world-based room)
+  const collidedFood = collisions.includes('food');
+  const collidedEnemy = collisions.includes('enemy');
 
   // Remove food from room if eaten
   if (collidedFood && s.world) {

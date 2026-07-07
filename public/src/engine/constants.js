@@ -35,6 +35,8 @@ export const CELL = {
   CRACKED_WALL: 2,
   DOOR:        3,
   STONE_WALL:  4,
+  DEATH_WALL:  5,
+  SPIKE:       6,
 };
 
 // Game states
