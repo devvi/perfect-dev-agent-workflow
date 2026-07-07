@@ -61,6 +61,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Deploy to Vercel
+        id: deploy
         uses: amondnet/vercel-action@v42
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
@@ -74,11 +75,14 @@ jobs:
           STATUS: ${{ job.status }}
           PR_NUM: ${{ needs.check-implement.outputs.pr-num }}
           RUN_NUM: ${{ github.run_number }}
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
         run: |
           EMOJI="[ok]"
           [ "$STATUS" != "success" ] && EMOJI="[fail]"
+          MSG="${EMOJI} [PDA] deploy #${RUN_NUM} ${STATUS} (PR #${PR_NUM})"
+          [ -n "$DEPLOY_URL" ] && MSG="${MSG}\n${DEPLOY_URL}"
           curl -s -X POST -H "Content-Type: application/json" \
-            -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"${EMOJI} [PDA] deploy #${RUN_NUM} ${STATUS} (PR #${PR_NUM})\"}}" \
+            -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"${MSG}\"}}" \
             https://open.feishu.cn/open-apis/bot/v2/hook/390781d4-285c-4d66-afa4-1aadfb76a7b9
 
   # Skip notification for non-implement merges
