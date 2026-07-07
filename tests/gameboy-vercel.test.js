@@ -38,12 +38,13 @@ describe('Vercel deployment root cause (canary tests)', () => {
     expect(hasOldImport).toBe(false);
   });
 
-  // Canary 3: HTML does not yet have the new import path
+  // Canary 3: HTML uses ./src/ imports (metroidvania refactor uses ./src/engine/ paths)
   it('[CANARY] should have ./src/ import after fix', () => {
     const htmlPath = path.join(PROJECT_ROOT, 'public', 'gameboy.html');
     const html = fs.readFileSync(htmlPath, 'utf-8');
 
-    const newPattern = /from\s+['"]\.\/src\/gameboy-snake-engine\.js['"]/;
+    // After the metroidvania refactor, imports use ./src/engine/ paths
+    const newPattern = /from\s+['"]\.\/src\/engine\//;
     const hasNewImport = newPattern.test(html);
     expect(hasNewImport).toBe(true);
   });

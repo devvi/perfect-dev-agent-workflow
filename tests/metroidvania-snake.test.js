@@ -297,12 +297,12 @@ describe('Phase 1c — Wall/Self/Food Collision', () => {
         { x: 5, y: 5 },
         { x: 4, y: 5 },
       ];
-      // Place food at (6,5)
-      const state = minimalState({ snake });
-      // Manually set up food detection in collision check
+      // Attach world to state so checkSnakeCollision can look up rooms
       const world = generateWorldMap(5, 5);
-      const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
-      room.entities.food.push({ x: 26, y: 25 }); // world coords for (6,5) in room (1,1)
+      const state = minimalState({ snake, world });
+      // Place food at the world coords the snake head is moving to
+      const room = getRoomAt(world, 0, 0);
+      room.entities.food.push({ x: 6, y: 5 });
       const result = checkSnakeCollision({ x: 6, y: 5 }, snake, state);
       expect(result).toContain('food');
     });
@@ -424,8 +424,8 @@ describe('Phase 4 — Enemy AI', () => {
     it('enemy moves toward snake in same room', () => {
       const enemy = {
         id: 1,
-        x: 5, y: 5,
-        segments: [{ x: 5, y: 5 }, { x: 4, y: 5 }],
+        x: 25, y: 25,
+        segments: [{ x: 25, y: 25 }, { x: 24, y: 25 }],
         hp: 2,
         speedTicks: 2,
         tickCounter: 0,
@@ -433,27 +433,48 @@ describe('Phase 4 — Enemy AI', () => {
         chaseRange: 20,
         aiState: 'idle',
       };
-      const snakeHead = { x: 10, y: 10 };
+      const snakeHead = { x: 30, y: 30 };
       const room = createRoom(1, 1, ROOM_TYPE.NORMAL, {});
-      // Enemy should move toward (10,10)
-      const move = enemyChasePath(enemy, snakeHead, room);
+      // Build minimal world containing this room so getCellAt works
+      const world = {
+        rows: 3, cols: 3,
+        rooms: [
+          [null, null, null],
+          [null, room, null],
+          [null, null, null],
+        ],
+      };
+      // Enemy should move toward (30,30)
+      const move = enemyChasePath(enemy, snakeHead, room, world);
       if (move) {
-        // Should move in positive x and y direction (toward 10,10)
-        expect(move.x).toBeGreaterThan(0);
-        expect(move.y).toBeGreaterThan(0);
+        // Should move toward snake (at least one axis should approach)
+        const dx = move.x === 0 ? 0 : Math.sign(snakeHead.x - enemy.x);
+        const dy = move.y === 0 ? 0 : Math.sign(snakeHead.y - enemy.y);
+        // Move should be in a valid direction toward snake
+        expect(move.x === 0 || move.x === dx).toBe(true);
+        expect(move.y === 0 || move.y === dy).toBe(true);
+        expect(move.x !== 0 || move.y !== 0).toBe(true);
       }
     });
   });
 
   describe('Snake touches enemy — (Test Case 14)', () => {
     it('reduces snake length by 1 on contact', () => {
-      const state = minimalState();
-      // Place an enemy at snake head position
-      const room = createRoom(1, 1, ROOM_TYPE.NORMAL, {});
+      // Build a full 3x3 world so updateEnemies doesn't crash on null rooms
+      const world = {
+        rows: 3, cols: 3,
+        rooms: [
+          [createRoom(0,0), createRoom(1,0), createRoom(2,0)],
+          [createRoom(0,1), createRoom(1,1), createRoom(2,1)],
+          [createRoom(0,2), createRoom(1,2), createRoom(2,2)],
+        ],
+      };
+      const room = world.rooms[1][1];
+      // Enemy at position snake will move into (head.x + direction.x)
       room.entities.enemies.push({
         id: 1,
-        x: 30, y: 30, // same as snake head
-        segments: [{ x: 30, y: 30 }, { x: 29, y: 30 }],
+        x: 31, y: 30, // one step ahead of snake head (direction is {1,0})
+        segments: [{ x: 31, y: 30 }, { x: 30, y: 30 }],
         hp: 2,
         speedTicks: 2,
         tickCounter: 0,
@@ -461,6 +482,7 @@ describe('Phase 4 — Enemy AI', () => {
         chaseRange: 20,
         aiState: 'idle',
       });
+      const state = minimalState({ world });
       const result = tick(state);
       expect(result.snake.length).toBe(state.snake.length - 1);
     });
@@ -523,10 +545,10 @@ describe('Phase 4 — Enemy AI', () => {
 describe('Phase 5 — Food System', () => {
   describe('Snake eats food — (Test Case 17)', () => {
     it('increases snake length by 1 and score', () => {
-      const state = minimalState();
+      const world = generateWorldMap(5, 5);
+      const state = minimalState({ world });
       const prevLen = state.snake.length;
       // Place food at snake's next position
-      const world = generateWorldMap(5, 5);
       const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
       const head = state.snake[0];
       room.entities.food.push({ x: head.x + 1, y: head.y });
@@ -583,7 +605,8 @@ describe('Phase 5 — Food System', () => {
   describe('Emergency food respawn — (Test Case 20)', () => {
     it('spawns food in current room when no food is available', () => {
       const world = generateWorldMap(5, 5);
-      const state = createInitialState(world);
+      let state = createInitialState(world);
+      state = startGame(state); // must be playing to process ticks
       // Clear all food from all reachable rooms
       for (let y = 0; y < world.rows; y++) {
         for (let x = 0; x < world.cols; x++) {

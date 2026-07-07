@@ -42,7 +42,8 @@ canvas#game{display:block;border:3px solid #16213e;image-rendering:pixelated;cur
 </script>
 
 <script type="module">
-import { generateWorldMap, getRoomAt, findRoomOfType } from './src/engine/generator.js';
+import { generateWorldMap, findRoomOfType } from './src/engine/generator.js';
+import { getRoomAt } from './src/engine/world.js';
 import {
   createInitialState, startGame, tick, changeDirection, fire, interact,
 } from './src/engine/core.js';
