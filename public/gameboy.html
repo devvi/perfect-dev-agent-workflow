@@ -1,561 +1,232 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GameBoy Snake</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      background: #1a1a2e;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-      font-family: 'Courier New', monospace;
-      padding: 20px;
-      flex-direction: column;
-      gap: 20px;
-    }
-    .gameboy-shell {
-      background: #8b8b8b;
-      border-radius: 24px 24px 30px 24px;
-      padding: 30px 30px 40px;
-      box-shadow:
-        0 8px 0 #5a5a5a,
-        0 12px 24px rgba(0,0,0,0.5),
-        inset 0 2px 4px rgba(255,255,255,0.15);
-      position: relative;
-      max-width: 520px;
-      width: 100%;
-      border: 2px solid #6b6b6b;
-    }
-    .gb-top-section {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 12px;
-      padding: 0 4px;
-    }
-    .gb-label {
-      font-size: 14px;
-      font-weight: bold;
-      color: #222;
-      letter-spacing: 3px;
-      font-family: 'Courier New', monospace;
-      text-transform: uppercase;
-      text-shadow: 0 1px 0 rgba(255,255,255,0.2);
-    }
-    .gb-led {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: #cc4444;
-      box-shadow: 0 0 6px rgba(204,68,68,0.6), inset 0 1px 2px rgba(255,255,255,0.3);
-      margin-top: 3px;
-      margin-right: 6px;
-      flex-shrink: 0;
-    }
-    .gb-led.on {
-      background: #44cc44;
-      box-shadow: 0 0 8px rgba(68,204,68,0.7), inset 0 1px 2px rgba(255,255,255,0.3);
-    }
-    .lcd-bezel {
-      background: #444;
-      border-radius: 8px;
-      padding: 12px;
-      box-shadow: inset 0 2px 6px rgba(0,0,0,0.5);
-      margin-bottom: 8px;
-    }
-    .lcd-screen {
-      background: #9bbc0f;
-      border-radius: 4px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      position: relative;
-      overflow: hidden;
-    }
-    #gameCanvas {
-      display: block;
-      width: 400px;
-      height: 400px;
-      max-width: 100%;
-      height: auto;
-      image-rendering: pixelated;
-      image-rendering: crisp-edges;
-    }
-    .gb-controls {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 16px 8px 0;
-      gap: 20px;
-    }
-    .dpad {
-      display: grid;
-      grid-template-columns: 48px 48px 48px;
-      grid-template-rows: 48px 48px 48px;
-      gap: 3px;
-      flex-shrink: 0;
-    }
-    .dpad-btn {
-      width: 48px;
-      height: 48px;
-      background: #333;
-      border: none;
-      border-radius: 6px;
-      color: #666;
-      font-size: 18px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 3px 0 #1a1a1a, inset 0 1px 3px rgba(255,255,255,0.1);
-      transition: box-shadow 0.05s, transform 0.05s;
-      user-select: none;
-      -webkit-user-select: none;
-      touch-action: manipulation;
-    }
-    .dpad-btn:active, .dpad-btn.pressed {
-      box-shadow: 0 1px 0 #1a1a1a;
-      transform: translateY(2px);
-      background: #3a3a3a;
-    }
-    .dpad-btn.empty { visibility: hidden; }
-    .dpad-up { grid-column: 2; grid-row: 1; }
-    .dpad-down { grid-column: 2; grid-row: 3; }
-    .dpad-left { grid-column: 1; grid-row: 2; }
-    .dpad-right { grid-column: 3; grid-row: 2; }
-    .dpad-center { grid-column: 2; grid-row: 2; visibility: hidden; }
-    .action-buttons {
-      display: flex;
-      gap: 16px;
-      flex-shrink: 0;
-    }
-    .action-btn {
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      border: none;
-      font-size: 12px;
-      font-weight: bold;
-      font-family: 'Courier New', monospace;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #222;
-      box-shadow: 0 3px 0 #5a5a5a, inset 0 1px 3px rgba(255,255,255,0.2);
-      transition: box-shadow 0.05s, transform 0.05s;
-      user-select: none;
-      -webkit-user-select: none;
-      touch-action: manipulation;
-    }
-    .action-btn:active, .action-btn.pressed {
-      box-shadow: 0 1px 0 #5a5a5a;
-      transform: translateY(2px);
-    }
-    .btn-a { background: #cc4444; }
-    .btn-b { background: #cc8844; }
-    .start-select {
-      display: flex;
-      gap: 24px;
-      align-items: center;
-    }
-    .start-select-btn {
-      background: #555;
-      border: none;
-      border-radius: 10px;
-      padding: 6px 14px;
-      font-size: 10px;
-      font-weight: bold;
-      font-family: 'Courier New', monospace;
-      color: #aaa;
-      cursor: pointer;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      box-shadow: 0 2px 0 #333, inset 0 1px 2px rgba(255,255,255,0.1);
-      transition: box-shadow 0.05s, transform 0.05s;
-      user-select: none;
-      -webkit-user-select: none;
-      touch-action: manipulation;
-    }
-    .start-select-btn:active {
-      box-shadow: 0 0px 0 #333;
-      transform: translateY(2px);
-    }
-    .gb-bottom {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      margin-top: 6px;
-      gap: 16px;
-    }
-    .gb-bottom-text {
-      font-size: 10px;
-      color: #555;
-      font-family: 'Courier New', monospace;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-    }
-    .score-display {
-      position: absolute;
-      top: 6px;
-      left: 0;
-      right: 0;
-      text-align: center;
-      font-family: 'Courier New', monospace;
-      font-size: 14px;
-      font-weight: bold;
-      color: #0f380f;
-      z-index: 2;
-      pointer-events: none;
-      letter-spacing: 2px;
-    }
-    .controls-hint {
-      color: #666;
-      font-size: 11px;
-      text-align: center;
-      font-family: 'Courier New', monospace;
-    }
-    .controls-hint kbd {
-      background: #333;
-      color: #aaa;
-      padding: 2px 6px;
-      border-radius: 3px;
-      font-size: 10px;
-      font-family: 'Courier New', monospace;
-    }
-    .back-link {
-      display: inline-block;
-      color: #00ff88;
-      text-decoration: none;
-      border: 1px solid #00ff88;
-      padding: 8px 20px;
-      font-size: 12px;
-      font-family: 'Courier New', monospace;
-      text-transform: uppercase;
-      letter-spacing: 2px;
-      transition: background 0.2s, color 0.2s;
-    }
-    .back-link:hover {
-      background: #00ff88;
-      color: #1a1a2e;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🐍 银河蛇 — Metroidvania Snake</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a1a;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:monospace;flex-direction:column}
+h1{color:#e94560;font-size:24px;margin-bottom:8px;letter-spacing:4px;text-shadow:2px 2px #000}
+.game-wrapper{position:relative;display:inline-block}
+canvas#game{display:block;border:3px solid #16213e;image-rendering:pixelated;cursor:default}
+.score-bar{display:flex;justify-content:space-between;width:406px;padding:4px 6px;background:#1a1a2e;margin-bottom:6px;color:#8bac0f;font-size:12px;border:1px solid #16213e}
+.controls-info{color:#666;font-size:11px;margin-top:12px;text-align:center;line-height:1.6;max-width:400px}
+.controls-info span{color:#e94560;background:#1a1a2e;padding:1px 6px;border-radius:3px;font-size:10px}
+.footer{color:#444;font-size:10px;margin-top:16px}
+</style>
 </head>
 <body>
-  <div class="gameboy-shell">
-    <div class="gb-top-section">
-      <div class="gb-label">GAME BOY</div>
-      <div class="gb-led" id="powerLed"></div>
-    </div>
-    <div class="lcd-bezel">
-      <div class="lcd-screen" style="position:relative">
-        <canvas id="gameCanvas" width="400" height="400"></canvas>
-        <div class="score-display" id="scoreDisplay">SCORE: 0</div>
-      </div>
-    </div>
-    <div class="gb-controls">
-      <div class="dpad">
-        <button class="dpad-btn dpad-up" data-dir="up">▲</button>
-        <button class="dpad-btn dpad-left" data-dir="left">◀</button>
-        <button class="dpad-btn dpad-center"></button>
-        <button class="dpad-btn dpad-right" data-dir="right">▶</button>
-        <button class="dpad-btn dpad-down" data-dir="down">▼</button>
-      </div>
-      <div class="action-buttons">
-        <button class="action-btn btn-b">B</button>
-        <button class="action-btn btn-a">A</button>
-      </div>
-    </div>
-    <div class="gb-bottom">
-      <button class="start-select-btn" id="selectBtn">SELECT</button>
-      <button class="start-select-btn" id="startBtn">START</button>
-    </div>
-  </div>
+<h1>🐍 银河蛇</h1>
+<div class="score-bar">
+  <span id="scoreDisplay">SCORE: 0</span>
+  <span id="lengthDisplay">LEN: 3</span>
+  <span id="keysDisplay">KEYS: 0</span>
+</div>
+<div class="game-wrapper">
+  <canvas id="game" width="400" height="400"></canvas>
+</div>
+<div class="controls-info">
+  <span>↑↓←→</span> 移动 &nbsp; <span>Z</span> 攻击(消耗长度) &nbsp; <span>X</span> 交互(抽奖/存档)<br>
+  <span>Enter</span> 开始 &nbsp; <span>Shift</span> 暂停 &nbsp; <span>Space</span> 重新开始 &nbsp; <span>S</span> 读档
+</div>
+<div class="footer">🐍 探索 · 战斗 · 成长 — 到达 ★ 目标房间即可胜利</div>
 
-  <div class="controls-hint">
-    <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> Move &nbsp;|&nbsp;
-    <kbd>Space</kbd> / <kbd>Enter</kbd> Restart &nbsp;|&nbsp;
-    <a href="about.html" class="back-link">About</a>
-  </div>
+<script type="importmap">
+{
+  "imports": {
+    "../engine/": "./src/engine/",
+    "../render/": "./src/render/"
+  }
+}
+</script>
 
-  <script type="module">
-    import {
-      GRID_SIZE,
-      TOTAL_CELLS,
-      POINTS_PER_FOOD,
-      DIR,
-      createInitialState,
-      startGame,
-      resetGame,
-      changeDirection,
-      tick,
-      spawnFood,
-    } from './src/gameboy-snake-engine.js';
+<script type="module">
+import { generateWorldMap, getRoomAt, findRoomOfType } from './src/engine/generator.js';
+import {
+  createInitialState, startGame, tick, changeDirection, fire, interact,
+} from './src/engine/core.js';
+import { render } from './src/render/renderer.js';
+import { saveGame, loadGame, applySave, clearSave } from './src/engine/save.js';
+import { DIR, ROOM_TYPE } from './src/engine/constants.js';
 
-    const CELL_SIZE = 20;
-    const TICK_MS = 150;
+// --- DOM references ---
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const scoreDisplay = document.getElementById('scoreDisplay');
+const lengthDisplay = document.getElementById('lengthDisplay');
+const keysDisplay = document.getElementById('keysDisplay');
 
-    const PALETTE = {
-      BG:         '#9bbc0f',
-      LIGHT:      '#8bac0f',
-      DARK:       '#306230',
-      DARKEST:    '#0f380f',
-    };
+// --- Game state ---
+let state = null;
+let gameLoop = null;
+let gameRunning = false;
 
-    const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
-    const scoreEl = document.getElementById('scoreDisplay');
-    const powerLed = document.getElementById('powerLed');
+// --- Initialize ---
+function init() {
+  if (gameLoop) {
+    clearInterval(gameLoop);
+    gameLoop = null;
+  }
 
-    let state = createInitialState();
-    let gameInterval = null;
-    let animFrameId = null;
-    let intervalRunning = false;
+  const world = generateWorldMap(5, 5);
+  state = createInitialState(world);
 
-    function setupHighDPI() {
-      const dpr = window.devicePixelRatio || 1;
-      const w = 400;
-      const h = 400;
-      canvas.width = Math.floor(w * dpr);
-      canvas.height = Math.floor(h * dpr);
-      canvas.style.width = w + 'px';
-      canvas.style.height = h + 'px';
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  updateHUD();
+  render(ctx, state);
+  gameRunning = false;
+}
+
+// --- Start game ---
+function start() {
+  if (!state || state.gameState === 'playing') return;
+  state = startGame(state);
+  gameRunning = true;
+
+  // Start game loop
+  if (gameLoop) clearInterval(gameLoop);
+  runTick();
+}
+
+// --- Game tick ---
+function runTick() {
+  if (gameLoop) clearInterval(gameLoop);
+
+  const tickFn = () => {
+    if (!state || state.gameState !== 'playing') {
+      // Still render even when not playing (for overlays)
+      if (state) render(ctx, state);
+      return;
     }
 
-    function renderBackground() {
-      ctx.fillStyle = PALETTE.BG;
-      ctx.fillRect(0, 0, 400, 400);
-    }
+    state = tick(state);
+    updateHUD();
+    render(ctx, state);
 
-    function renderGrid() {
-      ctx.fillStyle = PALETTE.DARKEST;
-      for (let x = 0; x < GRID_SIZE; x++) {
-        for (let y = 0; y < GRID_SIZE; y++) {
-          ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
-        }
-      }
-      ctx.fillStyle = PALETTE.BG;
-      const gap = 1;
-      for (let x = 0; x < GRID_SIZE; x++) {
-        for (let y = 0; y < GRID_SIZE; y++) {
-          ctx.fillRect(
-            x * CELL_SIZE + gap,
-            y * CELL_SIZE + gap,
-            CELL_SIZE - gap * 2,
-            CELL_SIZE - gap * 2
-          );
-        }
+    // Handle game over or win
+    if (state.gameState === 'gameover' || state.gameState === 'won') {
+      if (gameLoop) {
+        clearInterval(gameLoop);
+        gameLoop = null;
       }
     }
+  };
 
-    function renderSnake(snake) {
-      const gap = 1;
-      for (let i = 0; i < snake.length; i++) {
-        const seg = snake[i];
-        ctx.fillStyle = i === 0 ? PALETTE.LIGHT : PALETTE.DARK;
-        ctx.fillRect(
-          seg.x * CELL_SIZE + gap,
-          seg.y * CELL_SIZE + gap,
-          CELL_SIZE - gap * 2,
-          CELL_SIZE - gap * 2
-        );
-        if (i === 0) {
-          ctx.fillStyle = PALETTE.DARKEST;
-          const cx = seg.x * CELL_SIZE + CELL_SIZE / 2 - 2;
-          const cy = seg.y * CELL_SIZE + CELL_SIZE / 2 - 2;
-          ctx.fillRect(cx, cy, 4, 4);
-        }
+  // First tick immediately
+  tickFn();
+
+  // Then set interval
+  const interval = state ? state.currentTickInterval : 150;
+  gameLoop = setInterval(() => {
+    if (!state) return;
+    // Dynamic interval
+    if (gameLoop) clearInterval(gameLoop);
+    gameLoop = setInterval(tickFn, state.currentTickInterval);
+    tickFn();
+  }, interval);
+}
+
+// --- Update HUD ---
+function updateHUD() {
+  if (!state) return;
+  scoreDisplay.textContent = 'SCORE: ' + state.score;
+  lengthDisplay.textContent = 'LEN: ' + state.snake.length;
+  keysDisplay.textContent = 'KEYS: ' + state.keysFound.size;
+}
+
+// --- Input handling ---
+document.addEventListener('keydown', (e) => {
+  if (!state) return;
+
+  // Title screen: any arrow or enter starts game
+  if (state.gameState === 'title') {
+    if (e.code === 'Enter' || e.code === 'Space' || e.code.startsWith('Arrow')) {
+      e.preventDefault();
+      start();
+      return;
+    }
+  }
+
+  // Game over / Won: space or enter to restart
+  if (state.gameState === 'gameover' || state.gameState === 'won') {
+    if (e.code === 'Space' || e.code === 'Enter') {
+      e.preventDefault();
+      init();
+      return;
+    }
+    if (e.code === 'KeyS' && state.gameState === 'gameover' && state.savePoint) {
+      e.preventDefault();
+      const saveData = loadGame();
+      if (saveData) {
+        const restored = applySave(saveData);
+        state = restored.state;
+        state.gameState = 'playing';
+        gameRunning = true;
+        updateHUD();
+        runTick();
       }
+      return;
     }
+  }
 
-    function renderFood(food) {
-      if (!food) return;
-      const gap = 2;
-      const pulse = Math.sin(Date.now() / 200) * 1;
-      const size = CELL_SIZE - gap * 2 + pulse;
-      const offset = (CELL_SIZE - size) / 2;
-      ctx.fillStyle = PALETTE.DARKEST;
-      ctx.fillRect(
-        food.x * CELL_SIZE + offset,
-        food.y * CELL_SIZE + offset,
-        size,
-        size
-      );
-    }
-
-    function renderScore(score) {
-      scoreEl.textContent = `SCORE: ${score}`;
-    }
-
-    function renderOverlay() {
-      if (state.gameState === 'playing' || state.gameState === 'idle') return;
-
-      ctx.fillStyle = 'rgba(15, 56, 15, 0.75)';
-      ctx.fillRect(0, 0, 400, 400);
-
-      ctx.fillStyle = PALETTE.BG;
-      ctx.font = 'bold 24px "Courier New", monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-
-      if (state.gameState === 'gameover') {
-        ctx.fillText('GAME OVER', 200, 170);
-        ctx.font = '12px "Courier New", monospace';
-        ctx.fillStyle = PALETTE.LIGHT;
-        ctx.fillText('SCORE: ' + state.score, 200, 210);
-        ctx.font = '10px "Courier New", monospace';
-        ctx.fillText('SPACE / ENTER TO RESTART', 200, 245);
-      } else if (state.gameState === 'won') {
-        ctx.fillText('YOU WIN!', 200, 170);
-        ctx.font = '12px "Courier New", monospace';
-        ctx.fillStyle = PALETTE.LIGHT;
-        ctx.fillText('SCORE: ' + state.score, 200, 210);
-        ctx.font = '10px "Courier New", monospace';
-        ctx.fillText('SPACE / ENTER TO PLAY AGAIN', 200, 245);
-      }
-    }
-
-    function renderScanlines() {
-      ctx.fillStyle = 'rgba(0,0,0,0.04)';
-      for (let y = 0; y < 400; y += 3) {
-        ctx.fillRect(0, y, 400, 1);
-      }
-    }
-
-    function renderIdleOverlay() {
-      ctx.fillStyle = 'rgba(15, 56, 15, 0.6)';
-      ctx.fillRect(0, 0, 400, 400);
-
-      ctx.fillStyle = PALETTE.BG;
-      ctx.font = 'bold 18px "Courier New", monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('SNAKE', 200, 170);
-
-      ctx.font = '11px "Courier New", monospace';
-      ctx.fillStyle = PALETTE.LIGHT;
-      ctx.fillText('PRESS ANY ARROW KEY', 200, 210);
-      ctx.fillText('TO START', 200, 228);
-    }
-
-    function render() {
-      renderBackground();
-      renderGrid();
-
-      if (state.gameState === 'idle') {
-        renderSnake(state.snake);
-        renderFood(state.food);
-        renderScore(state.score);
-        renderIdleOverlay();
-        renderScanlines();
+  // Playing state
+  if (state.gameState === 'playing') {
+    // Direction
+    let dir = null;
+    switch (e.code) {
+      case 'ArrowUp':    dir = DIR.UP; break;
+      case 'ArrowDown':  dir = DIR.DOWN; break;
+      case 'ArrowLeft':  dir = DIR.LEFT; break;
+      case 'ArrowRight': dir = DIR.RIGHT; break;
+      case 'KeyZ':       // Fire
+        e.preventDefault();
+        state = fire(state);
+        updateHUD();
         return;
-      }
-
-      renderSnake(state.snake);
-      renderFood(state.food);
-      renderOverlay();
-      renderScanlines();
-      renderScore(state.score);
-    }
-
-    function gameLoop() {
-      if (state.gameState === 'playing') {
-        state = tick(state);
-      }
-      render();
-    }
-
-    function stopGameLoop() {
-      if (gameInterval !== null) {
-        clearInterval(gameInterval);
-        gameInterval = null;
-      }
-      if (animFrameId !== null) {
-        cancelAnimationFrame(animFrameId);
-        animFrameId = null;
-      }
-      intervalRunning = false;
-    }
-
-    function startGameLoop() {
-      stopGameLoop();
-      intervalRunning = true;
-      gameInterval = setInterval(gameLoop, TICK_MS);
-      powerLed.classList.add('on');
-    }
-
-    function handleDirection(dir) {
-      if (state.gameState === 'idle') {
-        state = startGame(state);
-        startGameLoop();
-      }
-      if (state.gameState === 'playing') {
-        state = changeDirection(state, dir);
-      }
-    }
-
-    function handleRestart() {
-      if (state.gameState === 'gameover' || state.gameState === 'won') {
-        stopGameLoop();
-        state = resetGame();
-        powerLed.classList.remove('on');
-        render();
-      }
-    }
-
-    document.addEventListener('keydown', (e) => {
-      const key = e.key;
-      if (key.startsWith('Arrow')) {
+      case 'KeyX':       // Interact
         e.preventDefault();
-        const map = {
-          ArrowUp: DIR.UP,
-          ArrowDown: DIR.DOWN,
-          ArrowLeft: DIR.LEFT,
-          ArrowRight: DIR.RIGHT,
-        };
-        handleDirection(map[key]);
-      }
-      if (key === ' ' || key === 'Space' || key === 'Enter') {
+        state = interact(state);
+        updateHUD();
+        return;
+      case 'ShiftLeft':
+      case 'ShiftRight':
         e.preventDefault();
-        handleRestart();
-      }
-    });
+        state = { ...state, gameState: state.gameState === 'paused' ? 'playing' : 'paused' };
+        if (state.gameState === 'playing') {
+          runTick();
+        } else {
+          if (gameLoop) clearInterval(gameLoop);
+          render(ctx, state);
+        }
+        return;
+      case 'Escape':
+        e.preventDefault();
+        state = { ...state, gameState: 'paused' };
+        if (gameLoop) clearInterval(gameLoop);
+        render(ctx, state);
+        return;
+    }
 
-    canvas.addEventListener('keydown', (e) => e.preventDefault());
-    canvas.setAttribute('tabindex', '0');
+    if (dir) {
+      e.preventDefault();
+      state = changeDirection(state, dir);
+    }
+  }
+});
 
-    document.querySelectorAll('.dpad-btn[data-dir]').forEach((btn) => {
-      const dirMap = { up: DIR.UP, down: DIR.DOWN, left: DIR.LEFT, right: DIR.RIGHT };
-      const dir = dirMap[btn.dataset.dir];
-      if (!dir) return;
-      const action = () => handleDirection(dir);
-      btn.addEventListener('mousedown', (e) => { e.preventDefault(); action(); btn.classList.add('pressed'); });
-      btn.addEventListener('mouseup', () => btn.classList.remove('pressed'));
-      btn.addEventListener('mouseleave', () => btn.classList.remove('pressed'));
-      btn.addEventListener('touchstart', (e) => { e.preventDefault(); action(); btn.classList.add('pressed'); });
-      btn.addEventListener('touchend', (e) => { e.preventDefault(); btn.classList.remove('pressed'); });
-    });
+// --- Save game periodically when playing ---
+setInterval(() => {
+  if (state && state.gameState === 'playing') {
+    // Auto-save every 30 seconds
+    saveGame(state, state.world);
+  }
+}, 30000);
 
-    document.getElementById('startBtn').addEventListener('click', handleRestart);
-    document.getElementById('selectBtn').addEventListener('click', handleRestart);
+// --- Init on load ---
+init();
 
-    document.querySelectorAll('.action-btn').forEach((btn) => {
-      btn.addEventListener('mousedown', (e) => { e.preventDefault(); btn.classList.add('pressed'); handleRestart(); });
-      btn.addEventListener('mouseup', () => btn.classList.remove('pressed'));
-      btn.addEventListener('mouseleave', () => btn.classList.remove('pressed'));
-      btn.addEventListener('touchstart', (e) => { e.preventDefault(); btn.classList.add('pressed'); handleRestart(); });
-      btn.addEventListener('touchend', (e) => { e.preventDefault(); btn.classList.remove('pressed'); });
-    });
-
-    setupHighDPI();
-    render();
-
-    window.addEventListener('resize', setupHighDPI);
-  </script>
+console.log('🐍 Metroidvania Snake loaded!');
+console.log('Controls: Arrows=Move, Z=Fire, X=Interact, Enter=Start, Shift=Pause');
+</script>
 </body>
 </html>
