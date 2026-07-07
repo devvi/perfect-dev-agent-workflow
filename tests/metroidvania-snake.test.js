@@ -277,7 +277,7 @@ describe('Phase 1c — Wall/Self/Food Collision', () => {
       state.direction = { x: -1, y: 0 };
       state.nextDirection = { x: -1, y: 0 };
       const result = checkSnakeCollision({ x: -1, y: 30 }, state.snake, state);
-      expect(result).toContain('wall');
+      expect(result).toContain('damage');
     });
 
     it('detects self-collision', () => {
@@ -1001,6 +1001,213 @@ describe('Phase 8 — Integration', () => {
       // Verify food is placed
       const totalFood = populated.rooms.flat().reduce((sum, r) => sum + r.entities.food.length, 0);
       expect(totalFood).toBeGreaterThan(0);
+    });
+  });
+});
+
+describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
+  describe('Wall collision → damage, not death', () => {
+    it('boundary wall returns damage (not wall/death)', () => {
+      const state = minimalState();
+      const result = checkSnakeCollision({ x: -1, y: 30 }, state.snake, state);
+      expect(result).toContain('damage');
+      expect(result).not.toContain('wall');
+      expect(result).not.toContain('death');
+    });
+
+    it('CELL.WALL returns damage', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      const head = state.snake[0];
+      // Place a WALL cell next to the snake head
+      const { rx, ry, cx, cy } = worldToRoomCoords(head.x + 1, head.y);
+      const room = getRoomAt(world, rx, ry);
+      if (room) {
+        room.tiles[cy][cx] = CELL.WALL;
+      }
+      const result = checkSnakeCollision({ x: head.x + 1, y: head.y }, state.snake, state);
+      expect(result).toContain('damage');
+      expect(result).not.toContain('death');
+    });
+
+    it('CELL.STONE_WALL returns damage (not instant death)', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      const head = state.snake[0];
+      const { rx, ry, cx, cy } = worldToRoomCoords(head.x + 1, head.y);
+      const room = getRoomAt(world, rx, ry);
+      if (room) {
+        room.tiles[cy][cx] = CELL.STONE_WALL;
+      }
+      const result = checkSnakeCollision({ x: head.x + 1, y: head.y }, state.snake, state);
+      expect(result).toContain('damage');
+      expect(result).not.toContain('death');
+    });
+
+    it('tick on wall collision reduces length by 1, sets screenShake, does not gameover', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      // Place snake at position where it will move into a wall
+      const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
+      const head = state.snake[0];
+      room.tiles[1][0] = CELL.WALL; // wall at left edge of room
+      // Move snake left toward wall
+      state.snake = [
+        { x: head.x, y: head.y },
+        { x: head.x + 1, y: head.y },
+        { x: head.x + 2, y: head.y },
+      ];
+      state.direction = { x: -1, y: 0 };
+      state.nextDirection = { x: -1, y: 0 };
+      // Move snake close to left wall
+      state.snake = [
+        { x: 1, y: 10 },
+        { x: 2, y: 10 },
+        { x: 3, y: 10 },
+      ];
+      state.direction = { x: -1, y: 0 };
+      state.nextDirection = { x: -1, y: 0 };
+      room.tiles[10][0] = CELL.WALL;
+      const result = tick(state);
+      expect(result.gameState).toBe('playing');
+      expect(result.snake.length).toBe(state.snake.length - 1);
+      expect(result.screenShake).not.toBeNull();
+    });
+
+    it('snake length 1 hitting wall → gameover (length becomes 0)', () => {
+      const state = minimalState({
+        snake: [{ x: 1, y: 10 }],
+        gameState: 'playing',
+      });
+      // Head at (1,10), moving left toward boundary
+      state.direction = { x: -1, y: 0 };
+      state.nextDirection = { x: -1, y: 0 };
+      // No world — boundary wall triggers damage
+      const result = tick(state);
+      expect(result.snake.length).toBe(0);
+      expect(result.gameState).toBe('gameover');
+    });
+  });
+
+  describe('Death wall → instant gameover', () => {
+    it('checkSnakeCollision returns death for CELL.DEATH_WALL', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      const head = state.snake[0];
+      const { rx, ry, cx, cy } = worldToRoomCoords(head.x + 1, head.y);
+      const room = getRoomAt(world, rx, ry);
+      if (room) {
+        room.tiles[cy][cx] = CELL.DEATH_WALL;
+      }
+      const result = checkSnakeCollision({ x: head.x + 1, y: head.y }, state.snake, state);
+      expect(result).toContain('death');
+      expect(result).not.toContain('damage');
+    });
+
+    it('tick on death wall collision → instant gameover', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      state.snake = [
+        { x: 1, y: 10 },
+        { x: 2, y: 10 },
+        { x: 3, y: 10 },
+      ];
+      state.direction = { x: 1, y: 0 };
+      state.nextDirection = { x: 1, y: 0 };
+      const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
+      room.tiles[10][2] = CELL.DEATH_WALL;
+      const result = tick(state);
+      expect(result.gameState).toBe('gameover');
+    });
+  });
+
+  describe('SPIKE → instant death', () => {
+    it('checkSnakeCollision returns death for CELL.SPIKE', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      const head = state.snake[0];
+      const { rx, ry, cx, cy } = worldToRoomCoords(head.x + 1, head.y);
+      const room = getRoomAt(world, rx, ry);
+      if (room) {
+        room.tiles[cy][cx] = CELL.SPIKE;
+      }
+      const result = checkSnakeCollision({ x: head.x + 1, y: head.y }, state.snake, state);
+      expect(result).toContain('death');
+    });
+  });
+
+  describe('Screen shake on enemy collision', () => {
+    it('enemy collision sets screenShake', () => {
+      const world = {
+        rows: 3, cols: 3,
+        rooms: [
+          [createRoom(0,0), createRoom(1,0), createRoom(2,0)],
+          [createRoom(0,1), createRoom(1,1), createRoom(2,1)],
+          [createRoom(0,2), createRoom(1,2), createRoom(2,2)],
+        ],
+      };
+      const room = world.rooms[1][1];
+      room.entities.enemies.push({
+        id: 1,
+        x: 31, y: 30,
+        segments: [{ x: 31, y: 30 }],
+        hp: 1,
+        speedTicks: 2,
+        tickCounter: 0,
+        roomX: 1, roomY: 1,
+        chaseRange: 20,
+        aiState: 'idle',
+      });
+      const state = minimalState({ world });
+      state.snake = [
+        { x: 30, y: 30 },
+        { x: 29, y: 30 },
+        { x: 28, y: 30 },
+      ];
+      state.direction = { x: 1, y: 0 };
+      state.nextDirection = { x: 1, y: 0 };
+      const result = tick(state);
+      expect(result.screenShake).not.toBeNull();
+      expect(result.snake.length).toBe(state.snake.length - 1);
+    });
+  });
+
+  describe('Screen shake decay', () => {
+    it('screenShake intensity decreases over ticks and clears', () => {
+      const state = minimalState();
+      state.screenShake = { intensity: 3, duration: 6 };
+      // Simulate a few ticks of decay
+      let shake = { ...state.screenShake };
+      for (let i = 0; i < 6; i++) {
+        shake = {
+          ...shake,
+          duration: shake.duration - 1,
+          intensity: shake.intensity * 0.7,
+        };
+      }
+      expect(shake.duration).toBe(0);
+      expect(shake.intensity).toBeCloseTo(0.41, 1);
+    });
+  });
+
+  describe('Projectile hits death wall', () => {
+    it('bullet hitting DEATH_WALL is consumed', () => {
+      const world = {
+        rows: 3, cols: 3,
+        rooms: [
+          [createRoom(0,0), createRoom(1,0), createRoom(2,0)],
+          [createRoom(0,1), createRoom(1,1), createRoom(2,1)],
+          [createRoom(0,2), createRoom(1,2), createRoom(2,2)],
+        ],
+      };
+      const room = world.rooms[1][1];
+      room.tiles[10][12] = CELL.DEATH_WALL;
+      const proj = createProjectile(1, 12, 10, { x: 1, y: 0 }, 2, 5, 1);
+      proj.prevX = 12; proj.prevY = 10;
+      const state = minimalState({ world, projectiles: [proj] });
+      const result = lineSweepProjectileCollision(proj, state);
+      expect(result).not.toBeNull();
+      expect(result.collisionType).toBe('wall');
     });
   });
 });

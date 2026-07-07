@@ -152,8 +152,8 @@ export function tick(state) {
   // Check collision (now in correct room context after transition)
   const collisions = checkSnakeCollision(newHead, s.snake, { ...s });
 
-  // Wall collision (also applies without world)
-  if (collisions.includes('wall')) {
+  // Death collision (instant game over — DEATH_WALL, SPIKE)
+  if (collisions.includes('death')) {
     s.gameState = 'gameover';
     return s;
   }
@@ -167,6 +167,7 @@ export function tick(state) {
   // Handle food collision (works with or without world-based room)
   const collidedFood = collisions.includes('food');
   const collidedEnemy = collisions.includes('enemy');
+  const collidedDamage = collisions.includes('damage');
 
   // Remove food from room if eaten
   if (collidedFood && s.world) {
@@ -180,21 +181,32 @@ export function tick(state) {
     }
   }
 
-  // Move snake
-  if (collidedFood) {
+  // Move snake (skip if damage — head stays in place)
+  if (collidedDamage) {
+    // Damage: remove tail, don't move head to avoid wall embedding
+    s.snake = s.snake.slice(0, -1);
+    s.screenShake = { intensity: 3, duration: 6 };
+    s.score = Math.max(0, s.score - 5);
+
+    if (s.snake.length === 0) {
+      s.gameState = 'gameover';
+      return s;
+    }
+  } else if (collidedFood) {
     s.snake = [newHead, ...s.snake];
     s.score += 10;
   } else {
     s.snake = [newHead, ...s.snake.slice(0, -1)];
   }
 
-  // Handle enemy collision (after move)
+  // Handle enemy collision (after move, unless we already had damage)
   let enemyDamage = collidedEnemy;
   if (!enemyDamage && s.world) {
     enemyDamage = checkEnemyOverlap(s);
   }
   if (enemyDamage) {
     s.snake = s.snake.slice(0, -1); // lose one segment
+    s.screenShake = { intensity: 3, duration: 6 };
     s.score = Math.max(0, s.score - 5);
 
     if (s.snake.length === 0) {
@@ -234,6 +246,18 @@ export function tick(state) {
   if (s.snake.length === 0) {
     s.gameState = 'gameover';
     return s;
+  }
+
+  // Decay screen shake
+  if (s.screenShake) {
+    s.screenShake = {
+      ...s.screenShake,
+      duration: s.screenShake.duration - 1,
+      intensity: s.screenShake.intensity * 0.7,
+    };
+    if (s.screenShake.duration <= 0) {
+      s.screenShake = null;
+    }
   }
 
   return s;

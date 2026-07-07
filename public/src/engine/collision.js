@@ -5,8 +5,31 @@ import { ROOM_SIZE, CELL, ROOM_TYPE } from './constants.js';
 import { getRoomAt, getCellAt, worldToRoomCoords } from './world.js';
 
 /**
+ * Check if a room-local cell position is part of a door passage.
+ * Used as a defensive fallback: if the tile grid shows WALL at a door position
+ * (due to generation edge cases), the snake can still pass through safely.
+ */
+function isDoorCell(room, cx, cy) {
+  if (!room || !room.doors) return false;
+  const mid = Math.floor(ROOM_SIZE / 2);
+  if (cy === 0 && room.doors.up) {
+    return cx >= mid - 2 && cx <= mid + 2;
+  }
+  if (cy === ROOM_SIZE - 1 && room.doors.down) {
+    return cx >= mid - 2 && cx <= mid + 2;
+  }
+  if (cx === 0 && room.doors.left) {
+    return cy >= mid - 2 && cy <= mid + 2;
+  }
+  if (cx === ROOM_SIZE - 1 && room.doors.right) {
+    return cy >= mid - 2 && cy <= mid + 2;
+  }
+  return false;
+}
+
+/**
  * Check what the snake head collides with
- * Returns array of collision types: 'wall', 'self', 'food', 'enemy', 'door'
+ * Returns array of collision types: 'damage', 'death', 'self', 'food', 'enemy', 'door'
  */
 export function checkSnakeCollision(head, snake, state) {
   const world = state && state.world ? state.world : null;
@@ -18,22 +41,35 @@ export function checkSnakeCollision(head, snake, state) {
     maxX = world.cols * ROOM_SIZE;
     maxY = world.rows * ROOM_SIZE;
   }
-  if (head.x < 0 || head.y < 0) return ['wall'];
-  if (world && (head.x >= maxX || head.y >= maxY)) return ['wall'];
+  if (head.x < 0 || head.y < 0) return ['damage'];
+  if (world && (head.x >= maxX || head.y >= maxY)) return ['damage'];
 
   // Check cell type
   let cellType = -1;
   if (world) {
     cellType = getCellAt(world, head.x, head.y);
   }
-  // Instant-death obstacles (spikes, stone walls)
-  if (cellType === CELL.SPIKE || cellType === CELL.STONE_WALL) {
-    return ['deadly'];
+  // Regular walls and stone walls — damage but not death
+  if (cellType === CELL.WALL || cellType === CELL.STONE_WALL) {
+    // Defensive fallback: if this cell is at a room boundary position that
+    // the room's data structure says should be a door, let the snake pass
+    // through as a door transition instead of taking damage.
+    if (world) {
+      const { rx, ry, cx, cy } = worldToRoomCoords(head.x, head.y);
+      const room = getRoomAt(world, rx, ry);
+      if (room && isDoorCell(room, cx, cy)) {
+        results.push('door');
+      } else {
+        return ['damage'];
+      }
+    } else {
+      return ['damage'];
+    }
   }
 
-  // Regular wall — damage but not death
-  if (cellType === CELL.WALL) {
-    return ['wall'];
+  // Instant-death obstacles
+  if (cellType === CELL.SPIKE || cellType === CELL.DEATH_WALL) {
+    return ['death'];
   }
 
   // Check door (room transition)
@@ -98,7 +134,7 @@ export function checkProjectileCollision(proj, state) {
 
   // Check cell type
   const cellType = getCellAt(world, proj.x, proj.y);
-  if (cellType === CELL.WALL || cellType === CELL.STONE_WALL) {
+  if (cellType === CELL.WALL || cellType === CELL.STONE_WALL || cellType === CELL.DEATH_WALL) {
     return { collisionType: 'wall', target: null };
   }
   if (cellType === CELL.CRACKED_WALL) {
@@ -158,7 +194,7 @@ export function checkProjectileCollisionForCell(state, cellX, cellY, proj) {
   }
 
   const cellType = getCellAt(world, cellX, cellY);
-  if (cellType === CELL.WALL || cellType === CELL.STONE_WALL) {
+  if (cellType === CELL.WALL || cellType === CELL.STONE_WALL || cellType === CELL.DEATH_WALL) {
     return { collisionType: 'wall', target: null };
   }
   if (cellType === CELL.CRACKED_WALL) {
