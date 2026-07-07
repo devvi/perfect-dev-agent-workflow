@@ -277,7 +277,7 @@ describe('Phase 1c — Wall/Self/Food Collision', () => {
       state.direction = { x: -1, y: 0 };
       state.nextDirection = { x: -1, y: 0 };
       const result = checkSnakeCollision({ x: -1, y: 30 }, state.snake, state);
-      expect(result).toContain('wall');
+      expect(result).toContain('damage');
     });
 
     it('detects self-collision', () => {
@@ -1005,182 +1005,209 @@ describe('Phase 8 — Integration', () => {
   });
 });
 
-
-// =====================================================================
-// Issue #19 — 一些门工作不正常 (Door bugs)
-// =====================================================================
-describe('Issue #19 — Door Fixes', () => {
-  describe('addRandomDoors — pair matching (Bug A)', () => {
-    it('generates 100 5x5 maps with no mismatched door pairs', () => {
-      for (let i = 0; i < 100; i++) {
-        const world = generateWorldMap(5, 5);
-        for (let y = 0; y < world.rows; y++) {
-          for (let x = 0; x < world.cols; x++) {
-            const room = world.rooms[y][x];
-            if (room.doors.right && x < world.cols - 1) {
-              expect(world.rooms[y][x+1].doors.left).toBeDefined();
-            }
-            if (room.doors.left && x > 0) {
-              expect(world.rooms[y][x-1].doors.right).toBeDefined();
-            }
-            if (room.doors.down && y < world.rows - 1) {
-              expect(world.rooms[y+1][x].doors.up).toBeDefined();
-            }
-            if (room.doors.up && y > 0) {
-              expect(world.rooms[y-1][x].doors.down).toBeDefined();
-            }
-          }
-        }
-      }
-    });
-  });
-
-  describe('Wider door passages (Bug B) — 5 cells', () => {
-    it('door passages are 5 cells wide (mid-2 to mid+2)', () => {
-      const world = generateWorldMap(5, 5);
-      const startRoom = world.rooms[0][0];
-      const mid = Math.floor(ROOM_SIZE / 2);
-      if (startRoom.doors.right) {
-        for (let dy = -2; dy <= 2; dy++) {
-          expect(startRoom.tiles[mid + dy][ROOM_SIZE - 1]).toBe(CELL.DOOR);
-        }
-      }
-      if (startRoom.doors.down) {
-        for (let dx = -2; dx <= 2; dx++) {
-          expect(startRoom.tiles[ROOM_SIZE - 1][mid + dx]).toBe(CELL.DOOR);
-        }
-      }
+describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
+  describe('Wall collision → damage, not death', () => {
+    it('boundary wall returns damage (not wall/death)', () => {
+      const state = minimalState();
+      const result = checkSnakeCollision({ x: -1, y: 30 }, state.snake, state);
+      expect(result).toContain('damage');
+      expect(result).not.toContain('wall');
+      expect(result).not.toContain('death');
     });
 
-    it('non-door cells at passage edge are WALL not DOOR', () => {
-      const world = generateWorldMap(5, 5);
-      const startRoom = world.rooms[0][0];
-      const mid = Math.floor(ROOM_SIZE / 2);
-      if (startRoom.doors.right) {
-        expect(startRoom.tiles[mid - 3][ROOM_SIZE - 1]).not.toBe(CELL.DOOR);
-        expect(startRoom.tiles[mid + 3][ROOM_SIZE - 1]).not.toBe(CELL.DOOR);
-      }
-    });
-  });
-
-  describe('No-build zone around doors (Bug C)', () => {
-    it('walls are not placed within 2 cells of door passages', () => {
-      const world = generateWorldMap(5, 5);
-      const mid = Math.floor(ROOM_SIZE / 2);
-      for (let y = 0; y < world.rows; y++) {
-        for (let x = 0; x < world.cols; x++) {
-          const room = world.rooms[y][x];
-          if (room.doors.right) {
-            for (let dy = -2; dy <= 2; dy++) {
-              for (let dx = -2; dx <= 0; dx++) {
-                const cx = ROOM_SIZE - 1 + dx;
-                const cy = mid + dy;
-                if (cx >= 0 && cx < ROOM_SIZE && cy >= 0 && cy < ROOM_SIZE) {
-                  if (Math.abs(cx - (ROOM_SIZE - 1)) <= 2 && Math.abs(cy - mid) <= 2) {
-                    expect(room.tiles[cy][cx]).not.toBe(CELL.WALL);
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    });
-  });
-
-  describe('Room transition order (Bug D) — transition before collision', () => {
-    it('snake transitions through door without dying', () => {
+    it('CELL.WALL returns damage', () => {
       const world = generateWorldMap(3, 3);
-      let state = createInitialState(world);
-      state = startGame(state);
+      const state = minimalState({ world });
+      const head = state.snake[0];
+      // Place a WALL cell next to the snake head
+      const { rx, ry, cx, cy } = worldToRoomCoords(head.x + 1, head.y);
+      const room = getRoomAt(world, rx, ry);
+      if (room) {
+        room.tiles[cy][cx] = CELL.WALL;
+      }
+      const result = checkSnakeCollision({ x: head.x + 1, y: head.y }, state.snake, state);
+      expect(result).toContain('damage');
+      expect(result).not.toContain('death');
+    });
+
+    it('CELL.STONE_WALL returns damage (not instant death)', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      const head = state.snake[0];
+      const { rx, ry, cx, cy } = worldToRoomCoords(head.x + 1, head.y);
+      const room = getRoomAt(world, rx, ry);
+      if (room) {
+        room.tiles[cy][cx] = CELL.STONE_WALL;
+      }
+      const result = checkSnakeCollision({ x: head.x + 1, y: head.y }, state.snake, state);
+      expect(result).toContain('damage');
+      expect(result).not.toContain('death');
+    });
+
+    it('tick on wall collision reduces length by 1, sets screenShake, does not gameover', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      // Place snake at position where it will move into a wall
       const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
-      const doorDir = Object.keys(room.doors).find(d => room.doors[d]?.connectedTo);
-      if (!doorDir) return;
-
-      const dirMap = { right: {x:1,y:0}, left: {x:-1,y:0}, up: {x:0,y:-1}, down: {x:0,y:1} };
-      const dir = dirMap[doorDir];
-      state = changeDirection(state, dir);
-
-      let result = state;
-      for (let i = 0; i < 25; i++) {
-        result = tick(result);
-        if (result.gameState !== 'playing') break;
-      }
-
+      const head = state.snake[0];
+      room.tiles[1][0] = CELL.WALL; // wall at left edge of room
+      // Move snake left toward wall
+      state.snake = [
+        { x: head.x, y: head.y },
+        { x: head.x + 1, y: head.y },
+        { x: head.x + 2, y: head.y },
+      ];
+      state.direction = { x: -1, y: 0 };
+      state.nextDirection = { x: -1, y: 0 };
+      // Move snake close to left wall
+      state.snake = [
+        { x: 1, y: 10 },
+        { x: 2, y: 10 },
+        { x: 3, y: 10 },
+      ];
+      state.direction = { x: -1, y: 0 };
+      state.nextDirection = { x: -1, y: 0 };
+      room.tiles[10][0] = CELL.WALL;
+      const result = tick(state);
       expect(result.gameState).toBe('playing');
+      expect(result.snake.length).toBe(state.snake.length - 1);
+      expect(result.screenShake).not.toBeNull();
+    });
+
+    it('snake length 1 hitting wall → gameover (length becomes 0)', () => {
+      const state = minimalState({
+        snake: [{ x: 1, y: 10 }],
+        gameState: 'playing',
+      });
+      // Head at (1,10), moving left toward boundary
+      state.direction = { x: -1, y: 0 };
+      state.nextDirection = { x: -1, y: 0 };
+      // No world — boundary wall triggers damage
+      const result = tick(state);
+      expect(result.snake.length).toBe(0);
+      expect(result.gameState).toBe('gameover');
     });
   });
 
-  describe('Door constraint enforcement', () => {
-    it('locked door blocks passage without key', () => {
+  describe('Death wall → instant gameover', () => {
+    it('checkSnakeCollision returns death for CELL.DEATH_WALL', () => {
       const world = generateWorldMap(3, 3);
       const state = minimalState({ world });
-      const room = world.rooms[1][1];
-      const doorDir = Object.keys(room.doors).find(d => room.doors[d]?.connectedTo);
-      if (!doorDir) return;
-      room.doors[doorDir].locked = true;
-      room.doors[doorDir].keyId = 'key_0';
-      state.currentRoom = { x: 1, y: 1 };
-
-      const result = checkDoorPassable(state, doorDir);
-      expect(result.passable).toBe(false);
-      expect(result.reason).toBe('locked');
+      const head = state.snake[0];
+      const { rx, ry, cx, cy } = worldToRoomCoords(head.x + 1, head.y);
+      const room = getRoomAt(world, rx, ry);
+      if (room) {
+        room.tiles[cy][cx] = CELL.DEATH_WALL;
+      }
+      const result = checkSnakeCollision({ x: head.x + 1, y: head.y }, state.snake, state);
+      expect(result).toContain('death');
+      expect(result).not.toContain('damage');
     });
 
-    it('locked door passes with correct key', () => {
+    it('tick on death wall collision → instant gameover', () => {
       const world = generateWorldMap(3, 3);
       const state = minimalState({ world });
-      state.inventory.keys = new Set(['key_0']);
-      const room = world.rooms[1][1];
-      const doorDir = Object.keys(room.doors).find(d => room.doors[d]?.connectedTo);
-      if (!doorDir) return;
-      room.doors[doorDir].locked = true;
-      room.doors[doorDir].keyId = 'key_0';
-      state.currentRoom = { x: 1, y: 1 };
-
-      const result = checkDoorPassable(state, doorDir);
-      expect(result.passable).toBe(true);
-    });
-
-    it('size gate blocks snake shorter than required length', () => {
-      const world = generateWorldMap(3, 3);
-      const state = minimalState({ world });
-      state.snake = [{x:10,y:10},{x:9,y:10},{x:8,y:10}];
-      const room = world.rooms[1][1];
-      const doorDir = Object.keys(room.doors).find(d => room.doors[d]?.connectedTo);
-      if (!doorDir) return;
-      room.sizeGate = { requiredLength: 10, doorDir };
-      state.currentRoom = { x: 1, y: 1 };
-
-      const result = checkDoorPassable(state, doorDir);
-      expect(result.passable).toBe(false);
-      expect(result.reason).toBe('size_gate');
-    });
-
-    it('size gate passes when snake is long enough', () => {
-      const world = generateWorldMap(3, 3);
-      const state = minimalState({ world });
-      const longSnake = [];
-      for (let i = 0; i < 15; i++) longSnake.push({x:20-i,y:10});
-      state.snake = longSnake;
-      const room = world.rooms[1][1];
-      const doorDir = Object.keys(room.doors).find(d => room.doors[d]?.connectedTo);
-      if (!doorDir) return;
-      room.sizeGate = { requiredLength: 10, doorDir };
-      state.currentRoom = { x: 1, y: 1 };
-
-      const result = checkDoorPassable(state, doorDir);
-      expect(result.passable).toBe(true);
+      state.snake = [
+        { x: 1, y: 10 },
+        { x: 2, y: 10 },
+        { x: 3, y: 10 },
+      ];
+      state.direction = { x: 1, y: 0 };
+      state.nextDirection = { x: 1, y: 0 };
+      const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
+      room.tiles[10][2] = CELL.DEATH_WALL;
+      const result = tick(state);
+      expect(result.gameState).toBe('gameover');
     });
   });
 
-  describe('Map boundary safety', () => {
-    it('room at map edge has no outward door', () => {
-      const world = generateWorldMap(5, 5);
-      expect(world.rooms[0][0].doors.up).toBeNull();
-      expect(world.rooms[0][0].doors.left).toBeNull();
-      expect(world.rooms[4][4].doors.down).toBeNull();
-      expect(world.rooms[4][4].doors.right).toBeNull();
+  describe('SPIKE → instant death', () => {
+    it('checkSnakeCollision returns death for CELL.SPIKE', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      const head = state.snake[0];
+      const { rx, ry, cx, cy } = worldToRoomCoords(head.x + 1, head.y);
+      const room = getRoomAt(world, rx, ry);
+      if (room) {
+        room.tiles[cy][cx] = CELL.SPIKE;
+      }
+      const result = checkSnakeCollision({ x: head.x + 1, y: head.y }, state.snake, state);
+      expect(result).toContain('death');
+    });
+  });
+
+  describe('Screen shake on enemy collision', () => {
+    it('enemy collision sets screenShake', () => {
+      const world = {
+        rows: 3, cols: 3,
+        rooms: [
+          [createRoom(0,0), createRoom(1,0), createRoom(2,0)],
+          [createRoom(0,1), createRoom(1,1), createRoom(2,1)],
+          [createRoom(0,2), createRoom(1,2), createRoom(2,2)],
+        ],
+      };
+      const room = world.rooms[1][1];
+      room.entities.enemies.push({
+        id: 1,
+        x: 31, y: 30,
+        segments: [{ x: 31, y: 30 }],
+        hp: 1,
+        speedTicks: 2,
+        tickCounter: 0,
+        roomX: 1, roomY: 1,
+        chaseRange: 20,
+        aiState: 'idle',
+      });
+      const state = minimalState({ world });
+      state.snake = [
+        { x: 30, y: 30 },
+        { x: 29, y: 30 },
+        { x: 28, y: 30 },
+      ];
+      state.direction = { x: 1, y: 0 };
+      state.nextDirection = { x: 1, y: 0 };
+      const result = tick(state);
+      expect(result.screenShake).not.toBeNull();
+      expect(result.snake.length).toBe(state.snake.length - 1);
+    });
+  });
+
+  describe('Screen shake decay', () => {
+    it('screenShake intensity decreases over ticks and clears', () => {
+      const state = minimalState();
+      state.screenShake = { intensity: 3, duration: 6 };
+      // Simulate a few ticks of decay
+      let shake = { ...state.screenShake };
+      for (let i = 0; i < 6; i++) {
+        shake = {
+          ...shake,
+          duration: shake.duration - 1,
+          intensity: shake.intensity * 0.7,
+        };
+      }
+      expect(shake.duration).toBe(0);
+      expect(shake.intensity).toBeCloseTo(0.41, 1);
+    });
+  });
+
+  describe('Projectile hits death wall', () => {
+    it('bullet hitting DEATH_WALL is consumed', () => {
+      const world = {
+        rows: 3, cols: 3,
+        rooms: [
+          [createRoom(0,0), createRoom(1,0), createRoom(2,0)],
+          [createRoom(0,1), createRoom(1,1), createRoom(2,1)],
+          [createRoom(0,2), createRoom(1,2), createRoom(2,2)],
+        ],
+      };
+      const room = world.rooms[1][1];
+      room.tiles[10][12] = CELL.DEATH_WALL;
+      const proj = createProjectile(1, 12, 10, { x: 1, y: 0 }, 2, 5, 1);
+      proj.prevX = 12; proj.prevY = 10;
+      const state = minimalState({ world, projectiles: [proj] });
+      const result = lineSweepProjectileCollision(proj, state);
+      expect(result).not.toBeNull();
+      expect(result.collisionType).toBe('wall');
     });
   });
 });

@@ -18,7 +18,7 @@ export function render(ctx, state) {
   ctx.fillStyle = PALETTE.BG;
   ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
-  // Render current room (with screen shake)
+  // Render current room (with screen shake if active)
   ctx.save();
   if (state.screenShake && state.screenShake.intensity > 0.3) {
     const { intensity } = state.screenShake;

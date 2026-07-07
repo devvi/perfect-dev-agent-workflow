@@ -141,7 +141,7 @@ export function buildSpanningTree(cols, rows, rng = Math.random) {
 
 /**
  * Add random extra doors to create loops (density 0-1)
- *
+ * 
  * IMPORTANT: Shuffles pairs, not individual keys, to prevent mismatched
  * one-way doors. Previously, individual keys were shuffled and re-paired
  * by index, which could pair key1 from one door with key2 from another,
@@ -465,7 +465,7 @@ export function generateRoomTiles(room, rng = Math.random) {
   for (let i = 0; i < wallCount; i++) {
     const wx = 2 + Math.floor(rng() * (ROOM_SIZE - 4));
     const wy = 2 + Math.floor(rng() * (ROOM_SIZE - 4));
-    // Don't place walls on doors or center gacha spot
+    // Don't place walls on doors, protected door approaches, or center gacha spot
     const isCenter = wx === Math.floor(ROOM_SIZE / 2) && wy === Math.floor(ROOM_SIZE / 2);
     if (!isCenter && tiles[wy][wx] === CELL.FLOOR && !protectedCells.has(`${wy},${wx}`)) {
       // Small clusters
@@ -528,20 +528,6 @@ export function generateRoomTiles(room, rng = Math.random) {
         if (!isCenterCorridor) {
           tiles[wy][wx] = CELL.DEATH_WALL;
         }
-      }
-    }
-  }
-
-  // Add SPIKE cells (instant-death obstacles) in non-safe rooms
-  if (!room.gachaMachine && room.type !== ROOM_TYPE.START && room.type !== ROOM_TYPE.SAVE &&
-      !room.savePoint && room.type !== ROOM_TYPE.GOAL &&
-      room.type !== ROOM_TYPE.HIDDEN && rng() < 0.25) {
-    const spikeCount = 1 + Math.floor(rng() * 2);
-    for (let i = 0; i < spikeCount; i++) {
-      const sx = 3 + Math.floor(rng() * (ROOM_SIZE - 6));
-      const sy = 3 + Math.floor(rng() * (ROOM_SIZE - 6));
-      if (tiles[sy][sx] === CELL.FLOOR) {
-        tiles[sy][sx] = CELL.SPIKE;
       }
     }
   }

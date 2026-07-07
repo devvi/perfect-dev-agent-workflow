@@ -49,8 +49,8 @@ export function checkSnakeCollision(head, snake, state) {
   if (world) {
     cellType = getCellAt(world, head.x, head.y);
   }
-  // Non-lethal obstacles - damage but not death (lose length instead)
-  if (cellType === CELL.WALL || cellType === CELL.STONE_WALL || cellType === CELL.SPIKE) {
+  // Regular walls and stone walls — damage but not death
+  if (cellType === CELL.WALL || cellType === CELL.STONE_WALL) {
     // Defensive fallback: if this cell is at a room boundary position that
     // the room's data structure says should be a door, let the snake pass
     // through as a door transition instead of taking damage.
@@ -67,8 +67,8 @@ export function checkSnakeCollision(head, snake, state) {
     }
   }
 
-  // Instant-death obstacles (only DEATH_WALL)
-  if (cellType === CELL.DEATH_WALL) {
+  // Instant-death obstacles
+  if (cellType === CELL.SPIKE || cellType === CELL.DEATH_WALL) {
     return ['death'];
   }
 
@@ -260,36 +260,4 @@ export function checkRoomTransition(state, newHead) {
   }
 
   return { entered: false };
-}
-
-/**
- * Check if a door is passable (locked doors need keys, size gates need length)
- * Returns { passable: true } or { passable: false, reason: string }
- */
-export function checkDoorPassable(state, doorDir) {
-  const { currentRoom, world } = state;
-  if (!world) return { passable: true };
-
-  const room = getRoomAt(world, currentRoom.x, currentRoom.y);
-  if (!room) return { passable: true };
-
-  const door = room.doors[doorDir];
-  if (!door) return { passable: true };
-
-  // Check if door is locked and player has the key
-  if (door.locked && door.keyId) {
-    if (!state.inventory || !state.inventory.keys || !state.inventory.keys.has(door.keyId)) {
-      return { passable: false, reason: 'locked' };
-    }
-  }
-
-  // Check size gate (snake must be long enough)
-  if (room.sizeGate && room.sizeGate.doorDir === doorDir) {
-    const required = room.sizeGate.requiredLength;
-    if (state.snake.length < required) {
-      return { passable: false, reason: 'size_gate' };
-    }
-  }
-
-  return { passable: true };
 }
