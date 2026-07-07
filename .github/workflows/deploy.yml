@@ -21,3 +21,16 @@ jobs:
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
           vercel-args: '--prod'
+
+      - name: Notify Feishu 💬
+        if: always()
+        env:
+          STATUS: ${{ job.status }}
+          RUN_NUM: ${{ github.run_number }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          EMOJI="✅"
+          [ "$STATUS" != "success" ] && EMOJI="❌"
+          curl -s -X POST -H "Content-Type: application/json" \
+            -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"${EMOJI} [PDA] deploy #${RUN_NUM} ${STATUS} \\nBranch: ${BRANCH}\"}}" \
+            https://open.feishu.cn/open-apis/bot/v2/hook/390781d4-285c-4d66-afa4-1aadfb76a7b9

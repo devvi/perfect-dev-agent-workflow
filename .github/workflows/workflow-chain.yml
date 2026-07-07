@@ -70,7 +70,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: parentNumber,
-                body: `⏩ PR #${pr.number} (${activeLabel}) merged → advancing to **${nextLabel}**`,
+                body: `\u23E9 PR #${pr.number} (${activeLabel}) merged \u2192 advancing to **${nextLabel}**`,
               });
             } else {
               // Implement → Done: close the issue
@@ -96,3 +96,12 @@ jobs:
                 body: `🎉 Issue resolved — PR #${pr.number} (implement) merged and deployed.`,
               });
             }
+
+            // Notify Feishu
+            const feishuBody = nextLabel
+              ? { msg_type: 'text', content: { text: `[PDA] 🔗 Issue #${parentNumber}: ${activeLabel} → ${nextLabel}\nPR #${pr.number} merged` } }
+              : { msg_type: 'text', content: { text: `[PDA] 🎉 Issue #${parentNumber} resolved ✅\nPR #${pr.number} (implement) merged and deployed.` } };
+            await fetch(
+              'https://open.feishu.cn/open-apis/bot/v2/hook/390781d4-285c-4d66-afa4-1aadfb76a7b9',
+              { method: 'POST', body: JSON.stringify(feishuBody), headers: { 'Content-Type': 'application/json' } }
+            ).then(r => r.text()).then(t => console.log('Feishu:', t));

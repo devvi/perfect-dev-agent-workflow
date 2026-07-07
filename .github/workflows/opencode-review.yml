@@ -78,3 +78,16 @@ jobs:
           echo "❌ Play Test failed — runtime errors found in HTML pages."
           echo "    Fix the issues (missing modules, 404s, JS errors) before merging."
           exit 1
+
+      - name: Notify Feishu 💬
+        if: always()
+        env:
+          STATUS: ${{ job.status }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          EMOJI="✅"
+          [ "$STATUS" != "success" ] && EMOJI="❌"
+          curl -s -X POST -H "Content-Type: application/json" \
+            -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"${EMOJI} [PDA] review #${PR_NUM} ${STATUS} \\nPR: ${PR_TITLE}\"}}" \
+            https://open.feishu.cn/open-apis/bot/v2/hook/390781d4-285c-4d66-afa4-1aadfb76a7b9
