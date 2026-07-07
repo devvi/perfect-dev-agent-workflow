@@ -1,3 +1,12 @@
+function isDoorCell(room, cx, cy) {
+  const mid = Math.floor(ROOM_SIZE / 2);
+  if (room.doors['up'] && cy === 0 && Math.abs(cx - mid) <= 2) return true;
+  if (room.doors['down'] && cy === ROOM_SIZE - 1 && Math.abs(cx - mid) <= 2) return true;
+  if (room.doors['left'] && cx === 0 && Math.abs(cy - mid) <= 2) return true;
+  if (room.doors['right'] && cx === ROOM_SIZE - 1 && Math.abs(cy - mid) <= 2) return true;
+  return false;
+}
+
 // FILE: public/src/engine/collision.js
 // Collision detection (world coordinates)
 
@@ -224,4 +233,29 @@ export function checkRoomTransition(state, newHead) {
   }
 
   return { entered: false };
+}
+export function checkDoorPassable(state, doorDir) {
+  const { currentRoom, world } = state;
+  if (!world) return { passable: true };
+
+  const room = getRoomAt(world, currentRoom.x, currentRoom.y);
+  if (!room) return { passable: true };
+
+  const door = room.doors[doorDir];
+  if (!door) return { passable: true };
+
+  if (door.locked && door.keyId) {
+    if (!state.inventory || !state.inventory.keys || !state.inventory.keys.has(door.keyId)) {
+      return { passable: false, reason: 'locked' };
+    }
+  }
+
+  if (room.sizeGate && room.sizeGate.doorDir === doorDir) {
+    const required = room.sizeGate.requiredLength;
+    if (state.snake.length < required) {
+      return { passable: false, reason: 'size_gate' };
+    }
+  }
+
+  return { passable: true };
 }
