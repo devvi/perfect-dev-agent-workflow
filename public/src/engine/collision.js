@@ -1,17 +1,30 @@
-function isDoorCell(room, cx, cy) {
-  const mid = Math.floor(ROOM_SIZE / 2);
-  if (room.doors['up'] && cy === 0 && Math.abs(cx - mid) <= 2) return true;
-  if (room.doors['down'] && cy === ROOM_SIZE - 1 && Math.abs(cx - mid) <= 2) return true;
-  if (room.doors['left'] && cx === 0 && Math.abs(cy - mid) <= 2) return true;
-  if (room.doors['right'] && cx === ROOM_SIZE - 1 && Math.abs(cy - mid) <= 2) return true;
-  return false;
-}
-
-// FILE: public/src/engine/collision.js
 // Collision detection (world coordinates)
 
 import { ROOM_SIZE, CELL, ROOM_TYPE } from './constants.js';
 import { getRoomAt, getCellAt, worldToRoomCoords } from './world.js';
+
+/**
+ * Check if a room-local cell position is part of a door passage.
+ * Used as a defensive fallback: if the tile grid shows WALL at a door position
+ * (due to generation edge cases), the snake can still pass through safely.
+ */
+function isDoorCell(room, cx, cy) {
+  if (!room || !room.doors) return false;
+  const mid = Math.floor(ROOM_SIZE / 2);
+  if (cy === 0 && room.doors.up) {
+    return cx >= mid - 2 && cx <= mid + 2;
+  }
+  if (cy === ROOM_SIZE - 1 && room.doors.down) {
+    return cx >= mid - 2 && cx <= mid + 2;
+  }
+  if (cx === 0 && room.doors.left) {
+    return cy >= mid - 2 && cy <= mid + 2;
+  }
+  if (cx === ROOM_SIZE - 1 && room.doors.right) {
+    return cy >= mid - 2 && cy <= mid + 2;
+  }
+  return false;
+}
 
 /**
  * Check what the snake head collides with
@@ -28,6 +41,7 @@ export function checkSnakeCollision(head, snake, state) {
     maxY = world.rows * ROOM_SIZE;
   }
   if (head.x < 0 || head.y < 0) return ['damage'];
+  if (!world && head.x === 0) return ['damage'];
   if (world && (head.x >= maxX || head.y >= maxY)) return ['damage'];
 
   // Check cell type

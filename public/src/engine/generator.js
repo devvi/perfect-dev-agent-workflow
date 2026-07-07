@@ -141,6 +141,12 @@ export function buildSpanningTree(cols, rows, rng = Math.random) {
 
 /**
  * Add random extra doors to create loops (density 0-1)
+ * 
+ * IMPORTANT: Shuffles pairs, not individual keys, to prevent mismatched
+ * one-way doors. Previously, individual keys were shuffled and re-paired
+ * by index, which could pair key1 from one door with key2 from another,
+ * resulting in a door on one side but a wall on the other — causing
+ * instant death when the snake entered.
  */
 export function addRandomDoors(tree, cols, rows, rng = Math.random, density = 0.3) {
   const edges = new Set(tree);
@@ -414,7 +420,7 @@ function isNearDoor(cx, cy, room) {
 export function generateRoomTiles(room, rng = Math.random) {
   const tiles = generateDefaultTiles();
 
-  // Add door passages in the border walls
+  // Add door passages in the border walls (5 cells wide for comfortable passage)
   for (const dir of ['up', 'down', 'left', 'right']) {
     if (room.doors[dir]) {
       const mid = Math.floor(ROOM_SIZE / 2);
@@ -438,12 +444,37 @@ export function generateRoomTiles(room, rng = Math.random) {
     }
   }
 
-  // Add some interior walls for cover
+  // Mark cells adjacent to doors as protected (prevent wall placement blocking door approaches)
+  const protectedCells = new Set();
+  for (const dir of ['up', 'down', 'left', 'right']) {
+    if (room.doors[dir]) {
+      const mid = Math.floor(ROOM_SIZE / 2);
+      if (dir === 'up') {
+        for (let dx = -2; dx <= 2; dx++) {
+          protectedCells.add(`1,${mid+dx}`);
+        }
+      } else if (dir === 'down') {
+        for (let dx = -2; dx <= 2; dx++) {
+          protectedCells.add(`${ROOM_SIZE-2},${mid+dx}`);
+        }
+      } else if (dir === 'left') {
+        for (let dy = -2; dy <= 2; dy++) {
+          protectedCells.add(`${mid+dy},1`);
+        }
+      } else if (dir === 'right') {
+        for (let dy = -2; dy <= 2; dy++) {
+          protectedCells.add(`${mid+dy},${ROOM_SIZE-2}`);
+        }
+      }
+    }
+  }
+
+  // Add some interior walls for cover (skip protected cells near doors)
   const wallCount = 3 + Math.floor(rng() * 5);
   for (let i = 0; i < wallCount; i++) {
     const wx = 2 + Math.floor(rng() * (ROOM_SIZE - 4));
     const wy = 2 + Math.floor(rng() * (ROOM_SIZE - 4));
-    // Don't place walls on doors or center gacha spot
+    // Don't place walls on doors, protected door approaches, or center gacha spot
     const isCenter = wx === Math.floor(ROOM_SIZE / 2) && wy === Math.floor(ROOM_SIZE / 2);
     const nearDoor = isNearDoor(wx, wy, room);
     if (!isCenter && !nearDoor && tiles[wy][wx] === CELL.FLOOR) {
@@ -452,7 +483,7 @@ export function generateRoomTiles(room, rng = Math.random) {
       for (let j = 0; j < len; j++) {
         const px = wx + (j % 2);
         const py = wy + Math.floor(j / 2);
-        if (py < ROOM_SIZE - 1 && px < ROOM_SIZE - 1 && tiles[py][px] === CELL.FLOOR) {
+        if (py < ROOM_SIZE - 1 && px < ROOM_SIZE - 1 && tiles[py][px] === CELL.FLOOR && !protectedCells.has(`${py},${px}`)) {
           tiles[py][px] = CELL.WALL;
         }
       }
