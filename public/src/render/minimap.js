@@ -14,7 +14,7 @@ export function renderMinimap(ctx, state, world) {
   const offsetY = 400 - MINIMAP_SIZE - 8;
 
   // Background
-  ctx.fillStyle = 'rgba(10, 10, 26, 0.85)';
+  ctx.fillStyle = 'rgba(10, 10, 26, 0.50)';
   ctx.fillRect(offsetX - 2, offsetY - 2, MINIMAP_SIZE + 4, MINIMAP_SIZE + 4);
   ctx.strokeStyle = '#306230';
   ctx.lineWidth = 1;

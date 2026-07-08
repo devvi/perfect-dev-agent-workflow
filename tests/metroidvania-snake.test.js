@@ -3,6 +3,7 @@
 // Uses Vitest (describe/it/expect)
 // Imports reference the modular engine files; these will fail until implementation
 
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, beforeEach } from 'vitest';
 
 // Engine constants
@@ -52,6 +53,10 @@ import { useGachaMachine, getRandomPowerUp, applyPowerUp, tickPowerUps } from '.
 
 // Save system
 import { saveGame, loadGame, applySave, clearSave } from '../public/src/engine/save.js';
+
+// Render modules
+import { renderMinimap } from '../public/src/render/minimap.js';
+
 
 // Entity factories
 import { createSnake, createEnemy, createProjectile, createFood } from '../public/src/engine/entities.js';
@@ -402,6 +407,99 @@ describe('Phase 2 — Minimap & Fog of War', () => {
         .filter(r => r.explored)
         .length;
       expect(exploredCount).toBe(1);
+    });
+
+    it('UT1: background alpha value is 0.50', () => {
+      // Read the source file and verify the fillStyle alpha
+      const source = readFileSync(
+        new URL('../public/src/render/minimap.js', import.meta.url),
+        'utf-8'
+      );
+      // Find the background fillRect fillStyle line
+      const match = source.match(/ctx\.fillStyle = 'rgba\(10,\s*10,\s*26,\s*([^)]+)\)'/);
+      expect(match).not.toBeNull();
+      expect(parseFloat(match[1])).toBeCloseTo(0.50, 2);
+    });
+
+    it('UT2: room tile colors are unchanged (use PALETTE constants)', () => {
+      const source = readFileSync(
+        new URL('../public/src/render/minimap.js', import.meta.url),
+        'utf-8'
+      );
+      // Room tile colors reference PALETTE constants — ensure no hardcoded alpha change
+      expect(source).toContain('PALETTE.MINIMAP_EXPLORED');
+      expect(source).toContain('PALETTE.GOLD');
+      expect(source).toContain('PALETTE.SAVE_POINT');
+    });
+
+    it('UT3: player dot is fully opaque (no alpha change)', () => {
+      const source = readFileSync(
+        new URL('../public/src/render/minimap.js', import.meta.url),
+        'utf-8'
+      );
+      // Player dot should use PALETTE constant, not hardcoded semi-transparent
+      expect(source).toContain('PALETTE.MINIMAP_CURRENT');
+    });
+
+    it('IT1: renderMinimap completes without error with 4+ explored rooms', () => {
+      const world = generateWorldMap(3, 3);
+      const state = createInitialState(world);
+
+      // Create a minimal canvas mock
+      const calls = [];
+      const mockCtx = {
+        save: () => { calls.push('save'); },
+        restore: () => { calls.push('restore'); },
+        fillStyle: '',
+        fillRect: (...args) => { calls.push(['fillRect', ...args]); },
+        strokeStyle: '',
+        lineWidth: 0,
+        strokeRect: (...args) => { calls.push(['strokeRect', ...args]); },
+        beginPath: () => { calls.push('beginPath'); },
+        arc: (...args) => { calls.push(['arc', ...args]); },
+        fill: () => { calls.push('fill'); },
+        font: '',
+        textAlign: '',
+        fillText: (...args) => { calls.push(['fillText', ...args]); },
+      };
+
+      // Mark a few more rooms explored so we have 4+
+      world.rooms[0][1].explored = true;
+      world.rooms[1][0].explored = true;
+      world.rooms[1][1].explored = true;
+
+      expect(() => renderMinimap(mockCtx, state, world)).not.toThrow();
+      expect(calls.length).toBeGreaterThan(0);
+      // Verify background was drawn
+      const bgFill = calls.find(c =>
+        Array.isArray(c) && c[0] === 'fillRect'
+      );
+      expect(bgFill).toBeDefined();
+    });
+
+    it('IT2: renderMinimap with 0 explored rooms does not throw', () => {
+      const world = generateWorldMap(3, 3);
+      // Mark all rooms unexplored
+      world.rooms.forEach(row => row.forEach(r => { r.explored = false; }));
+      const state = createInitialState(world);
+
+      const mockCtx = {
+        save: () => {},
+        restore: () => {},
+        fillStyle: '',
+        fillRect: () => {},
+        strokeStyle: '',
+        lineWidth: 0,
+        strokeRect: () => {},
+        beginPath: () => {},
+        arc: () => {},
+        fill: () => {},
+        font: '',
+        textAlign: '',
+        fillText: () => {},
+      };
+
+      expect(() => renderMinimap(mockCtx, state, world)).not.toThrow();
     });
   });
 });
