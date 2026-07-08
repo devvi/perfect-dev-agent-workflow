@@ -14,6 +14,7 @@ import {
   TOTAL_CELLS,
   POINTS_PER_FOOD,
   DIR,
+  STUCK_TICKS,
 } from '../public/src/gameboy-snake-engine.js';
 
 function stateWithSnake(snake, overrides = {}) {
@@ -252,44 +253,48 @@ describe('tick', () => {
     expect(onSnake).toBe(false);
   });
 
-  it('should set gameState to "gameover" when hitting left wall', () => {
+  it('should set stuckCounter when hitting left wall (Issue #46)', () => {
     const snake = [
       { x: 0, y: 5 },
       { x: -1, y: 5 },
     ];
     const state = stateWithSnake(snake, { direction: DIR.LEFT, nextDirection: DIR.LEFT });
     const next = tick(state);
-    expect(next.gameState).toBe('gameover');
+    expect(next.gameState).toBe('playing');
+    expect(next.stuckCounter).toBe(STUCK_TICKS);
   });
 
-  it('should set gameState to "gameover" when hitting right wall', () => {
+  it('should set stuckCounter when hitting right wall (Issue #46)', () => {
     const snake = [
       { x: GRID_SIZE - 1, y: 5 },
       { x: GRID_SIZE - 2, y: 5 },
     ];
     const state = stateWithSnake(snake, { direction: DIR.RIGHT, nextDirection: DIR.RIGHT });
     const next = tick(state);
-    expect(next.gameState).toBe('gameover');
+    expect(next.gameState).toBe('playing');
+    expect(next.stuckCounter).toBe(STUCK_TICKS);
   });
 
-  it('should set gameState to "gameover" when hitting top wall', () => {
+  it('should set stuckCounter when hitting top wall (Issue #46)', () => {
     const snake = [
       { x: 5, y: 0 },
       { x: 5, y: 1 },
     ];
     const state = stateWithSnake(snake, { direction: DIR.UP, nextDirection: DIR.UP });
     const next = tick(state);
-    expect(next.gameState).toBe('gameover');
+    expect(next.gameState).toBe('playing');
+    expect(next.stuckCounter).toBe(STUCK_TICKS);
   });
 
-  it('should set gameState to "gameover" when hitting bottom wall', () => {
+  it('should set stuckCounter when hitting bottom wall (Issue #46)', () => {
     const snake = [
       { x: 5, y: GRID_SIZE - 1 },
       { x: 5, y: GRID_SIZE - 2 },
     ];
     const state = stateWithSnake(snake, { direction: DIR.DOWN, nextDirection: DIR.DOWN });
     const next = tick(state);
-    expect(next.gameState).toBe('gameover');
+    expect(next.gameState).toBe('playing');
+    expect(next.stuckCounter).toBe(STUCK_TICKS);
   });
 
   it('should set gameState to "gameover" on self collision', () => {

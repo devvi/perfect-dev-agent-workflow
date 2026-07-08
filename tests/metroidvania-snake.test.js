@@ -1044,22 +1044,12 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
       expect(result).not.toContain('death');
     });
 
-    it('tick on wall collision reduces length by 1, sets screenShake, does not gameover', () => {
+    it('wall collision triggers stuck+reverse — length preserved, stuckCounter set (Issue #46)', () => {
       const world = generateWorldMap(3, 3);
       const state = minimalState({ world });
-      // Place snake at position where it will move into a wall
       const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
       const head = state.snake[0];
-      room.tiles[1][0] = CELL.WALL; // wall at left edge of room
-      // Move snake left toward wall
-      state.snake = [
-        { x: head.x, y: head.y },
-        { x: head.x + 1, y: head.y },
-        { x: head.x + 2, y: head.y },
-      ];
-      state.direction = { x: -1, y: 0 };
-      state.nextDirection = { x: -1, y: 0 };
-      // Move snake close to left wall
+      // Place snake so it will move into a WALL
       state.snake = [
         { x: 1, y: 10 },
         { x: 2, y: 10 },
@@ -1069,23 +1059,32 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
       state.nextDirection = { x: -1, y: 0 };
       room.tiles[10][0] = CELL.WALL;
       const result = tick(state);
+      // Now wall collision → stuck+reverse: length preserved, no gameover
       expect(result.gameState).toBe('playing');
-      expect(result.snake.length).toBe(state.snake.length - 1);
+      expect(result.snake.length).toBe(state.snake.length);
+      expect(result.stuckCounter).toBeGreaterThan(0);
       expect(result.screenShake).not.toBeNull();
     });
 
-    it('snake length 1 hitting wall → gameover (length becomes 0)', () => {
+    it('snake length 1 hitting wall → stuck not gameover (Issue #46)', () => {
+      // With world: place WALL in front of snake
+      const world = generateWorldMap(3, 3);
       const state = minimalState({
-        snake: [{ x: 1, y: 10 }],
+        world,
+        snake: [{ x: 5, y: 5 }],
         gameState: 'playing',
       });
-      // Head at (1,10), moving left toward boundary
-      state.direction = { x: -1, y: 0 };
-      state.nextDirection = { x: -1, y: 0 };
-      // No world — boundary wall triggers damage
+      state.currentRoom = { x: 0, y: 0 };
+      state.direction = { x: 1, y: 0 };
+      state.nextDirection = { x: 1, y: 0 };
+      // Place WALL at (6,5) in room (0,0)
+      const room00 = getRoomAt(world, 0, 0);
+      room00.tiles[5][6] = CELL.WALL;
       const result = tick(state);
-      expect(result.snake.length).toBe(0);
-      expect(result.gameState).toBe('gameover');
+      // Wall collision now triggers stuck+reverse instead of gameover
+      expect(result.gameState).toBe('playing');
+      expect(result.snake.length).toBe(1);
+      expect(result.stuckCounter).toBeGreaterThan(0);
     });
   });
 
@@ -1107,11 +1106,13 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
     it('tick on death wall collision → instant gameover', () => {
       const world = generateWorldMap(3, 3);
       const state = minimalState({ world });
+      // Snake in room (0,0) at (1,10); moving RIGHT toward (2,10)
       state.snake = [
         { x: 1, y: 10 },
         { x: 2, y: 10 },
         { x: 3, y: 10 },
       ];
+      state.currentRoom = { x: 0, y: 0 };
       state.direction = { x: 1, y: 0 };
       state.nextDirection = { x: 1, y: 0 };
       const { rx, ry } = worldToRoomCoords(state.snake[0].x, state.snake[0].y);
@@ -1206,6 +1207,8 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
       const proj = createProjectile(1, 12, 10, { x: -1, y: 0 }, 2, 5, 1);
       proj.prevX = 13; proj.prevY = 10;
       const state = minimalState({ world, projectiles: [proj] });
+      // Also set currentRoom so the projectile renders in the correct context
+      state.currentRoom = { x: 1, y: 1 };
       const result = lineSweepProjectileCollision(proj, state);
       expect(result).not.toBeNull();
       expect(result.collisionType).toBe('wall');

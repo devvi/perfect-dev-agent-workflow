@@ -202,6 +202,12 @@ export function renderRoom(ctx, state, world) {
  * Draw snake
  */
 function drawSnake(ctx, state) {
+  // Flash effect when stuck (Issue #46)
+  const isStuck = state.stuckCounter > 0;
+  if (isStuck) {
+    ctx.globalAlpha = (state.stuckCounter % 2 === 0) ? 0.4 : 1.0;
+  }
+
   for (let i = state.snake.length - 1; i >= 0; i--) {
     const seg = state.snake[i];
     const { cx, cy } = worldToRoomCoords(seg.x, seg.y);
@@ -213,7 +219,7 @@ function drawSnake(ctx, state) {
     const py = cy * CELL_SIZE;
 
     if (i === 0) {
-      ctx.fillStyle = PALETTE.SNAKE_HEAD;
+      ctx.fillStyle = isStuck ? '#ff4444' : PALETTE.SNAKE_HEAD;
       ctx.fillRect(px + 1, py + 1, CELL_SIZE - 2, CELL_SIZE - 2);
       // Eyes
       ctx.fillStyle = '#ffffff';
@@ -236,6 +242,7 @@ function drawSnake(ctx, state) {
       ctx.fillRect(px + 2, py + 2, CELL_SIZE - 4, CELL_SIZE - 4);
     }
   }
+  if (isStuck) ctx.globalAlpha = 1.0;
 }
 
 /**
