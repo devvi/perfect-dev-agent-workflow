@@ -1417,7 +1417,8 @@ describe('Phase 4 — Stuck+Reverse on obstacle collision (Issue #46)', () => {
       const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
       // Place wall behind the tail
       if (room) {
-        room.tiles[30][27] = CELL.WALL; // behind tail at x=28, tail is x=28,y=30
+        // tail at world (28,30) → room-local (8,10); wall behind at world (27,30) → room-local (7,10)
+        room.tiles[10][7] = CELL.WALL;
       }
       state.snake = [
         { x: 30, y: 30 },
@@ -1503,10 +1504,11 @@ describe('Phase 4 — Stuck+Reverse on obstacle collision (Issue #46)', () => {
 
       let s = tick(state); // stuck
       // Tick through stuck
-      for (let i = 0; i < 6; i++) {
+      // 5 ticks = stuck 5→0, reverse executes on 5th tick (no extra move)
+      for (let i = 0; i < 5; i++) {
         s = tick(s);
       }
-      // Single segment: snke.reverse() on 1 element = same array
+      // Single segment: snake.reverse() on 1 element = same array
       expect(s.snake).toHaveLength(1);
       expect(s.snake[0]).toEqual({ x: 5, y: 5 });
       // Direction flipped 180°

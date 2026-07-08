@@ -204,14 +204,14 @@ document.addEventListener('keydown', (e) => {
         if (state.gameState === 'playing') {
           runTick();
         } else {
-          if (gameLoop) clearInterval(gameLoop);
+          if (gameLoop) clearTimeout(gameLoop);
           render(ctx, state);
         }
         return;
       case 'Escape':
         e.preventDefault();
         state = { ...state, gameState: 'paused' };
-        if (gameLoop) clearInterval(gameLoop);
+        if (gameLoop) clearTimeout(gameLoop);
         render(ctx, state);
         return;
     }
