@@ -56,7 +56,7 @@ export function checkSnakeCollision(head, snake, state) {
 
   // Regular wall — damage but not death
   if (cellType === CELL.WALL || cellType === CELL.STONE_WALL) {
-    return ['damage'];
+    results.push('damage');
   }
 
   // Check door (room transition)
