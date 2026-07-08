@@ -20,7 +20,7 @@ const fs = require('fs');
 const path = require('path');
 
 const SECRET = process.env.GITHUB_WEBHOOK_SECRET;
-const PORT = parseInt(process.env.WEBHOOK_PORT || '1808', 10);
+const SECRET = process.env.GITHUB_WEBHOOK_SECRET;
 const REPO_DIR = process.env.PDA_REPO_DIR || path.resolve(__dirname, '..');
 const LOG_DIR = path.resolve(REPO_DIR, 'server/logs');
 const WORK_DIR = '/tmp/pda-work-orders';
@@ -85,9 +85,9 @@ function handlePullRequest(pr, action) {
         const issueNum = match[1];
         log('ACTION', `Implement PR #${num} for issue #${issueNum} merged — deploying`);
         run(`gh issue close ${issueNum} -R ${repo} --comment "✅ Implemented by PR #${num}" 2>/dev/null || true`);
-        run(`gh workflow run .github/workflows/deploy.yml -R ${repo} --ref master`);
+        run(`gh workflow run .github/workflows/deploy.yml -R ${repo} --ref master -f pr_num=${num}`);
       } else {
-        run(`gh workflow run .github/workflows/deploy.yml -R ${repo} --ref master`);
+        run(`gh workflow run .github/workflows/deploy.yml -R ${repo} --ref master -f pr_num=${num}`);
       }
     } else if (labels.includes('workflow/plan')) {
       // Plan PR merged → advance to implement
