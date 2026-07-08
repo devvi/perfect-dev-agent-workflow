@@ -1,4 +1,3 @@
-// FILE: public/src/engine/collision.js
 // Collision detection (world coordinates)
 
 import { ROOM_SIZE, CELL, ROOM_TYPE } from './constants.js';
@@ -42,6 +41,7 @@ export function checkSnakeCollision(head, snake, state) {
     maxY = world.rows * ROOM_SIZE;
   }
   if (head.x < 0 || head.y < 0) return ['damage'];
+  if (!world && head.x === 0) return ['damage'];
   if (world && (head.x >= maxX || head.y >= maxY)) return ['damage'];
 
   // Check cell type
@@ -49,27 +49,14 @@ export function checkSnakeCollision(head, snake, state) {
   if (world) {
     cellType = getCellAt(world, head.x, head.y);
   }
-  // Regular walls and stone walls — damage but not death
-  if (cellType === CELL.WALL || cellType === CELL.STONE_WALL) {
-    // Defensive fallback: if this cell is at a room boundary position that
-    // the room's data structure says should be a door, let the snake pass
-    // through as a door transition instead of taking damage.
-    if (world) {
-      const { rx, ry, cx, cy } = worldToRoomCoords(head.x, head.y);
-      const room = getRoomAt(world, rx, ry);
-      if (room && isDoorCell(room, cx, cy)) {
-        results.push('door');
-      } else {
-        return ['damage'];
-      }
-    } else {
-      return ['damage'];
-    }
-  }
-
-  // Instant-death obstacles
+  // Instant-death obstacles (spikes, stone walls)
   if (cellType === CELL.SPIKE || cellType === CELL.DEATH_WALL) {
     return ['death'];
+  }
+
+  // Regular wall — damage but not death
+  if (cellType === CELL.WALL || cellType === CELL.STONE_WALL) {
+    return ['damage'];
   }
 
   // Check door (room transition)
@@ -260,4 +247,29 @@ export function checkRoomTransition(state, newHead) {
   }
 
   return { entered: false };
+}
+export function checkDoorPassable(state, doorDir) {
+  const { currentRoom, world } = state;
+  if (!world) return { passable: true };
+
+  const room = getRoomAt(world, currentRoom.x, currentRoom.y);
+  if (!room) return { passable: true };
+
+  const door = room.doors[doorDir];
+  if (!door) return { passable: true };
+
+  if (door.locked && door.keyId) {
+    if (!state.inventory || !state.inventory.keys || !state.inventory.keys.has(door.keyId)) {
+      return { passable: false, reason: 'locked' };
+    }
+  }
+
+  if (room.sizeGate && room.sizeGate.doorDir === doorDir) {
+    const required = room.sizeGate.requiredLength;
+    if (state.snake.length < required) {
+      return { passable: false, reason: 'size_gate' };
+    }
+  }
+
+  return { passable: true };
 }
