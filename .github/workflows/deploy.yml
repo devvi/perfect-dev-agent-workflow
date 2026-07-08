@@ -26,7 +26,7 @@ jobs:
         id: check
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_PR_NUM: '${{ inputs.pr_num || '\"' }}'
+                    INPUT_PR_NUM: ${{ inputs.pr_num || '' }}
         run: |
           PR_NUM="$INPUT_PR_NUM"
 
