@@ -7,6 +7,10 @@ export const POINTS_PER_FOOD = 10;
 // Stuck+Reverse mechanic (Issue #46)
 export const STUCK_TICKS = 5;
 
+// Speed proportional to length (Issue #50)
+export const BASE_TICK_INTERVAL = 150; // ms at length 3 (fastest)
+export const SPEED_SLOPE = 0.02;       // multiplier per extra length unit
+
 export const DIR = {
   UP:    { x:  0, y: -1 },
   DOWN:  { x:  0, y:  1 },
@@ -43,6 +47,7 @@ export function createInitialState() {
     tickCount: 0,
     stuckCounter: 0,
     pendingReverse: false,
+    currentTickInterval: BASE_TICK_INTERVAL,
   };
 }
 
@@ -67,6 +72,11 @@ export function changeDirection(state, dir) {
   const next = cloneState(state);
   next.nextDirection = dir;
   return next;
+}
+
+export function calculateSpeed(length, baseInterval) {
+  const speed = Math.floor(baseInterval * (1 + (length - 3) * SPEED_SLOPE));
+  return Math.max(speed, BASE_TICK_INTERVAL);
 }
 
 export function checkCollision(head, snake, food) {
@@ -143,6 +153,8 @@ export function tick(state) {
   } else {
     next.snake = [newHead, ...next.snake.slice(0, -1)];
   }
+
+  next.currentTickInterval = calculateSpeed(next.snake.length, BASE_TICK_INTERVAL);
 
   return next;
 }

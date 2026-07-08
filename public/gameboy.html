@@ -66,7 +66,7 @@ let gameRunning = false;
 // --- Initialize ---
 function init() {
   if (gameLoop) {
-    clearInterval(gameLoop);
+    clearTimeout(gameLoop);
     gameLoop = null;
   }
 
@@ -85,13 +85,28 @@ function start() {
   gameRunning = true;
 
   // Start game loop
-  if (gameLoop) clearInterval(gameLoop);
+  if (gameLoop) clearTimeout(gameLoop);
   runTick();
 }
 
 // --- Game tick ---
+function scheduleNextTick() {
+  if (!state || state.gameState !== 'playing') return;
+  const interval = state.currentTickInterval || 150;
+  gameLoop = setTimeout(() => {
+    if (!state) return;
+    tickFn();
+    if (state.gameState === 'playing') {
+      scheduleNextTick();
+    }
+  }, interval);
+}
+
 function runTick() {
-  if (gameLoop) clearInterval(gameLoop);
+  if (gameLoop) {
+    clearTimeout(gameLoop);
+    gameLoop = null;
+  }
 
   const tickFn = () => {
     if (!state || state.gameState !== 'playing') {
@@ -107,7 +122,7 @@ function runTick() {
     // Handle game over or win
     if (state.gameState === 'gameover' || state.gameState === 'won') {
       if (gameLoop) {
-        clearInterval(gameLoop);
+        clearTimeout(gameLoop);
         gameLoop = null;
       }
     }
@@ -116,15 +131,8 @@ function runTick() {
   // First tick immediately
   tickFn();
 
-  // Then set interval
-  const interval = state ? state.currentTickInterval : 150;
-  gameLoop = setInterval(() => {
-    if (!state) return;
-    // Dynamic interval
-    if (gameLoop) clearInterval(gameLoop);
-    gameLoop = setInterval(tickFn, state.currentTickInterval);
-    tickFn();
-  }, interval);
+  // Then schedule next tick with current interval
+  scheduleNextTick();
 }
 
 // --- Update HUD ---
