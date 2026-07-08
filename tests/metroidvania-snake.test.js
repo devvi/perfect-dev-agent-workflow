@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   ROOM_SIZE, MAP_COLS, MAP_ROWS, CELL_SIZE,
   ROOM_TYPE, DIR, CELL, DOOR_DIR,
+  BASE_TICK_INTERVAL,
 } from '../public/src/engine/constants.js';
 
 // World / map structures
@@ -27,6 +28,7 @@ import {
 // Core game loop & state
 import {
   createInitialState, startGame, tick, changeDirection, fire, interact,
+  calculateSpeed,
 } from '../public/src/engine/core.js';
 
 // Collision detection
@@ -293,6 +295,66 @@ describe('Phase 1c — Wall/Self/Food Collision', () => {
       // Head moving left into body segment at (9,10)
       const result = checkSnakeCollision({ x: 9, y: 10 }, snake, state);
       expect(result).toContain('self');
+    });
+
+    it('handles self-collision as non-lethal: tail pop, stun, score penalty, screen shake', () => {
+      const snake = [
+        { x: 10, y: 10 },
+        { x: 11, y: 10 },
+        { x: 11, y: 11 },
+        { x: 10, y: 11 },
+        { x: 9, y: 11 },
+        { x: 9, y: 10 },
+      ];
+      const state = minimalState({ snake });
+      state.direction = { x: -1, y: 0 };
+      state.nextDirection = { x: -1, y: 0 };
+      const prevLen = state.snake.length;
+      const prevScore = state.score;
+      const result = tick(state);
+      // Non-lethal: gameState stays 'playing'
+      expect(result.gameState).toBe('playing');
+      // Tail popped: length decreased by 1
+      expect(result.snake).toHaveLength(prevLen - 1);
+      // Score penalty: drops by 5
+      expect(result.score).toBe(Math.max(0, prevScore - 5));
+      // Stun engaged
+      expect(result.stuckCounter).toBeGreaterThan(0);
+      // No reverse
+      expect(result.pendingReverse).toBe(false);
+      // Screen shake set
+      expect(result.screenShake).toEqual({ intensity: 4, duration: 8 });
+    });
+
+    it('triggers gameover on self-collision when length <= 1 (guard condition)', () => {
+      const snake = [
+        { x: 10, y: 10 },
+        { x: 9, y: 10 },
+      ];
+      const state = minimalState({ snake });
+      state.direction = { x: -1, y: 0 };
+      state.nextDirection = { x: -1, y: 0 };
+      const result = tick(state);
+      // After pop, length becomes 1 → guard fires → gameover
+      expect(result.gameState).toBe('gameover');
+      expect(result.snake).toHaveLength(1);
+    });
+
+    it('clamps score at 0 on self-collision penalty', () => {
+      const snake = [
+        { x: 10, y: 10 },
+        { x: 11, y: 10 },
+        { x: 11, y: 11 },
+        { x: 10, y: 11 },
+        { x: 9, y: 11 },
+        { x: 9, y: 10 },
+      ];
+      const state = minimalState({ snake, score: 2 });
+      state.direction = { x: -1, y: 0 };
+      state.nextDirection = { x: -1, y: 0 };
+      const result = tick(state);
+      expect(result.score).toBe(0);
+      expect(result.gameState).toBe('playing');
     });
 
     it('detects food collision', () => {
@@ -795,13 +857,25 @@ describe('Phase 5 — Food System', () => {
 
   describe('Speed curve — (Test Case 19)', () => {
     it('increases tick interval (slows down) as snake grows', () => {
-      // Speed formula: baseTickInterval * (1 + (length - 3) * 0.02)
+      // Speed formula: baseTickInterval * (1 + (length - 3) * SPEED_SLOPE)
       const state = minimalState();
       state.baseTickInterval = 150;
-      const shortSpeed = 150 * (1 + (5 - 3) * 0.02); // length 5
-      const longSpeed = 150 * (1 + (50 - 3) * 0.02); // length 50
-      expect(shortSpeed).toBeCloseTo(156, 0);
-      expect(longSpeed).toBeGreaterThan(280);
+      const shortSpeed = calculateSpeed(5, 150); // length 5
+      const longSpeed = calculateSpeed(50, 150); // length 50
+      expect(shortSpeed).toBe(165);
+      expect(longSpeed).toBe(502);
+    });
+
+    it('capped at MAX_TICK_INTERVAL for extreme lengths', () => {
+      expect(calculateSpeed(400, 150)).toBe(800);  // capped
+      expect(calculateSpeed(90, 150)).toBe(800);   // floor entry
+      expect(calculateSpeed(89, 150)).toBeLessThan(800); // just below cap
+    });
+
+    it('clamped to BASE_TICK_INTERVAL for sub-length-3', () => {
+      expect(calculateSpeed(1, 150)).toBe(150); // clamped
+      expect(calculateSpeed(2, 150)).toBe(150); // clamped
+      expect(calculateSpeed(3, 150)).toBe(150); // baseline
     });
   });
 
@@ -1001,6 +1075,41 @@ describe('Phase 8 — Integration', () => {
       // Verify food is placed
       const totalFood = populated.rooms.flat().reduce((sum, r) => sum + r.entities.food.length, 0);
       expect(totalFood).toBeGreaterThan(0);
+    });
+  });
+});
+
+describe('Issue #54 — Snake length-speed tuning with MAX_TICK_INTERVAL cap', () => {
+  describe('calculateSpeed clamping', () => {
+    it('currentTickInterval is capped at MAX_TICK_INTERVAL for snake length >= 90 (via tick)', () => {
+      const world = generateWorldMap(3, 3);
+      let state = createInitialState(world);
+      state = startGame(state);
+      // Force snake to a long length (95), positioned to avoid self-collision
+      const longSnake = [];
+      // Head at (10,10), moving RIGHT — (11,10) must be empty
+      longSnake.push({ x: 10, y: 10 });
+      // Fill body from (12,10) onward, skipping (11,10)
+      for (let i = 12; i < 12 + 94; i++) {
+        longSnake.push({ x: i, y: 10 });
+      }
+      state.snake = longSnake;
+      state.direction = { x: 1, y: 0 };
+      state.nextDirection = { x: 1, y: 0 };
+      const result = tick(state);
+      // Length=95 → raw=floor(150*(1+92*0.05))=840 → min(840,800)=800 → max(800,150)=800
+      expect(result.currentTickInterval).toBe(800);
+    });
+
+    it('currentTickInterval returns to BASE_TICK_INTERVAL after restart', () => {
+      const world = generateWorldMap(3, 3);
+      let state = createInitialState(world);
+      state = startGame(state);
+      expect(state.currentTickInterval).toBe(150);
+      // No food eaten — interval stays at base
+      const result = tick(state);
+      expect(result.snake.length).toBe(3);
+      expect(result.currentTickInterval).toBe(150);
     });
   });
 });

@@ -59,7 +59,8 @@ export const POWER_UP_TYPE = {
 
 // Speed curve
 export const BASE_TICK_INTERVAL = 150; // ms at length 3
-export const SPEED_SLOPE = 0.02; // multiplier per extra length unit
+export const SPEED_SLOPE = 0.05; // multiplier per extra length unit
+export const MAX_TICK_INTERVAL = 800; // ms cap on max slowdown
 
 // Combat defaults
 export const DEFAULT_FIRE_RATE = 3;       // frames between shots

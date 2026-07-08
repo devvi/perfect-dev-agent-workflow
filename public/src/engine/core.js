@@ -2,7 +2,7 @@
 // Main game loop, state management
 
 import {
-  ROOM_SIZE, ROOM_TYPE, BASE_TICK_INTERVAL, SPEED_SLOPE, CELL, STUCK_TICKS,
+  ROOM_SIZE, ROOM_TYPE, BASE_TICK_INTERVAL, SPEED_SLOPE, MAX_TICK_INTERVAL, CELL, STUCK_TICKS,
 } from './constants.js';
 import { generateWorldMap, findRoomOfType } from './generator.js';
 import { getRoomAt } from './world.js';
@@ -195,9 +195,17 @@ export function tick(state) {
     return s;
   }
 
-  // Self collision — with protection during room transition
+  // Self collision — non-lethal: tail pop + stun + score penalty + screen shake
   if (collisions.includes('self') && !duringTransition) {
-    s.gameState = 'gameover';
+    s.snake.pop();
+    if (s.snake.length <= 1) {
+      s.gameState = 'gameover';
+      return s;
+    }
+    s.stuckCounter = STUCK_TICKS;
+    s.pendingReverse = false;
+    s.score = Math.max(0, s.score - 5);
+    s.screenShake = { intensity: 4, duration: 8 };
     return s;
   }
 
@@ -380,7 +388,9 @@ export function createSavePoint(state) {
  * Longer snake = slower movement
  */
 export function calculateSpeed(length, baseInterval) {
-  return Math.floor(baseInterval * (1 + (length - 3) * SPEED_SLOPE));
+  const raw = Math.floor(baseInterval * (1 + (length - 3) * SPEED_SLOPE));
+  const clamped = Math.min(raw, MAX_TICK_INTERVAL);
+  return Math.max(clamped, BASE_TICK_INTERVAL);
 }
 
 /**
