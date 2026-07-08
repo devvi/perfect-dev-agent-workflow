@@ -77,11 +77,10 @@ PiBot (I) review every PR before auto-merge. Here are the criteria for each stag
 | Design doc exists | `docs/DESIGN/<N>-*.md` present | Request creation |
 | Architecture clear | Module responsibilities stated | Request clarification |
 | Phased tasks | ≥3 phases with concrete tasks | Request detail |
-| Test cases generated | Actual test code in `tests/`, not placeholders | Request real tests |
-| Edge cases covered | Tests include boundary conditions from research | Request additions |
-| Plan issue created | Consolidated plan issue exists | Request creation |
+| Test specifications | Test scenarios described in DESIGN doc (text only, not code) | Request test specs |
+| Edge cases covered | Boundary conditions documented in DESIGN doc | Request additions |
 
-**Auto-merge decision:** All core checks (design, tasks, tests) pass → merge. Tests missing → block until added.
+**Auto-merge decision:** All core checks (design, tasks, test specs, edge cases) pass → merge. No test code required in plan stage — test code is created by implement agent.
 
 ### Implement PR Gate
 

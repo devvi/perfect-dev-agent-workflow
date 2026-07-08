@@ -15,6 +15,9 @@ import {
   POINTS_PER_FOOD,
   DIR,
   STUCK_TICKS,
+  BASE_TICK_INTERVAL,
+  SPEED_SLOPE,
+  calculateSpeed,
 } from '../public/src/gameboy-snake-engine.js';
 
 function stateWithSnake(snake, overrides = {}) {
@@ -547,6 +550,77 @@ describe('Issue #46 — Stuck+Reverse on wall collision', () => {
       const next = tick(state);
       expect(next.gameState).toBe('gameover');
       expect(next.stuckCounter).toBe(0); // should not be stuck
+    });
+  });
+});
+
+// =====================================================================
+// Issue #50 — Snake speed proportional to length
+// =====================================================================
+
+describe('Issue #50 — Snake speed proportional to length', () => {
+  describe('calculateSpeed function', () => {
+    it('Test 1: length=3 (minimum) returns BASE_TICK_INTERVAL (150)', () => {
+      expect(calculateSpeed(3, BASE_TICK_INTERVAL)).toBe(150);
+    });
+
+    it('Test 2: length=10 returns 171', () => {
+      // floor(150 * (1 + (10 - 3) * 0.02)) = floor(150 * 1.14) = floor(171) = 171
+      expect(calculateSpeed(10, BASE_TICK_INTERVAL)).toBe(171);
+    });
+
+    it('Test 3: length=50 returns 291', () => {
+      // floor(150 * (1 + (50 - 3) * 0.02)) = floor(150 * 1.94) = floor(291) = 291
+      expect(calculateSpeed(50, BASE_TICK_INTERVAL)).toBe(291);
+    });
+
+    it('Test 4: length=400 returns 1341', () => {
+      // floor(150 * (1 + (400 - 3) * 0.02)) = floor(150 * 8.94) = floor(1341) = 1341
+      expect(calculateSpeed(400, BASE_TICK_INTERVAL)).toBe(1341);
+    });
+
+    it('Test 5: length=4 returns 153', () => {
+      // floor(150 * (1 + (4 - 3) * 0.02)) = floor(150 * 1.02) = floor(153) = 153
+      expect(calculateSpeed(4, BASE_TICK_INTERVAL)).toBe(153);
+    });
+
+    it('Test 6: length=1 (after damage) is clamped to BASE_TICK_INTERVAL', () => {
+      // Without clamp: floor(150 * (1 + (1 - 3) * 0.02)) = floor(150 * 0.96) = floor(144) = 144
+      // With clamp: Math.max(144, 150) = 150
+      expect(calculateSpeed(1, BASE_TICK_INTERVAL)).toBe(150);
+    });
+  });
+
+  describe('tick updates currentTickInterval', () => {
+    it('Test 7: currentTickInterval increases after eating food', () => {
+      const snake = [
+        { x: 5, y: 5 },
+        { x: 4, y: 5 },
+        { x: 3, y: 5 },
+      ];
+      const state = stateWithSnake(snake, {
+        food: { x: 6, y: 5 },
+        currentTickInterval: BASE_TICK_INTERVAL,
+      });
+      const next = tick(state);
+      expect(next.snake.length).toBe(4); // ate food, grew
+      expect(next.currentTickInterval).toBeGreaterThan(BASE_TICK_INTERVAL);
+    });
+
+    it('Test 8: currentTickInterval unchanged when no food eaten', () => {
+      const snake = [
+        { x: 5, y: 5 },
+        { x: 4, y: 5 },
+        { x: 3, y: 5 },
+      ];
+      // Food far away so snake doesn't eat it
+      const state = stateWithSnake(snake, {
+        food: { x: 19, y: 19 },
+        currentTickInterval: BASE_TICK_INTERVAL,
+      });
+      const next = tick(state);
+      expect(next.snake.length).toBe(3); // didn't eat
+      expect(next.currentTickInterval).toBe(BASE_TICK_INTERVAL);
     });
   });
 });
