@@ -221,6 +221,22 @@ export function tick(state) {
 
   // Wall/Stone_Wall damage — stuck+reverse instead of tail removal
   if (collisions.includes('damage')) {
+    // If food also at this cell, remove it and award points
+    // before applying the damage penalties
+    if (collisions.includes('food') && s.world) {
+      const { rx, ry } = worldToRoomCoords(newHead.x, newHead.y);
+      const room = getRoomAt(s.world, rx, ry);
+      if (room) {
+        const foodIdx = room.entities.food.findIndex(
+          f => f.x === newHead.x && f.y === newHead.y
+        );
+        if (foodIdx >= 0) {
+          room.entities.food.splice(foodIdx, 1);
+          s.score += 10;  // Award points for eating even on wall
+        }
+      }
+    }
+
     s.stuckCounter = STUCK_TICKS;
     s.pendingReverse = true;
     s.screenShake = { intensity: 4, duration: 8 };

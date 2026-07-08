@@ -1589,3 +1589,346 @@ describe('Issue #66 — Title Menu State', () => {
     expect(restarted.menuMode).toBe('main');
   });
 });
+
+// =====================================================================
+// Issue #70 — Food collision bug fix
+// Food on WALL/STONE_WALL cells is detected alongside wall damage
+// =====================================================================
+
+describe('Issue #70 — Food collision on wall cells', () => {
+  // ── Group A: checkSnakeCollision returns correct combined results ──
+
+  describe('Group A — checkSnakeCollision results', () => {
+    it('A1: Food on FLOOR cell → [food] (regression)', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      const room = getRoomAt(world, 0, 0);
+      // Interior cell (5,5) in room-local → world (5,5)
+      room.tiles[5][5] = CELL.FLOOR;
+      room.entities.food.push({ x: 5, y: 5 });
+
+      const result = checkSnakeCollision({ x: 5, y: 5 }, state.snake, state);
+      expect(result).toContain('food');
+      expect(result).not.toContain('damage');
+    });
+
+    it('A2: Food on border WALL cell → [damage, food]', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      const room = getRoomAt(world, 0, 0);
+      // Border cell (0, 5) in room-local → world (0, 5) — already WALL
+      room.entities.food.push({ x: 0, y: 5 });
+
+      const result = checkSnakeCollision({ x: 0, y: 5 }, state.snake, state);
+      expect(result).toContain('damage');
+      expect(result).toContain('food');
+    });
+
+    it('A3: Food on interior WALL cell → [damage, food]', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      const room = getRoomAt(world, 0, 0);
+      // Override an interior cell to WALL
+      room.tiles[10][10] = CELL.WALL;
+      room.entities.food.push({ x: 10, y: 10 });
+
+      const result = checkSnakeCollision({ x: 10, y: 10 }, state.snake, state);
+      expect(result).toContain('damage');
+      expect(result).toContain('food');
+    });
+
+    it('A4: Food on STONE_WALL cell → [damage, food]', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      const room = getRoomAt(world, 0, 0);
+      room.tiles[10][10] = CELL.STONE_WALL;
+      room.entities.food.push({ x: 10, y: 10 });
+
+      const result = checkSnakeCollision({ x: 10, y: 10 }, state.snake, state);
+      expect(result).toContain('damage');
+      expect(result).toContain('food');
+    });
+
+    it('A5: No food on wall → [damage] (regression)', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      const room = getRoomAt(world, 0, 0);
+      room.tiles[10][10] = CELL.WALL;
+      // No food placed
+
+      const result = checkSnakeCollision({ x: 10, y: 10 }, state.snake, state);
+      expect(result).toEqual(['damage']);
+    });
+
+    it('A6: Food on SPIKE cell → [death] (death wins)', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      const room = getRoomAt(world, 0, 0);
+      room.tiles[10][10] = CELL.SPIKE;
+      room.entities.food.push({ x: 10, y: 10 });
+
+      const result = checkSnakeCollision({ x: 10, y: 10 }, state.snake, state);
+      expect(result).toEqual(['death']);
+    });
+
+    it('A7: Food on out-of-bounds → [damage] (bounds before food)', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      const room = getRoomAt(world, 0, 0);
+      room.entities.food.push({ x: -1, y: 10 });
+
+      const result = checkSnakeCollision({ x: -1, y: 10 }, state.snake, state);
+      expect(result).toEqual(['damage']);
+    });
+  });
+
+  // ── Group B: tick() processes combined [damage, food] correctly ──
+
+  describe('Group B — tick() integration', () => {
+    it('B1: tick with food on WALL — food removed, net score +5, stuckCounter set, playing', () => {
+      const world = generateWorldMap(3, 3);
+      const state = createInitialState(world);
+      const room = getRoomAt(world, 0, 0);
+      // Place snake heading right toward an interior WALL cell
+      state.snake = [
+        { x: 8, y: 10 },
+        { x: 7, y: 10 },
+        { x: 6, y: 10 },
+      ];
+      state.direction = { x: 1, y: 0 };
+      state.nextDirection = { x: 1, y: 0 };
+      state.currentRoom = { x: 0, y: 0 };
+      state.gameState = 'playing';
+      // Set cell (9,10) to WALL and place food there
+      room.tiles[10][9] = CELL.WALL;
+      room.entities.food.push({ x: 9, y: 10 });
+
+      const result = tick(state);
+      expect(result.gameState).toBe('playing');
+      // Food removed: check room
+      const roomAfter = getRoomAt(world, 0, 0);
+      expect(roomAfter.entities.food.find(f => f.x === 9 && f.y === 10)).toBeUndefined();
+      // Score: 0 + 10 (food) - 5 (wall penalty) = 5
+      expect(result.score).toBe(5);
+      expect(result.stuckCounter).toBeGreaterThan(0);
+    });
+
+    it('B2: tick with food on STONE_WALL — same behavior', () => {
+      const world = generateWorldMap(3, 3);
+      const state = createInitialState(world);
+      const room = getRoomAt(world, 0, 0);
+      state.snake = [
+        { x: 8, y: 10 },
+        { x: 7, y: 10 },
+        { x: 6, y: 10 },
+      ];
+      state.direction = { x: 1, y: 0 };
+      state.nextDirection = { x: 1, y: 0 };
+      state.currentRoom = { x: 0, y: 0 };
+      state.gameState = 'playing';
+      room.tiles[10][9] = CELL.STONE_WALL;
+      room.entities.food.push({ x: 9, y: 10 });
+
+      const result = tick(state);
+      expect(result.gameState).toBe('playing');
+      const roomAfter = getRoomAt(world, 0, 0);
+      expect(roomAfter.entities.food.find(f => f.x === 9 && f.y === 10)).toBeUndefined();
+      expect(result.score).toBe(5);
+      expect(result.stuckCounter).toBeGreaterThan(0);
+    });
+
+    it('B3: tick with food on WALL — net score check (initial 100 → 105)', () => {
+      const world = generateWorldMap(3, 3);
+      const state = createInitialState(world);
+      const room = getRoomAt(world, 0, 0);
+      state.snake = [
+        { x: 8, y: 10 },
+        { x: 7, y: 10 },
+        { x: 6, y: 10 },
+      ];
+      state.direction = { x: 1, y: 0 };
+      state.nextDirection = { x: 1, y: 0 };
+      state.currentRoom = { x: 0, y: 0 };
+      state.gameState = 'playing';
+      state.score = 100;
+      room.tiles[10][9] = CELL.WALL;
+      room.entities.food.push({ x: 9, y: 10 });
+
+      const result = tick(state);
+      // 100 + 10 - 5 = 105
+      expect(result.score).toBe(105);
+    });
+
+    it('B4: tick with food on WALL — food entity removed from room', () => {
+      const world = generateWorldMap(3, 3);
+      const state = createInitialState(world);
+      const room = getRoomAt(world, 0, 0);
+      state.snake = [
+        { x: 8, y: 10 },
+        { x: 7, y: 10 },
+        { x: 6, y: 10 },
+      ];
+      state.direction = { x: 1, y: 0 };
+      state.nextDirection = { x: 1, y: 0 };
+      state.currentRoom = { x: 0, y: 0 };
+      state.gameState = 'playing';
+      room.tiles[10][9] = CELL.WALL;
+      room.entities.food.push({ x: 9, y: 10 });
+
+      tick(state);
+      const roomAfter = getRoomAt(world, 0, 0);
+      // Food at (9,10) should be removed
+      const foodStillThere = roomAfter.entities.food.some(f => f.x === 9 && f.y === 10);
+      expect(foodStillThere).toBe(false);
+    });
+
+    it('B5: tick with wall but no food — score -5, no food affected (regression)', () => {
+      const world = generateWorldMap(3, 3);
+      const state = createInitialState(world);
+      const room = getRoomAt(world, 0, 0);
+      state.snake = [
+        { x: 8, y: 10 },
+        { x: 7, y: 10 },
+        { x: 6, y: 10 },
+      ];
+      state.direction = { x: 1, y: 0 };
+      state.nextDirection = { x: 1, y: 0 };
+      state.currentRoom = { x: 0, y: 0 };
+      state.gameState = 'playing';
+      state.score = 50;
+      room.tiles[10][9] = CELL.WALL;
+      // No food placed
+
+      const result = tick(state);
+      expect(result.score).toBe(45);
+      expect(result.stuckCounter).toBeGreaterThan(0);
+    });
+
+    it('B6: tick with food on FLOOR — snake grows +1, score +10, no stuckCounter (regression)', () => {
+      const world = generateWorldMap(3, 3);
+      const state = createInitialState(world);
+      const room = getRoomAt(world, 0, 0);
+      state.snake = [
+        { x: 8, y: 10 },
+        { x: 7, y: 10 },
+        { x: 6, y: 10 },
+      ];
+      state.direction = { x: 1, y: 0 };
+      state.nextDirection = { x: 1, y: 0 };
+      state.currentRoom = { x: 0, y: 0 };
+      state.gameState = 'playing';
+      state.score = 20;
+      // Food on FLOOR cell (no wall)
+      room.tiles[10][9] = CELL.FLOOR;
+      room.entities.food.push({ x: 9, y: 10 });
+
+      const beforeLen = state.snake.length;
+      const result = tick(state);
+      expect(result.snake.length).toBe(beforeLen + 1); // Grows
+      expect(result.score).toBe(30); // +10
+      expect(result.stuckCounter).toBe(0); // Not stuck
+    });
+  });
+
+  // ── Group C: Edge cases ──
+
+  describe('Group C — Edge cases', () => {
+    it('C1: Two food items at same WALL cell — first eaten, second remains', () => {
+      const world = generateWorldMap(3, 3);
+      const state = createInitialState(world);
+      const room = getRoomAt(world, 0, 0);
+      state.snake = [
+        { x: 8, y: 10 },
+        { x: 7, y: 10 },
+        { x: 6, y: 10 },
+      ];
+      state.direction = { x: 1, y: 0 };
+      state.nextDirection = { x: 1, y: 0 };
+      state.currentRoom = { x: 0, y: 0 };
+      state.gameState = 'playing';
+      room.tiles[10][9] = CELL.WALL;
+      // Two food items at same position
+      room.entities.food.push({ x: 9, y: 10 });
+      room.entities.food.push({ x: 9, y: 10 });
+
+      tick(state);
+      const roomAfter = getRoomAt(world, 0, 0);
+      // One should remain (splice removes first match)
+      expect(roomAfter.entities.food.filter(f => f.x === 9 && f.y === 10)).toHaveLength(1);
+    });
+
+    it('C2: Food + enemy at same WALL cell — food removed, damage handler returns early (enemy not processed)', () => {
+      const world = generateWorldMap(3, 3);
+      const state = createInitialState(world);
+      const room = getRoomAt(world, 0, 0);
+      state.snake = [
+        { x: 8, y: 10 },
+        { x: 7, y: 10 },
+        { x: 6, y: 10 },
+        { x: 5, y: 10 },
+      ];
+      state.direction = { x: 1, y: 0 };
+      state.nextDirection = { x: 1, y: 0 };
+      state.currentRoom = { x: 0, y: 0 };
+      state.gameState = 'playing';
+      state.score = 30;
+      room.tiles[10][9] = CELL.WALL;
+      room.entities.food.push({ x: 9, y: 10 });
+      room.entities.enemies.push({ x: 9, y: 10, segments: [], hp: 1 });
+
+      const result = tick(state);
+      // Food should be consumed
+      const roomAfter = getRoomAt(world, 0, 0);
+      const foodStillThere = roomAfter.entities.food.some(f => f.x === 9 && f.y === 10);
+      expect(foodStillThere).toBe(false);
+      // Damage handler returns early (stuck+reverse), enemy not processed
+      // Snake length preserved (no tail pop or growth)
+      expect(result.snake.length).toBe(state.snake.length);
+      // StuckCounter set because wall damage wins
+      expect(result.stuckCounter).toBeGreaterThan(0);
+    });
+
+    it('C3: Score = 0, food on wall — score becomes 10 (0 + 10 - max(0,0-5)=0)', () => {
+      const world = generateWorldMap(3, 3);
+      const state = createInitialState(world);
+      const room = getRoomAt(world, 0, 0);
+      state.snake = [
+        { x: 8, y: 10 },
+        { x: 7, y: 10 },
+        { x: 6, y: 10 },
+      ];
+      state.direction = { x: 1, y: 0 };
+      state.nextDirection = { x: 1, y: 0 };
+      state.currentRoom = { x: 0, y: 0 };
+      state.gameState = 'playing';
+      state.score = 0;
+      room.tiles[10][9] = CELL.WALL;
+      room.entities.food.push({ x: 9, y: 10 });
+
+      const result = tick(state);
+      // score: 0 + 10 (food) = 10, then max(0, 10-5) = 5
+      // Wait — order in code: food score += 10 first, then score = max(0, score - 5)
+      // So: score becomes 0 + 10 = 10, then max(0, 10-5) = 5
+      expect(result.score).toBe(5);
+    });
+
+    it('C4: Snake length 1 hits wall with food — stuckCounter set, food removed, playing', () => {
+      const world = generateWorldMap(3, 3);
+      const state = createInitialState(world);
+      const room = getRoomAt(world, 0, 0);
+      state.snake = [{ x: 8, y: 10 }];
+      state.direction = { x: 1, y: 0 };
+      state.nextDirection = { x: 1, y: 0 };
+      state.currentRoom = { x: 0, y: 0 };
+      state.gameState = 'playing';
+      room.tiles[10][9] = CELL.WALL;
+      room.entities.food.push({ x: 9, y: 10 });
+
+      const result = tick(state);
+      expect(result.gameState).toBe('playing');
+      expect(result.stuckCounter).toBeGreaterThan(0);
+      const roomAfter = getRoomAt(world, 0, 0);
+      expect(roomAfter.entities.food.find(f => f.x === 9 && f.y === 10)).toBeUndefined();
+    });
+  });
+});
