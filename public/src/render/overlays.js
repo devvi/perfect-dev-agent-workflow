@@ -3,12 +3,28 @@
 
 import { PALETTE, CANVAS_SIZE, GAME_STATE } from '../engine/constants.js';
 
+const MENU_ITEMS = ['START GAME', 'ABOUT'];
+
+function truncateHash(hash) {
+  if (!hash || hash === 'N/A') return 'N/A';
+  return hash.length > 7 ? hash.slice(0, 7) : hash;
+}
+
+function truncateMessage(msg) {
+  if (!msg || msg === 'N/A') return 'N/A';
+  return msg.length > 55 ? msg.slice(0, 52) + '...' : msg;
+}
+
 /**
  * Render overlay screens (title, gameover, won)
  */
 export function renderOverlay(ctx, state) {
   if (state.gameState === 'title') {
-    renderTitleScreen(ctx);
+    if (state.menuMode === 'about') {
+      renderAboutScreen(ctx, state);
+    } else {
+      renderTitleScreen(ctx, state);
+    }
   } else if (state.gameState === 'gameover') {
     renderGameOverScreen(ctx, state);
   } else if (state.gameState === 'won') {
@@ -19,9 +35,9 @@ export function renderOverlay(ctx, state) {
 }
 
 /**
- * Title screen
+ * Title screen with interactive menu
  */
-function renderTitleScreen(ctx) {
+function renderTitleScreen(ctx, state) {
   // Dark overlay
   ctx.fillStyle = 'rgba(10, 10, 26, 0.85)';
   ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
@@ -47,12 +63,46 @@ function renderTitleScreen(ctx) {
   ctx.fillText('⬆ ⬇ ⬅ ➡  Move', CANVAS_SIZE / 2, 250);
   ctx.fillText('Z  Fire projectile', CANVAS_SIZE / 2, 268);
   ctx.fillText('X  Interact (gacha/save)', CANVAS_SIZE / 2, 286);
-  ctx.fillText('ENTER  Start game', CANVAS_SIZE / 2, 310);
+  ctx.fillText('ENTER  Select', CANVAS_SIZE / 2, 310);
 
-  // Start prompt
-  ctx.fillStyle = PALETTE.FOOD;
+  // Interactive menu
+  const menuY = 340;
+  const lineHeight = 22;
+  MENU_ITEMS.forEach((item, i) => {
+    const prefix = i === state.menuIndex ? '▶ ' : '  ';
+    ctx.fillStyle = i === state.menuIndex ? PALETTE.FOOD : '#ccc';
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(prefix + item, CANVAS_SIZE / 2, menuY + i * lineHeight);
+  });
+}
+
+/**
+ * About screen showing commit info
+ */
+function renderAboutScreen(ctx, state) {
+  // Dark overlay
+  ctx.fillStyle = 'rgba(10, 10, 26, 0.85)';
+  ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+  ctx.fillStyle = PALETTE.GOLD;
+  ctx.font = '16px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('ABOUT', CANVAS_SIZE / 2, 150);
+
+  const info = state.commitInfo || { hash: 'N/A', message: 'N/A', date: 'N/A' };
+
+  ctx.fillStyle = '#ccc';
   ctx.font = '12px monospace';
-  ctx.fillText('PRESS ENTER TO START', CANVAS_SIZE / 2, 350);
+  ctx.textAlign = 'left';
+  ctx.fillText('Commit: ' + truncateHash(info.hash), 80, 200);
+  ctx.fillText('Msg:   ' + truncateMessage(info.message), 80, 230);
+  ctx.fillText('Date:  ' + info.date, 80, 270);
+
+  ctx.fillStyle = PALETTE.FOOD;
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Press any key to return', CANVAS_SIZE / 2, 330);
 }
 
 /**
