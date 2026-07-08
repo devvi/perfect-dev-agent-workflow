@@ -20,8 +20,8 @@ const fs = require('fs');
 const path = require('path');
 
 const SECRET = process.env.GITHUB_WEBHOOK_SECRET;
-const SECRET = process.env.GITHUB_WEBHOOK_SECRET;
 const REPO_DIR = process.env.PDA_REPO_DIR || path.resolve(__dirname, '..');
+const PORT = parseInt(process.env.WEBHOOK_PORT || '1808', 10);
 const LOG_DIR = path.resolve(REPO_DIR, 'server/logs');
 const WORK_DIR = '/tmp/pda-work-orders';
 const GITHUB_REPO = 'devvi/perfect-dev-agent-workflow';
