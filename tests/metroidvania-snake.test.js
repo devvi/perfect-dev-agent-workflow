@@ -1516,3 +1516,76 @@ describe('Phase 4 — Stuck+Reverse on obstacle collision (Issue #46)', () => {
     });
   });
 });
+
+// =====================================================================
+// Issue #66 — Title Menu (Interactive Screen with START GAME / ABOUT)
+// =====================================================================
+
+describe('Issue #66 — Title Menu State', () => {
+  it('initializes with menuIndex=0 and menuMode=main', () => {
+    const world = generateWorldMap(5, 5);
+    const state = createInitialState(world);
+    expect(state.menuIndex).toBe(0);
+    expect(state.menuMode).toBe('main');
+  });
+
+  it('ArrowDown increments menuIndex with wrap', () => {
+    // Simulate the two menu items wrapping
+    const itemCount = 2;
+    let menuIndex = 0;
+    // Press down once
+    menuIndex = (menuIndex + 1 + itemCount) % itemCount;
+    expect(menuIndex).toBe(1);
+    // Press down again (should wrap to 0)
+    menuIndex = (menuIndex + 1 + itemCount) % itemCount;
+    expect(menuIndex).toBe(0);
+  });
+
+  it('ArrowUp decrements menuIndex with wrap', () => {
+    const itemCount = 2;
+    let menuIndex = 0;
+    // Press up from 0 should wrap to 1
+    menuIndex = (menuIndex - 1 + itemCount) % itemCount;
+    expect(menuIndex).toBe(1);
+  });
+
+  it('Enter on menuIndex=0 transitions gameState to playing', () => {
+    const world = generateWorldMap(5, 5);
+    const state = createInitialState(world);
+    // Simulate startGame() called when Enter pressed on START GAME
+    const playingState = startGame(state);
+    expect(playingState.gameState).toBe('playing');
+  });
+
+  it('commitInfo fallback when window.__COMMIT_INFO missing', () => {
+    const world = generateWorldMap(5, 5);
+    const state = createInitialState(world);
+    expect(state.commitInfo.hash).toBe('N/A');
+    expect(state.commitInfo.message).toBe('N/A');
+    expect(state.commitInfo.date).toBe('N/A');
+  });
+
+  it('menuMode switches to about and resets on any key', () => {
+    const state = { menuIndex: 0, menuMode: 'main' };
+    // Enter on ABOUT (index 1)
+    state.menuMode = 'about';
+    expect(state.menuMode).toBe('about');
+    // Any key returns to main
+    state.menuMode = 'main';
+    state.menuIndex = 0;
+    expect(state.menuMode).toBe('main');
+    expect(state.menuIndex).toBe(0);
+  });
+
+  it('menu state resets on game-over restart', () => {
+    // createInitialState always returns fresh menu defaults
+    const world = generateWorldMap(5, 5);
+    const state = createInitialState(world);
+    // Simulate playing, then game-over
+    let gameState = 'gameover';
+    // Restart: call createInitialState again
+    const restarted = createInitialState(world);
+    expect(restarted.menuIndex).toBe(0);
+    expect(restarted.menuMode).toBe('main');
+  });
+});

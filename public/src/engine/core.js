@@ -32,6 +32,13 @@ export function createInitialState(existingWorld = null) {
   // Mark start room as explored
   if (startRoom) startRoom.explored = true;
 
+  // Commit metadata (from window.__COMMIT_INFO if available, else fallback)
+  const commitInfo = (typeof window !== 'undefined' && window.__COMMIT_INFO &&
+    window.__COMMIT_INFO.hash &&
+    !window.__COMMIT_INFO.hash.startsWith('__'))
+    ? window.__COMMIT_INFO
+    : { hash: 'N/A', message: 'N/A', date: 'N/A' };
+
   return {
     snake,
     direction: startDir,
@@ -62,6 +69,9 @@ export function createInitialState(existingWorld = null) {
     screenShake: null,
     stuckCounter: 0,
     pendingReverse: false,
+    menuIndex: 0,
+    menuMode: 'main',
+    commitInfo: commitInfo,
   };
 }
 

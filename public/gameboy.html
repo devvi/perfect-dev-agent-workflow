@@ -32,6 +32,14 @@ canvas#game{display:block;border:3px solid #16213e;image-rendering:pixelated;cur
 </div>
 <div class="footer">🐍 探索 · 战斗 · 成长 — 到达 ★ 目标房间即可胜利</div>
 
+<script>
+  window.__COMMIT_INFO = {
+    hash: "__COMMIT_HASH__",
+    message: "__COMMIT_MSG__",
+    date: "__COMMIT_DATE__"
+  };
+</script>
+
 <script type="importmap">
 {
   "imports": {
@@ -147,11 +155,37 @@ function updateHUD() {
 document.addEventListener('keydown', (e) => {
   if (!state) return;
 
-  // Title screen: any arrow or enter starts game
+  // Title screen: interactive menu
   if (state.gameState === 'title') {
-    if (e.code === 'Enter' || e.code === 'Space' || e.code.startsWith('Arrow')) {
+    // ABOUT screen: any key returns to main menu
+    if (state.menuMode === 'about') {
       e.preventDefault();
-      start();
+      state = { ...state, menuIndex: 0, menuMode: 'main' };
+      render(ctx, state);
+      return;
+    }
+
+    // Main menu: navigation
+    if (e.code === 'ArrowUp' || e.code === 'ArrowDown') {
+      e.preventDefault();
+      const direction = e.code === 'ArrowUp' ? -1 : 1;
+      const itemCount = 2; // START GAME, ABOUT
+      const newIndex = (state.menuIndex + direction + itemCount) % itemCount;
+      state = { ...state, menuIndex: newIndex };
+      render(ctx, state);
+      return;
+    }
+
+    // Main menu: selection
+    if (e.code === 'Enter' || e.code === 'Space') {
+      e.preventDefault();
+      if (state.menuIndex === 0) {
+        start(); // START GAME → transitions to playing
+      } else {
+        // ABOUT → switch to about screen
+        state = { ...state, menuMode: 'about' };
+        render(ctx, state);
+      }
       return;
     }
   }
