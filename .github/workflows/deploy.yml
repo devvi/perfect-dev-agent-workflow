@@ -26,14 +26,14 @@ jobs:
         id: check
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                    INPUT_PR_NUM: ${{ inputs.pr_num || '' }}
+          INPUT_PR_NUM: ${{ inputs.pr_num || '' }}
         run: |
           PR_NUM="$INPUT_PR_NUM"
 
           if [ -z "$PR_NUM" ]; then
             COMMIT_SHA="${{ github.sha }}"
             echo "No input PR. Checking commit $COMMIT_SHA..."
-            PR_NUM=$(gh api "repos/${{ github.repository }}/commits/${COMMIT_SHA}/pulls" 
+            PR_NUM=$(gh api "repos/${{ github.repository }}/commits/${COMMIT_SHA}/pulls" \
               --jq '.[] | select(.state == "closed" and .merged_at != null) | .number' 2>/dev/null | head -1)
           fi
 
@@ -45,46 +45,6 @@ jobs:
 
           echo "Checking PR #$PR_NUM for workflow/implement label..."
 
-          HAS_LABEL=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUM}" 
-            --jq '[.labels[].name] | any(. == "workflow/implement")' 2>/dev/null)
-
-          if [ "$HAS_LABEL" = "true" ]; then
-            echo "PR #$PR_NUM has workflow/implement label → deploy!"
-            echo "should_deploy=true" >> $GITHUB_OUTPUT
-            echo "pr_num=$PR_NUM" >> $GITHUB_OUTPUT
-          else
-            echo "PR #$PR_NUM does NOT have workflow/implement label → skip deploy."
-  # Check if this push came from merging an implement PR
-  check-implement:
-    runs-on: ubuntu-latest
-    outputs:
-      should-deploy: ${{ steps.check.outputs.should_deploy }}
-      pr-num: ${{ steps.check.outputs.pr_num }}
-    permissions:
-      pull-requests: read
-    steps:
-      - name: Check PR labels for workflow/implement
-        id: check
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          COMMIT_SHA="${{ github.sha }}"
-          echo "Checking if commit $COMMIT_SHA came from an implement PR..."
-
-          # Find the merged PR that contains this commit
-          PR_NUM=$(gh api "repos/${{ github.repository }}/commits/${COMMIT_SHA}/pulls" \
-            --jq '.[] | select(.state == "closed" and .merged_at != null) | .number' \
-            2>/dev/null | head -1)
-
-          if [ -z "$PR_NUM" ]; then
-            echo "No merged PR found for commit. Skipping deploy."
-            echo "should_deploy=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          echo "Found merged PR #$PR_NUM"
-
-          # Check if it has workflow/implement label
           HAS_LABEL=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUM}" \
             --jq '[.labels[].name] | any(. == "workflow/implement")' 2>/dev/null)
 
