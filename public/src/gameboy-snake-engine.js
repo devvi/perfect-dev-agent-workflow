@@ -9,7 +9,9 @@ export const STUCK_TICKS = 5;
 
 // Speed proportional to length (Issue #50)
 export const BASE_TICK_INTERVAL = 150; // ms at length 3 (fastest)
-export const SPEED_SLOPE = 0.02;       // multiplier per extra length unit
+export const SPEED_SLOPE = 0.05;       // multiplier per extra length unit
+
+export const MAX_TICK_INTERVAL = 800;  // ms cap on max slowdown
 
 export const DIR = {
   UP:    { x:  0, y: -1 },
@@ -75,8 +77,9 @@ export function changeDirection(state, dir) {
 }
 
 export function calculateSpeed(length, baseInterval) {
-  const speed = Math.floor(baseInterval * (1 + (length - 3) * SPEED_SLOPE));
-  return Math.max(speed, BASE_TICK_INTERVAL);
+  const raw = Math.floor(baseInterval * (1 + (length - 3) * SPEED_SLOPE));
+  const clamped = Math.min(raw, MAX_TICK_INTERVAL);
+  return Math.max(clamped, BASE_TICK_INTERVAL);
 }
 
 export function checkCollision(head, snake, food) {
@@ -131,9 +134,16 @@ export function tick(state) {
     return next;
   }
 
-  // Self collision → instant gameover (lethal)
+  // Self collision → non-lethal: tail pop + stun + score penalty
   if (collision === 'self') {
-    next.gameState = 'gameover';
+    next.snake.pop();
+    if (next.snake.length <= 1) {
+      next.gameState = 'gameover';
+      return next;
+    }
+    next.stuckCounter = STUCK_TICKS;
+    next.pendingReverse = false;
+    next.score = Math.max(0, next.score - 5);
     return next;
   }
 
