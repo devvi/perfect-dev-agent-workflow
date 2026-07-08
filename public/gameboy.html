@@ -90,6 +90,26 @@ function start() {
 }
 
 // --- Game tick ---
+function tickFn() {
+  if (!state || state.gameState !== 'playing') {
+    // Still render even when not playing (for overlays)
+    if (state) render(ctx, state);
+    return;
+  }
+
+  state = tick(state);
+  updateHUD();
+  render(ctx, state);
+
+  // Handle game over or win
+  if (state.gameState === 'gameover' || state.gameState === 'won') {
+    if (gameLoop) {
+      clearTimeout(gameLoop);
+      gameLoop = null;
+    }
+  }
+}
+
 function scheduleNextTick() {
   if (!state || state.gameState !== 'playing') return;
   const interval = state.currentTickInterval || 150;
@@ -107,26 +127,6 @@ function runTick() {
     clearTimeout(gameLoop);
     gameLoop = null;
   }
-
-  const tickFn = () => {
-    if (!state || state.gameState !== 'playing') {
-      // Still render even when not playing (for overlays)
-      if (state) render(ctx, state);
-      return;
-    }
-
-    state = tick(state);
-    updateHUD();
-    render(ctx, state);
-
-    // Handle game over or win
-    if (state.gameState === 'gameover' || state.gameState === 'won') {
-      if (gameLoop) {
-        clearTimeout(gameLoop);
-        gameLoop = null;
-      }
-    }
-  };
 
   // First tick immediately
   tickFn();
