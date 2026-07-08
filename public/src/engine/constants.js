@@ -81,6 +81,9 @@ export const CANVAS_SIZE = 400;
 export const MINIMAP_SIZE = 100;
 export const MINIMAP_MARGIN = 10;
 
+// Stuck+Reverse mechanic (Issue #46)
+export const STUCK_TICKS = 5;
+
 // localStorage key
 export const SAVE_KEY = 'snake_save';
 

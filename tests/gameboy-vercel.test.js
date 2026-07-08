@@ -133,7 +133,7 @@ describe('engine source integrity (imported from current src/)', () => {
     state = engine.startGame(state);
     expect(state.gameState).toBe('playing');
 
-    // Force snake to hit the right wall
+    // Force snake to hit the right wall (Issue #46: stuck+reverse, not gameover)
     state.snake = [
       { x: 19, y: 10 },
       { x: 18, y: 10 },
@@ -142,7 +142,8 @@ describe('engine source integrity (imported from current src/)', () => {
     state.direction = engine.DIR.RIGHT;
     state.nextDirection = engine.DIR.RIGHT;
     state = engine.tick(state);
-    expect(state.gameState).toBe('gameover');
+    expect(state.gameState).toBe('playing');
+    expect(state.stuckCounter).toBeGreaterThan(0);
 
     state = engine.resetGame();
     expect(state.gameState).toBe('idle');

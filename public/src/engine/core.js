@@ -2,7 +2,7 @@
 // Main game loop, state management
 
 import {
-  ROOM_SIZE, ROOM_TYPE, BASE_TICK_INTERVAL, SPEED_SLOPE, CELL,
+  ROOM_SIZE, ROOM_TYPE, BASE_TICK_INTERVAL, SPEED_SLOPE, CELL, STUCK_TICKS,
 } from './constants.js';
 import { generateWorldMap, findRoomOfType } from './generator.js';
 import { getRoomAt } from './world.js';
@@ -60,6 +60,8 @@ export function createInitialState(existingWorld = null) {
     gachaMessage: null,
     doorMessage: null,
     screenShake: null,
+    stuckCounter: 0,
+    pendingReverse: false,
   };
 }
 
@@ -89,6 +91,28 @@ export function tick(state) {
   }
 
   if (state.gameState !== 'playing') return state;
+
+  // Stuck handler — countdown then reverse (Issue #46)
+  if (s.stuckCounter > 0) {
+    s.tickCount++;
+    s.stuckCounter--;
+    if (s.stuckCounter === 0 && s.pendingReverse) {
+      // Execute reverse: tail becomes head, head becomes tail
+      s.snake = s.snake.reverse();
+      s.direction = { x: -s.direction.x || 0, y: -s.direction.y || 0 };
+      s.nextDirection = { x: s.direction.x, y: s.direction.y };
+      s.pendingReverse = false;
+      // Safety: if new head's next step would be in an obstacle, push one more step
+      const newHead = { x: s.snake[0].x + s.direction.x, y: s.snake[0].y + s.direction.y };
+      const check = checkSnakeCollision(newHead, s.snake, { ...s });
+      if (check.includes('damage') || check.includes('death')) {
+        s.snake[0] = newHead;
+      }
+      // Clear screen shake after reverse
+      if (s.screenShake) s.screenShake = null;
+    }
+    return s;
+  }
 
   s.tickCount++;
 
@@ -164,6 +188,16 @@ export function tick(state) {
     return s;
   }
 
+  // Wall/Stone_Wall damage — stuck+reverse instead of tail removal
+  if (collisions.includes('damage')) {
+    s.stuckCounter = STUCK_TICKS;
+    s.pendingReverse = true;
+    s.screenShake = { intensity: 4, duration: 8 };
+    s.score = Math.max(0, s.score - 5);
+    // Don't move head, don't remove tail — return early
+    return s;
+  }
+
   // Handle food collision (works with or without world-based room)
   const collidedFood = collisions.includes('food');
   const collidedEnemy = collisions.includes('enemy');
@@ -181,18 +215,8 @@ export function tick(state) {
     }
   }
 
-  // Move snake (skip if damage — head stays in place)
-  if (collidedDamage) {
-    // Damage: remove tail, don't move head to avoid wall embedding
-    s.snake = s.snake.slice(0, -1);
-    s.screenShake = { intensity: 3, duration: 6 };
-    s.score = Math.max(0, s.score - 5);
-
-    if (s.snake.length === 0) {
-      s.gameState = 'gameover';
-      return s;
-    }
-  } else if (collidedFood) {
+  // Move snake (skip if damage was already handled above)
+  if (collidedFood) {
     s.snake = [newHead, ...s.snake];
     s.score += 10;
   } else {

@@ -4,6 +4,9 @@ export const GRID_SIZE = 20;
 export const TOTAL_CELLS = GRID_SIZE * GRID_SIZE;
 export const POINTS_PER_FOOD = 10;
 
+// Stuck+Reverse mechanic (Issue #46)
+export const STUCK_TICKS = 5;
+
 export const DIR = {
   UP:    { x:  0, y: -1 },
   DOWN:  { x:  0, y:  1 },
@@ -38,6 +41,8 @@ export function createInitialState() {
     food: spawnFood(snake),
     score: 0,
     tickCount: 0,
+    stuckCounter: 0,
+    pendingReverse: false,
   };
 }
 
@@ -87,6 +92,19 @@ export function tick(state) {
   const next = cloneState(state);
   next.tickCount++;
 
+  // Stuck handler — countdown then reverse (Issue #46)
+  if (next.stuckCounter > 0) {
+    next.stuckCounter--;
+    if (next.stuckCounter === 0 && next.pendingReverse) {
+      // Execute reverse: tail becomes head, head becomes tail
+      next.snake = next.snake.reverse();
+      next.direction = { x: -next.direction.x || 0, y: -next.direction.y || 0 };
+      next.nextDirection = { x: next.direction.x, y: next.direction.y };
+      next.pendingReverse = false;
+    }
+    return next;
+  }
+
   const dir = next.nextDirection;
   next.direction = dir;
 
@@ -94,7 +112,17 @@ export function tick(state) {
   const newHead = { x: head.x + dir.x, y: head.y + dir.y };
 
   const collision = checkCollision(newHead, next.snake);
-  if (collision === 'wall' || collision === 'self') {
+
+  // Wall collision → stuck+reverse (not instant gameover)
+  if (collision === 'wall') {
+    next.stuckCounter = STUCK_TICKS;
+    next.pendingReverse = true;
+    next.score = Math.max(0, next.score - 5);
+    return next;
+  }
+
+  // Self collision → instant gameover (lethal)
+  if (collision === 'self') {
     next.gameState = 'gameover';
     return next;
   }

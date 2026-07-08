@@ -64,6 +64,14 @@ export function renderHUD(ctx, state) {
     ctx.fillText(state.gachaMessage, CANVAS_SIZE / 2, 380);
   }
 
+  // Stuck warning (Issue #46)
+  if (state.stuckCounter > 0) {
+    ctx.fillStyle = '#ff4444';
+    ctx.font = '14px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('⚠ STUCK!', CANVAS_SIZE / 2, 120);
+  }
+
   // Controls hint
   ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
   ctx.font = '7px monospace';
