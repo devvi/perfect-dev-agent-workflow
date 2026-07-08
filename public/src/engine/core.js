@@ -8,7 +8,7 @@ import { generateWorldMap, findRoomOfType } from './generator.js';
 import { getRoomAt } from './world.js';
 import { createSnake } from './entities.js';
 import { worldToRoomCoords, roomToWorldCoords, getCellAt } from './world.js';
-import { checkSnakeCollision, checkProjectileCollision, checkRoomTransition, lineSweepProjectileCollision } from './collision.js';
+import { checkSnakeCollision, checkProjectileCollision, checkRoomTransition, checkDoorPassable, lineSweepProjectileCollision } from './collision.js';
 import { fireProjectile, updateProjectiles, applyProjectileDamage, updateCooldowns } from './combat.js';
 import { updateEnemies, emergencyFoodRespawn } from './ai.js';
 import { useGachaMachine, tickPowerUps } from './items.js';
@@ -123,12 +123,25 @@ export function tick(state) {
   }
 
   if (transition.entered) {
+    // Check door constraints (locked, size gate) BEFORE allowing transition
+    const doorCheck = checkDoorPassable(s, getDoorDirFromTransition(transition));
+    if (!doorCheck.passable) {
+      // Blocked — don't enter the room
+      if (doorCheck.reason === 'locked') {
+        s.doorMessage = 'NEEDS KEY';
+      } else if (doorCheck.reason === 'size_gate') {
+        s.doorMessage = 'NEEDS LENGTH N+';
+      }
+      return s;
+    }
+
     duringTransition = true;
     const newRoom = transition.room;
     const prevRoomX = transition.previousRoomX;
     const prevRoomY = transition.previousRoomY;
     s.currentRoom = { x: transition.roomX, y: transition.roomY };
     s.previousRoom = { x: prevRoomX, y: prevRoomY };
+    s.doorMessage = null;
 
     // Mark room as explored
     if (!newRoom.explored) {
@@ -311,6 +324,17 @@ export function interact(state) {
   }
 
   return state;
+}
+
+
+function getDoorDirFromTransition(transition) {
+  const dx = transition.roomX - transition.previousRoomX;
+  const dy = transition.roomY - transition.previousRoomY;
+  if (dx === 1) return 'right';
+  if (dx === -1) return 'left';
+  if (dy === 1) return 'down';
+  if (dy === -1) return 'up';
+  return null;
 }
 
 /**

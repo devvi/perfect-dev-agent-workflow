@@ -150,7 +150,7 @@ export function buildSpanningTree(cols, rows, rng = Math.random) {
  */
 export function addRandomDoors(tree, cols, rows, rng = Math.random, density = 0.3) {
   const edges = new Set(tree);
-  const doorPairs = [];
+  const pairs = [];
 
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
@@ -158,29 +158,29 @@ export function addRandomDoors(tree, cols, rows, rng = Math.random, density = 0.
         const key1 = `${x},${y}:right`;
         const key2 = `${x+1},${y}:left`;
         if (!edges.has(key1) && !edges.has(key2)) {
-          doorPairs.push({ key1, key2 });
+          pairs.push([key1, key2]);
         }
       }
       if (y < rows - 1) {
         const key1 = `${x},${y}:down`;
         const key2 = `${x},${y+1}:up`;
         if (!edges.has(key1) && !edges.has(key2)) {
-          doorPairs.push({ key1, key2 });
+          pairs.push([key1, key2]);
         }
       }
     }
   }
 
-  // Shuffle pairs (safe: both keys of a pair stay together)
-  for (let i = doorPairs.length - 1; i > 0; i--) {
+  // Shuffle pairs (not individual keys) — pairs stay intact
+  for (let i = pairs.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
-    [doorPairs[i], doorPairs[j]] = [doorPairs[j], doorPairs[i]];
+    [pairs[i], pairs[j]] = [pairs[j], pairs[i]];
   }
 
-  const count = Math.floor(doorPairs.length * density);
-  for (let i = 0; i < count && i < doorPairs.length; i++) {
-    edges.add(doorPairs[i].key1);
-    edges.add(doorPairs[i].key2);
+  const count = Math.floor(pairs.length * density);
+  for (let i = 0; i < count && i < pairs.length; i++) {
+    edges.add(pairs[i][0]);
+    edges.add(pairs[i][1]);
   }
 
   return edges;
@@ -405,6 +405,15 @@ function bfsWithKeys(world) {
   return false;
 }
 
+function isNearDoor(cx, cy, room) {
+  const mid = Math.floor(ROOM_SIZE / 2);
+  if (room.doors['up'] && cy <= 3 && Math.abs(cx - mid) <= 3) return true;
+  if (room.doors['down'] && cy >= ROOM_SIZE - 4 && Math.abs(cx - mid) <= 3) return true;
+  if (room.doors['left'] && cx <= 3 && Math.abs(cy - mid) <= 3) return true;
+  if (room.doors['right'] && cx >= ROOM_SIZE - 4 && Math.abs(cy - mid) <= 3) return true;
+  return false;
+}
+
 /**
  * Generate interior tiles for a room
  */
@@ -467,7 +476,8 @@ export function generateRoomTiles(room, rng = Math.random) {
     const wy = 2 + Math.floor(rng() * (ROOM_SIZE - 4));
     // Don't place walls on doors, protected door approaches, or center gacha spot
     const isCenter = wx === Math.floor(ROOM_SIZE / 2) && wy === Math.floor(ROOM_SIZE / 2);
-    if (!isCenter && tiles[wy][wx] === CELL.FLOOR && !protectedCells.has(`${wy},${wx}`)) {
+    const nearDoor = isNearDoor(wx, wy, room);
+    if (!isCenter && !nearDoor && tiles[wy][wx] === CELL.FLOOR) {
       // Small clusters
       const len = 1 + Math.floor(rng() * 3);
       for (let j = 0; j < len; j++) {

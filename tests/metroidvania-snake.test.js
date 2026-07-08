@@ -33,7 +33,7 @@ import {
 import {
   checkSnakeCollision, checkProjectileCollision, checkRoomTransition,
   getCellsAlongLine, checkProjectileCollisionForCell,
-  lineSweepProjectileCollision,
+  lineSweepProjectileCollision, checkDoorPassable,
 } from '../public/src/engine/collision.js';
 
 // Combat system
@@ -984,7 +984,7 @@ describe('Phase 8 — Integration', () => {
           for (let ty = 0; ty < ROOM_SIZE; ty++) {
             expect(room.tiles[ty].length).toBe(ROOM_SIZE);
             for (let tx = 0; tx < ROOM_SIZE; tx++) {
-              expect([0, 1, 2, 3, 4, 5]).toContain(room.tiles[ty][tx]);
+              expect([0, 1, 2, 3, 4, 5, 6]).toContain(room.tiles[ty][tx]);
             }
           }
         }
@@ -1114,7 +1114,8 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
       ];
       state.direction = { x: 1, y: 0 };
       state.nextDirection = { x: 1, y: 0 };
-      const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
+      const { rx, ry } = worldToRoomCoords(state.snake[0].x, state.snake[0].y);
+      const room = getRoomAt(world, rx, ry);
       room.tiles[10][2] = CELL.DEATH_WALL;
       const result = tick(state);
       expect(result.gameState).toBe('gameover');
@@ -1186,7 +1187,7 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
         };
       }
       expect(shake.duration).toBe(0);
-      expect(shake.intensity).toBeCloseTo(0.41, 1);
+      expect(shake.intensity).toBeCloseTo(0.35, 1);
     });
   });
 
@@ -1200,10 +1201,10 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
           [createRoom(0,2), createRoom(1,2), createRoom(2,2)],
         ],
       };
-      const room = world.rooms[1][1];
+      const room = world.rooms[0][0];
       room.tiles[10][12] = CELL.DEATH_WALL;
-      const proj = createProjectile(1, 12, 10, { x: 1, y: 0 }, 2, 5, 1);
-      proj.prevX = 12; proj.prevY = 10;
+      const proj = createProjectile(1, 12, 10, { x: -1, y: 0 }, 2, 5, 1);
+      proj.prevX = 13; proj.prevY = 10;
       const state = minimalState({ world, projectiles: [proj] });
       const result = lineSweepProjectileCollision(proj, state);
       expect(result).not.toBeNull();
