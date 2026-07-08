@@ -54,10 +54,10 @@ describe('Vercel deployment root cause (canary tests)', () => {
 // Section 2: Vercel config audit — these must NOT change during the fix
 // ---------------------------------------------------------------------------
 describe('Vercel config integrity', () => {
-  it('should have zero-build vercel.json (no buildCommand)', () => {
+  it('should have inject-commit-info build command in vercel.json', () => {
     const vercelPath = path.join(PROJECT_ROOT, 'vercel.json');
     const vercel = JSON.parse(fs.readFileSync(vercelPath, 'utf-8'));
-    expect(vercel.buildCommand).toBeNull();
+    expect(vercel.buildCommand).toBe('bash scripts/inject-commit-info.sh');
     expect(vercel.framework).toBeNull();
   });
 

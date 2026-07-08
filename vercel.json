@@ -1,5 +1,5 @@
 {
-  "buildCommand": null,
+  "buildCommand": "bash scripts/inject-commit-info.sh",
   "outputDirectory": null,
   "framework": null,
   "rewrites": [],
