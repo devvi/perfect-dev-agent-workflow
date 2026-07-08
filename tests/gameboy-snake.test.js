@@ -444,3 +444,104 @@ describe('spawnFood', () => {
     expect(food).toBeNull();
   });
 });
+
+// =====================================================================
+// Issue #46 — Stuck+Reverse on wall collision (Classic Engine)
+// =====================================================================
+
+describe('Issue #46 — Stuck+Reverse on wall collision', () => {
+  const STUCK_TICKS = 5;
+
+  describe('Test 1: Wall collision sets stuck instead of gameover', () => {
+    it('should set stuckCounter and freeze movement when hitting a wall', () => {
+      const snake = [
+        { x: 0, y: 5 },
+        { x: -1, y: 5 },
+      ];
+      const state = stateWithSnake(snake, {
+        direction: DIR.LEFT,
+        nextDirection: DIR.LEFT,
+        stuckCounter: 0,
+        pendingReverse: false,
+      });
+      const next = tick(state);
+      // Should NOT be gameover — wall collision triggers stuck+reverse
+      expect(next.gameState).not.toBe('gameover');
+      expect(next.stuckCounter).toBe(STUCK_TICKS);
+      expect(next.pendingReverse).toBe(true);
+      expect(next.snake[0]).toEqual({ x: 0, y: 5 }); // no movement
+    });
+  });
+
+  describe('Test 2: After stuck duration, snake reverses direction', () => {
+    it('should reverse snake and flip direction after stuck expires', () => {
+      const snake = [
+        { x: 0, y: 5 },
+        { x: -1, y: 5 },
+      ];
+      const initialSnake = [...snake];
+      const state = stateWithSnake(snake, {
+        direction: DIR.LEFT,
+        nextDirection: DIR.LEFT,
+        stuckCounter: 0,
+        pendingReverse: false,
+      });
+
+      let s = tick(state); // first tick → stuck
+      expect(s.stuckCounter).toBe(STUCK_TICKS);
+
+      // Tick through stuck period
+      for (let i = 0; i < STUCK_TICKS; i++) {
+        s = tick(s);
+      }
+
+      // After stuck expires, snake should be reversed
+      expect(s.stuckCounter).toBe(0);
+      expect(s.pendingReverse).toBe(false);
+      const reversed = [...initialSnake].reverse();
+      expect(s.snake).toEqual(reversed);
+      expect(s.direction).toEqual(DIR.RIGHT); // flipped from LEFT
+    });
+  });
+
+  describe('Test 3: Score penalty on wall collision', () => {
+    it('should reduce score by 5 when hitting a wall in classic engine', () => {
+      const snake = [
+        { x: 0, y: 5 },
+        { x: -1, y: 5 },
+      ];
+      const state = stateWithSnake(snake, {
+        direction: DIR.LEFT,
+        nextDirection: DIR.LEFT,
+        score: 50,
+        stuckCounter: 0,
+        pendingReverse: false,
+      });
+      const next = tick(state);
+      expect(next.score).toBe(45);
+    });
+  });
+
+  describe('Test 4: Self collision remains gameover (lethal)', () => {
+    it('should still trigger gameover on self collision, not stuck', () => {
+      const snake = [
+        { x: 5, y: 5 },
+        { x: 6, y: 5 },
+        { x: 6, y: 6 },
+        { x: 5, y: 6 },
+        { x: 4, y: 6 },
+        { x: 4, y: 5 },
+      ];
+      const state = stateWithSnake(snake, {
+        direction: DIR.LEFT,
+        nextDirection: DIR.LEFT,
+        food: { x: 19, y: 19 },
+        stuckCounter: 0,
+        pendingReverse: false,
+      });
+      const next = tick(state);
+      expect(next.gameState).toBe('gameover');
+      expect(next.stuckCounter).toBe(0); // should not be stuck
+    });
+  });
+});
