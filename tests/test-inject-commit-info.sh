@@ -70,7 +70,7 @@ fi
 cp "$BACKUP" "$REPO_ROOT/public/gameboy.html"
 
 # ----------------------------------------------------------------
-echo "=== Test 2: Fallback without git repo ==="
+echo "=== Test 2: Fallback without git repo — placeholders survive ==="
 # ----------------------------------------------------------------
 
 TESTDIR=$(mktemp -d)
@@ -82,23 +82,21 @@ cat > "$TESTDIR/public/gameboy.html" << 'EOF'
 </body></html>
 EOF
 
-# Run script from tmpdir (no .git there) — script expects public/gameboy.html relative
+# Run script from tmpdir (no .git there) — should hit skip path (Source 3)
 (cd "$TESTDIR" && bash "$SCRIPT" > /dev/null 2>&1)
 
-# Check 2a: Tokens replaced with "unknown"
-if grep -qF '"unknown"' "$TESTDIR/public/gameboy.html"; then
-  pass "Fallback: placeholders replaced with 'unknown'"
+# Check 2a: Placeholder tokens survive (no replacement)
+if grep -qF '__COMMIT_HASH__' "$TESTDIR/public/gameboy.html"; then
+  pass "Placeholder tokens survive when no commit info available"
 else
-  fail "Fallback: did not use 'unknown'"
+  fail "Placeholder tokens missing — script should skip replacement"
 fi
 
-# Check 2b: No literal __COMMIT_HASH__ / __COMMIT_MSG__ / __COMMIT_DATE__ remain
-if grep -qF '__COMMIT_HASH__' "$TESTDIR/public/gameboy.html" || \
-   grep -qF '__COMMIT_MSG__' "$TESTDIR/public/gameboy.html" || \
-   grep -qF '__COMMIT_DATE__' "$TESTDIR/public/gameboy.html"; then
-  fail "Fallback: placeholder tokens still present"
+# Check 2b: No "unknown" string injected (regression guard for #82 fix)
+if grep -qF '"unknown"' "$TESTDIR/public/gameboy.html"; then
+  fail "'unknown' should not be injected — script should skip replacement"
 else
-  pass "Fallback: no placeholder tokens remain"
+  pass "No 'unknown' string injected"
 fi
 
 rm -rf "$TESTDIR"
@@ -148,6 +146,86 @@ else
 fi
 
 cd "$REPO_ROOT"
+rm -rf "$TESTDIR"
+
+# ----------------------------------------------------------------
+echo "=== Test 4: Vercel env var simulation ==="
+# ----------------------------------------------------------------
+
+TESTDIR=$(mktemp -d)
+mkdir -p "$TESTDIR/public"
+cat > "$TESTDIR/public/gameboy.html" << 'EOF'
+<!DOCTYPE html><html><body>
+<script>window.__COMMIT_INFO = {hash: "__COMMIT_HASH__", message: "__COMMIT_MSG__", date: "__COMMIT_DATE__"};</script>
+</body></html>
+EOF
+
+# Mock Vercel env vars — no .git/ available, should hit Source 1 path
+(cd "$TESTDIR" && \
+  VERCEL_GIT_COMMIT_SHA="a1b2c3d4e5f678901234567890abcdef12345678" \
+  VERCEL_GIT_COMMIT_MESSAGE="fix: resolve menu issue #82" \
+  bash "$SCRIPT" > /dev/null 2>&1)
+
+# Check 4a: Hash truncated to 7 chars (a1b2c3d)
+if grep -qF 'hash: "a1b2c3d"' "$TESTDIR/public/gameboy.html"; then
+  pass "Vercel: hash truncated to 7 chars (a1b2c3d)"
+else
+  fail "Vercel: hash not truncated correctly"
+fi
+
+# Check 4b: Message matches mock
+if grep -qF 'message: "fix: resolve menu issue #82"' "$TESTDIR/public/gameboy.html"; then
+  pass "Vercel: commit message matches mock"
+else
+  fail "Vercel: commit message mismatch"
+fi
+
+# Check 4c: Date is "N/A" (no .git/ available for git date lookup)
+if grep -qF 'date: "N/A"' "$TESTDIR/public/gameboy.html"; then
+  pass "Vercel: date is N/A (no .git/ available)"
+else
+  fail "Vercel: date should be N/A"
+fi
+
+rm -rf "$TESTDIR"
+
+# ----------------------------------------------------------------
+echo "=== Test 5: Both sources unavailable — graceful skip ==="
+# ----------------------------------------------------------------
+
+TESTDIR=$(mktemp -d)
+mkdir -p "$TESTDIR/public"
+cat > "$TESTDIR/public/gameboy.html" << 'EOF'
+<!DOCTYPE html><html><body>
+<script>window.__COMMIT_INFO = {hash: "__COMMIT_HASH__", message: "__COMMIT_MSG__", date: "__COMMIT_DATE__"};</script>
+</body></html>
+EOF
+
+# No Vercel env vars, no .git/ — should hit skip path (Source 3)
+(cd "$TESTDIR" && bash "$SCRIPT" > /dev/null 2>&1)
+
+# Check 5a: Script exits 0 (verified by test continuing past the call)
+# Check 5b: __COMMIT_HASH__ tokens remain
+if grep -qF '__COMMIT_HASH__' "$TESTDIR/public/gameboy.html"; then
+  pass "Skip: __COMMIT_HASH__ tokens remain when no sources available"
+else
+  fail "Skip: __COMMIT_HASH__ tokens should survive"
+fi
+
+# Check 5c: __COMMIT_MSG__ tokens remain
+if grep -qF '__COMMIT_MSG__' "$TESTDIR/public/gameboy.html"; then
+  pass "Skip: __COMMIT_MSG__ tokens remain when no sources available"
+else
+  fail "Skip: __COMMIT_MSG__ tokens should survive"
+fi
+
+# Check 5d: __COMMIT_DATE__ tokens remain
+if grep -qF '__COMMIT_DATE__' "$TESTDIR/public/gameboy.html"; then
+  pass "Skip: __COMMIT_DATE__ tokens remain when no sources available"
+else
+  fail "Skip: __COMMIT_DATE__ tokens should survive"
+fi
+
 rm -rf "$TESTDIR"
 
 # ----------------------------------------------------------------

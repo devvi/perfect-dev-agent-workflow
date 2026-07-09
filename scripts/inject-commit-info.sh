@@ -14,7 +14,9 @@
 # Usage: bash scripts/inject-commit-info.sh
 # Must be run from the repo root (where .git/ exists).
 
-set -euo pipefail
+# NOTE: no "set -e" — individual command failures (e.g. git log in no-git env)
+# must not abort the script. Graceful skip path exits 0.
+set -uo pipefail
 
 HTML_FILE="public/gameboy.html"
 SCRIPT_NAME="inject-commit-info"
@@ -25,9 +27,9 @@ SCRIPT_NAME="inject-commit-info"
 # Vercel provides these during build; see https://vercel.com/docs/projects/environment-variables/system-environment-variables
 if [ -n "${VERCEL_GIT_COMMIT_SHA:-}" ]; then
   HASH="${VERCEL_GIT_COMMIT_SHA:0:7}"  # first 7 chars = abbreviated hash
-  MSG="${VERCEL_GIT_COMMIT_MESSAGE:-unknown}"
+  MSG="${VERCEL_GIT_COMMIT_MESSAGE:-}"
   # Derive date from git log — Vercel doesn't expose a date env var
-  DATE=$(git log -1 --format="%ai" 2>/dev/null || echo "unknown")
+  DATE=$(git log -1 --format="%ai" "$VERCEL_GIT_COMMIT_SHA" 2>/dev/null || echo "N/A")
 
 # Source 2: Local git repository
 elif git log -1 &>/dev/null; then
