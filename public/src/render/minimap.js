@@ -13,8 +13,12 @@ export function renderMinimap(ctx, state, world) {
   const offsetX = 400 - MINIMAP_SIZE - 8;
   const offsetY = 400 - MINIMAP_SIZE - 8;
 
-  // Background
-  ctx.fillStyle = 'rgba(10, 10, 26, 0.50)';
+  // === Wrap entire minimap in globalAlpha for semi-transparency ===
+  ctx.save();
+  ctx.globalAlpha = 0.50;
+
+  // Background (fully opaque fill; globalAlpha provides the transparency)
+  ctx.fillStyle = 'rgba(10, 10, 26, 1.0)';
   ctx.fillRect(offsetX - 2, offsetY - 2, MINIMAP_SIZE + 4, MINIMAP_SIZE + 4);
   ctx.strokeStyle = '#306230';
   ctx.lineWidth = 1;
@@ -105,9 +109,15 @@ export function renderMinimap(ctx, state, world) {
   ctx.arc(ppX, ppY, 5, 0, Math.PI * 2);
   ctx.fill();
 
-  // Label
+  // === End of semi-transparent block ===
+  ctx.restore();
+
+  // === "MAP" label: fully opaque ===
+  ctx.save();
+  ctx.globalAlpha = 1.0;
   ctx.fillStyle = '#8bac0f';
   ctx.font = '6px monospace';
   ctx.textAlign = 'left';
   ctx.fillText('MAP', offsetX, offsetY - 4);
+  ctx.restore();
 }
