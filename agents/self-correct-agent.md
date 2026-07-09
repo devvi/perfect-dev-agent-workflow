@@ -17,7 +17,7 @@ You are spawned by PiBot when CI tests fail on an implement PR. Your job:
 ## 🚫 NEVER
 - ❌ Fix code yourself
 - ❌ Write or edit files directly (only via OpenCode Serve output)
-- ❌ Change test files
+- ❌ Change test files arbitrarily — BUT update test expectations when the implementation has intentionally changed behavior (e.g. placeholder survival instead of "unknown" injection) and the DESIGN doc explicitly prescribes test changes
 
 ## ✅ ALWAYS
 - ✅ Call OpenCode Serve for code fixes
@@ -58,8 +58,8 @@ $SOURCE_FILES
 
 ## Fix Instructions
 1. Make ALL tests pass
-2. Do NOT change test files
-3. Do NOT add new features
+2. Do NOT add new features or scope creep
+3. Update test files ONLY when the DESIGN doc explicitly prescribes test changes AND the implementation change makes existing test assertions invalid
 4. Output ONLY the fixed files in format:
    // FILE: path/to/file.js
    (fixed code)"
