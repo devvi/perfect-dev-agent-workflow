@@ -24,7 +24,7 @@
 │  3. Spawn sub-agent for current stage                            │
 │  4. Sub-agent completes → opens PR                               │
 │  5. PiBot reviews PR against quality gate                        │
-│  6. Pass → auto-merge → spawn next stage agent                   │
+│  6. Pass → auto-merge → verify merge succeeded → spawn next stage│
 │  7. Fail → comment on PR → agent revises → re-review             │
 │  8. All stages done → status/done                                │
 │  9. Blocked/error → status/blocked → Feishu notify K             │
@@ -68,7 +68,7 @@ PiBot (I) review every PR before auto-merge. Here are the criteria for each stag
 | PR title format | "Research: <name> (parent #N)" | Auto-fix |
 | No closing keywords | No Closes/Fixes/Resolves in body | Auto-fix |
 
-**Auto-merge decision:** All checks pass → merge. 1-2 minor issues → merge with comment. ≥3 issues → request revision, do NOT merge.
+**Auto-merge decision:** All checks pass → merge → verify merge succeeded (`gh pr view --json state` == MERGED). Only on confirmed: advance label + spawn next stage. 1-2 minor issues → merge with comment. ≥3 issues → request revision, do NOT merge.
 
 ### Plan PR Gate
 
@@ -80,7 +80,7 @@ PiBot (I) review every PR before auto-merge. Here are the criteria for each stag
 | Test specifications | Test scenarios described in DESIGN doc (text only, not code) | Request test specs |
 | Edge cases covered | Boundary conditions documented in DESIGN doc | Request additions |
 
-**Auto-merge decision:** All core checks (design, tasks, test specs, edge cases) pass → merge. No test code required in plan stage — test code is created by implement agent.
+**Auto-merge decision:** All core checks pass → merge → verify merge succeeded. Only on confirmed: advance label + spawn next stage. No test code required in plan stage — test code is created by implement agent.
 
 ### Implement PR Gate
 
@@ -92,7 +92,7 @@ PiBot (I) review every PR before auto-merge. Here are the criteria for each stag
 | Closes keywords | Body has "Closes #<parent>" AND "Closes #<plan>" | Auto-fix |
 | No regressions | Existing tests still pass | Block |
 
-**Auto-merge decision:** Tests all pass + scope OK → merge. Tests fail → self-correct loop. Scope creep → comment + request trim.
+**Auto-merge decision:** Tests all pass + scope OK → merge → verify merge succeeded. Only on confirmed: close issue. Tests fail → self-correct loop. Scope creep → comment + request trim.
 
 ---
 
