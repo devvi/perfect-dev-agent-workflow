@@ -1,84 +1,108 @@
-# Tasks: #82 — About Menu Commit Info Shows "unknown" on Deployed Build
+# Tasks: #82 — About菜单Commit内容显示不正确
 
 | 字段 | 值 |
 |------|----|
 | Issue | #82 |
-| 优先级 | P2 |
+| 优先级 | P1 |
 
 ## Overview
 
-标题画面 About 页面的 commit 信息在部署版本中显示为 "unknown"，因为 `scripts/inject-commit-info.sh` 在 Vercel 构建环境中无法访问 `.git/` 目录，`git log -1` 失败后使用了 fallback 值 "unknown"。修复方案：修改构建脚本，优先使用 Vercel 系统环境变量 (`VERCEL_GIT_COMMIT_SHA`, `VERCEL_GIT_COMMIT_MESSAGE`)，回退到 `git log -1` 用于本地开发。详见 `docs/DESIGN/82-about-menu-commit-info.md`。
+Vercel 部署后在 ABOUT 页面看到 `Commit: unknown` / `Msg: unknown` / `Date: unknown`。根本原因是 `scripts/inject-commit-info.sh` 在 Vercel 构建环境（无 `.git/`）中用 `git log -1` 读取元数据失败，回退到 `"unknown"` 字符串。
 
-**Root Cause:** Vercel 构建环境没有 `.git/` 目录，`git log -1` 失败 → fallback "unknown" 被注入 → 运行时守卫误判 "unknown" 为有效值。
+修复方案：在注入脚本中添加 Vercel 系统环境变量（`VERCEL_GIT_COMMIT_SHA`, `VERCEL_GIT_COMMIT_MESSAGE`）作为第一优先级来源，`git log -1` 作为本地开发回退，两者都不可用则跳过替换（运行态 guard 显示 N/A）。Source: `docs/DESIGN/82-about-menu-commit-info.md`.
 
-## Phase 1: Script Modification (P0)
+---
+
+## Phase 1: Script Refactor — Priority Chain (P0)
 
 | Step | 文件 | 变更 | 前置 | 优先级 |
 |------|------|------|------|--------|
-| 1.1 | `scripts/inject-commit-info.sh` | MODIFY: Add Vercel env var priority detection. Check `VERCEL_GIT_COMMIT_SHA` first, use first 7 chars. Use `VERCEL_GIT_COMMIT_MESSAGE` for message. Try `git log -1` for date (Vercel has no date env var). Keep existing `git log -1` block as fallback for local dev. Add `else` skip block for when neither source is available | 无 | P0 |
+| 1.1 | `scripts/inject-commit-info.sh` | **MODIFY**: Add Vercel env var detection at top of script: check `VERCEL_GIT_COMMIT_SHA`, `VERCEL_GIT_COMMIT_MESSAGE`. Truncate SHA to 7 chars (`${var:0:7}`). Date: `git log -1 --format="%ai"` with SHA or fallback `"N/A"`. Add graceful skip path (exit 0, no replacement) when neither env vars nor git available | 无 | P0 |
+| 1.2 | `scripts/inject-commit-info.sh` | **MODIFY**: Remove `set -e` from script header — individual command failures (e.g., `git log -1` in no-git env) must not crash the script | 1.1 | P0 |
+| 1.3 | `scripts/inject-commit-info.sh` | **MODIFY**: Ensure the skip path logs a clear warning: `[inject-commit-info] WARNING: No git commit info available. Placeholders will remain (runtime guard shows N/A).` | 1.1 | P0 |
 
-### Logic Change Details
-
-Current script has two outcomes:
-1. `git log -1` succeeds → real values injected
-2. `git log -1` fails → "unknown" fallback injected (BUG)
-
-New script has three outcomes:
-1. Vercel env vars found → real SHA + message + `git log -1` date
-2. No env vars, but `git log -1` works → real values from git (local dev)
-3. Neither available → exit 0 without replacement → runtime guard shows "N/A"
-
-### Verification
+### Phase 1 Verification
 
 | Check | Method |
 |-------|--------|
-| Vercel env var path works | `VERCEL_GIT_COMMIT_SHA=abc1234deadbeef01234567 VERICEL_GIT_COMMIT_MESSAGE="test msg" bash scripts/inject-commit-info.sh` → `grep -c "unknown" public/gameboy.html` returns 0 |
-| Local git fallback unchanged | `bash scripts/inject-commit-info.sh` inside repo → real values injected (same as #75 behavior) |
-| Safe skip path works | Run in temp dir without `.git/` and without env vars → exit 0, HTML unchanged |
-| SHA truncated correctly | `VERCEL_GIT_COMMIT_SHA=abcdef1234567890abcdef1234567890abcdef12 ...` → `grep "hash.*abcdef123" public/gameboy.html` returns 0 (only 7-char version present) |
-| No "unknown" leak in CI path | After Vercel-style env var injection, no "unknown" remains |
-| Existing behavior preserved | Normal `git log -1` path still works for local dev |
+| Script exits 0 in Vercel-like env (no .git/) | `bash scripts/inject-commit-info.sh` in tmpdir without `.git/` → exits 0 |
+| Script exits 0 in Vercel-like env WITH mock env vars | `VERCEL_GIT_COMMIT_SHA=abc1234... bash scripts/inject-commit-info.sh` in tmpdir → exits 0, SHA truncated to 7 chars |
+| Script still works locally | `bash scripts/inject-commit-info.sh` in repo root → replaces tokens with real git metadata |
+| Placeholders survive when both sources unavailable | No env vars, no `.git/` → `grep __COMMIT_HASH__ public/gameboy.html` returns match |
 
-## Phase 2: Regression Testing (P0)
+---
+
+## Phase 2: Test Updates (P0)
 
 | Step | 文件 | 变更 | 前置 | 优先级 |
 |------|------|------|------|--------|
-| 2.1 | — (Manual) | Verify runtime guard still handles missing `window.__COMMIT_INFO` → ABOUT shows "N/A" | 1.1 | P0 |
-| 2.2 | — (Manual) | Clear `__COMMIT_*` placeholders → run script → confirm `grep __COMMIT_ public/gameboy.html` returns empty | 1.1 | P0 |
-| 2.3 | — (Manual) | Run `bash scripts/inject-commit-info.sh` in repo root → confirm exit 0 and correct values | 1.1 | P0 |
+| 2.1 | `tests/test-inject-commit-info.sh` | **MODIFY**: Update Test 2 (fallback without git) — replace assertion from `"unknown"` to placeholder survival + exit 0 | 1.1–1.3 | P0 |
+| 2.2 | `tests/test-inject-commit-info.sh` | **ADD**: Test 4 — Vercel env var simulation. Set mock `VERCEL_GIT_COMMIT_SHA` and `VERCEL_GIT_COMMIT_MESSAGE`, verify truncated hash and message in output | 1.1 | P1 |
+| 2.3 | `tests/test-inject-commit-info.sh` | **ADD**: Test 5 — Both env vars and git unavailable. Verify graceful exit 0 and placeholder survival | 1.1 | P1 |
+| 2.4 | — (Manual) | Run all tests: `bash tests/test-inject-commit-info.sh` — all 5 tests pass (3 existing + 2 new) | 2.1–2.3 | P0 |
+
+### Phase 2 Verification
+
+| Check | Method |
+|-------|--------|
+| Test 2 (no git) passes with new behavior | `bash tests/test-inject-commit-info.sh` Test 2 ✅ |
+| Test 4 (Vercel vars) passes | Mock env vars → correct truncated hash ✅ |
+| Test 5 (both missing) passes | Placeholders survive, exit 0 ✅ |
+| All 5 tests pass in one run | `bash tests/test-inject-commit-info.sh` → `5 passed` |
+
+---
 
 ## Phase 3: Deploy Verification (P0)
 
 | Step | Details | 前置 |
 |------|---------|-------------|
-| 3.1 | Merge implement PR to master — PR labeled `workflow/implement` triggers deploy workflow | 1.1, 2.1-2.3 |
-| 3.2 | Check Vercel deploy logs — confirm `VERCEL_GIT_COMMIT_SHA` detection in build output | 3.1 |
-| 3.3 | Visit deployed site — navigate to ABOUT screen | 3.1 |
-| 3.4 | Inspect commit info — verify commit hash (7-char SHA), message, and date show **real values** (not "unknown", not "N/A") | 3.3 |
-| 3.5 | Confirm `gameboy.html` served to client has real `__COMMIT_INFO` block | 3.1 |
+| 3.1 | Merge implement PR to master — PR gets label `workflow/implement` → triggers deploy workflow | 1.1–1.3, 2.4 |
+| 3.2 | Check Vercel deploy logs — verify `[inject-commit-info] Injected: <hash> — <msg>` appears | 3.1 |
+| 3.3 | Visit deployed site — navigate to ABOUT screen (https://perfect-dev-agent-workflow.vercel.app) | 3.1 |
+| 3.4 | Inspect commit info — verify Commit shows 7-char hex, Msg shows commit summary, Date shows timestamp (not "unknown") | 3.3 |
+| 3.5 | Run automated E2E tests — `npm run test:e2e` (if exists) or `npm test` | 3.1 |
+| 3.6 | Trigger a PR preview deploy — verify commit info is correct for PR branch head commit | 3.1 |
 
-### Rollback (if deploy fails)
+### Rollback (if deploy breaks)
 
 | Failure Mode | Action |
 |--------------|--------|
-| Script crashes deploy | Set `"buildCommand": null` in `vercel.json` → merge hotfix → script disabled → runtime guard shows "N/A" |
-| Date still "unknown" | Date from `git log -1` fails in Vercel → acceptable (minor cosmetic), can be improved in Phase 4 |
-| Commit message garbled | Strengthen quoting/escaping, re-deploy |
+| Script crashes Vercel build (exits non-zero) | Hotfix: revert script to #75 version — injects "unknown" (broken but non-blocking) |
+| Runtime error on ABOUT screen | Revert and debug; `vercel.json` buildCommand unchanged, only script logic affected |
+| Vercel env var names changed | Check Vercel docs for updated names; patch script |
 
-## Phase 4: Date Hardening (Optional, P1)
+---
 
-| Step | Task | 前置 |
-|------|------|-------------|
-| 4.1 | Consider deriving date from commit content or skipping date field entirely | 1.1 |
-| 4.2 | If Vercel adds date env var in future, update script to read it (monitor Vercel changelog) | 1.1 |
+## Phase 4: Documentation & Hardening (P1)
+
+| Step | 文件 | 变更 | 前置 | 优先级 |
+|------|------|------|------|--------|
+| 4.1 | `scripts/inject-commit-info.sh` | Add inline comment block documenting priority chain and expected env var sources | 1.1 | P1 |
+| 4.2 | `README.md` | Document that Vercel env vars are the deploy-time source; update development setup instructions if needed | 1.1 | P2 |
+
+---
 
 ## Dependency Graph
 
 ```
-Phase 1 (Script Modify)
-    └── Phase 2 (Regression Tests) ← depends on Phase 1
-        └── Phase 3 (Deploy Verify) ← depends on Phase 1 + Phase 2
-            └── Phase 4 (Date Harden) ← optional, depends on 1.1
+Phase 1: Script Refactor
+├── 1.1 Add Vercel env var priority chain  ──┐
+├── 1.2 Remove set -e  ──────────────────────┤
+└── 1.3 Add skip-path warning ───────────────┤
+                                              │
+Phase 2: Test Updates                          │
+├── 2.1 Update Test 2 assertion  ←── 1.1      │
+├── 2.2 Add Test 4 (Vercel mock)  ←── 1.1     │
+├── 2.3 Add Test 5 (both missing) ←── 1.1     │
+└── 2.4 Run all tests            ←── 2.1-2.3  │
+                                              │
+Phase 3: Deploy Verification          │
+├── 3.1 Merge to master  ←────────────┤
+├── 3.2 Check Vercel logs  ←── 3.1    │
+├── 3.3-3.4 Verify site  ←── 3.1      │
+└── 3.5-3.6 E2E + preview  ←── 3.1    │
+                                        │
+Phase 4: Documentation (optional) ───────┘
 ```
 
 ## Summary: Changed Files
@@ -86,3 +110,4 @@ Phase 1 (Script Modify)
 | 文件 | 变更类型 | 预估行数 | 阶段 |
 |------|----------|----------|------|
 | `scripts/inject-commit-info.sh` | 修改 | ±15 | 1 |
+| `tests/test-inject-commit-info.sh` | 修改 | +40 | 2 |
