@@ -1,4 +1,4 @@
-# Design: #82 — About Menu Commit Info Shows "unknown" on Deployed Build
+# Design: #82 — About菜单Commit内容显示不正确
 
 > Parent Issue: #82
 > Agent: subagent
@@ -8,205 +8,273 @@
 
 ## 1. Architecture Overview
 
-The fix for #75 added `scripts/inject-commit-info.sh` which uses `git log -1` to read commit metadata. This works in GitHub Actions (where `.git/` exists) but **fails in Vercel's build environment**, which does not provide `.git/`. The `git log -1` command exits non-zero, and the `||` fallback replaces all placeholder tokens with the string `"unknown"`.
+### Problem
 
-The fix modifies the inject script to use Vercel's system-provided environment variables as the primary data source, falling back to `git log -1` for local development.
+The ABOUT screen shows `unknown` for all commit metadata fields in Vercel deployments. This is a **regression** from `#75` which introduced `scripts/inject-commit-info.sh`. The script uses `git log -1` to read metadata, but **Vercel's build environment does not include a `.git/` directory**, so every `git log -1` command fails and triggers the `|| echo "unknown"` fallback. The runtime guard (`!hash.startsWith('__')`) passes because `"unknown"` doesn't start with `"__"`, so the placeholder-like values are displayed as-is.
+
+### Fix: Priority-Chain Fallback
+
+The script reads commit info from three sources in priority order:
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│ Current Flow (Broken)                                                │
-│                                                                      │
-│  Vercel Build Environment (no .git/)                                 │
-│  → scripts/inject-commit-info.sh runs                                │
-│  → git log -1 fails → fallback "unknown" injected                   │
-│  → gameboy.html has "unknown" for all commit fields                  │
-│  → Runtime guard passes ("unknown" ≠ "__...")                       │
-│  → ABOUT screen shows "unknown"                                     │
-└─────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────┐
-│ Post-Fix Flow (Fixed)                                                │
-│                                                                      │
-│  Vercel Build → scr reads VERCEL_GIT_COMMIT_SHA env var              │
-│  → Present? → Use real SHA (first 7 chars) for commit hash           │
-│  → VERCEL_GIT_COMMIT_MESSAGE available? → Use real message           │
-│  → Fallback: git log -1 (local dev with .git/)                       │
-│  → Double fallback: skip replacement → runtime guard shows "N/A"    │
-│                                                                      │
-│  Local Dev (with .git/)                                              │
-│  → No VERCEL_GIT_* vars → fallback to git log -1 → real values      │
-│                                                                      │
-│  Local Dev (no .git/, no env vars)                                   │
-│  → Both unavailable → skip replacement → runtime guard "N/A" ✅     │
-└─────────────────────────────────────────────────────────────────────┘
+Vercel env vars (VERCEL_GIT_COMMIT_SHA, VERCEL_GIT_COMMIT_MESSAGE)
+  ↓ (not set?)
+git log -1 (local development with .git/)
+  ↓ (not available?)
+Skip replacement → runtime guard detects __COMMIT_HASH__ → shows N/A
 ```
 
-### Chosen Approach
+### Data Flow
 
-**Approach A — Vercel System Environment Variables** (recommended by PRD research)
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ Pre-Fix Flow (Broken)                                                    │
+│                                                                          │
+│  Vercel deploy → inject-commit-info.sh → git log -1 → FAILS             │
+│    → fallback "unknown" → sed replaces tokens with "unknown"            │
+│    → runtime guard: "unknown" doesn't start with "__" → passes          │
+│    → ABOUT screen shows "Commit: unknown / Msg: unknown / Date: unknown"│
+└──────────────────────────────────────────────────────────────────────────┘
 
-Modify `scripts/inject-commit-info.sh` to check for `VERCEL_GIT_COMMIT_SHA` first. When available (Vercel build environment), use it instead of `git log -1`. When unavailable, fall back to `git log -1` (local dev). This keeps the solution:
+┌──────────────────────────────────────────────────────────────────────────┐
+│ Post-Fix Flow (Fixed)                                                    │
+│                                                                          │
+│  Vercel deploy → inject-commit-info.sh                                   │
+│    → Check VERCEL_GIT_COMMIT_SHA                                         │
+│    → YES → truncate SHA to 7 chars, read MSG from VERCEL_GIT_COMMIT_MSG │
+│    → Date: attempt git log -1 --format="%ai" with SHA (Vercel shallow   │
+│      clone may provide partial .git/) or fallback to "N/A"              │
+│    → sed replaces tokens → ABOUT screen shows real values ✅             │
+│                                                                          │
+│  Local dev with git → inject-commit-info.sh                              │
+│    → VERCEL_GIT_COMMIT_SHA not set → git log -1 → success               │
+│    → ABOUT screen shows real values ✅                                   │
+│                                                                          │
+│  No git / no env vars → inject-commit-info.sh                            │
+│    → Neither source available → skip replacement → tokens stay           │
+│    → runtime guard detects __COMMIT_HASH__ → shows N/A ✅                │
+└──────────────────────────────────────────────────────────────────────────┘
+```
 
-- **Vercel-native** — uses officially documented system env vars
-- **Backward-compatible** — local dev behavior unchanged
-- **Safe fallback** — if both env vars and git fail, placeholders survive → runtime guard shows `N/A`
-- **No infra changes** — `vercel.json`, `deploy.yml` unchanged
+### Module Boundaries
+
+| Module | Responsibility | Change Required |
+|--------|---------------|-----------------|
+| `scripts/inject-commit-info.sh` | Build-time token replacement | **Yes** — add env var priority chain |
+| `public/gameboy.html` | HTML artifact with placeholder tokens | No — unchanged |
+| `public/src/engine/core.js` | Runtime guard for commit info | No — correctly handles both `__XXX__` and `"unknown"` values after fix |
+| `public/src/render/overlays.js` | ABOUT screen renderer | No — reads `state.commitInfo` correctly |
+| `vercel.json` | Vercel build config | No — buildCommand already set |
+| `.github/workflows/deploy.yml` | CI/CD pipeline | No — unchanged |
+| `tests/test-inject-commit-info.sh` | Test suite | **Yes** — add Vercel env var test cases |
 
 ---
 
 ## 2. Detailed Design
 
-### 2.1 File 1: `scripts/inject-commit-info.sh` (MODIFIED)
+### 2.1 Script Logic (Priority Chain)
 
-Add environment variable detection at the top, before attempting `git log -1`:
+```
+START
+  │
+  ├── [YES] VERCEL_GIT_COMMIT_SHA is set?
+  │   │
+  │   ├── HASH = ${VERCEL_GIT_COMMIT_SHA:0:7} (truncate to 7 chars)
+  │   ├── MSG = VERCEL_GIT_COMMIT_MESSAGE (first line of commit)
+  │   ├── DATE = git log -1 --format="%ai" $SHA (if git available)
+  │   │          └── fallback: "N/A"
+  │   └── Use these values → sed replacement → DONE
+  │
+  ├── [NO] git log -1 succeeds?
+  │   │
+  │   ├── HASH = git log -1 --format="%h"
+  │   ├── MSG = git log -1 --format="%s"
+  │   ├── DATE = git log -1 --format="%ai"
+  │   └── Use these values → sed replacement → DONE
+  │
+  └── [NO] Neither available
+      │
+      ├── Log warning: "No git commit info available"
+      ├── Skip replacement (tokens → __COMMIT_XXX__ remain)
+      └── Runtime guard → shows "N/A" → DONE
+```
+
+### 2.2 Modified Script: `scripts/inject-commit-info.sh`
+
+Key structural changes from the #75 version:
+
+1. **Removed `set -e`** for the fallback path — individual commands must not cause the whole script to abort
+2. **Added Vercel env var detection** at the top of the priority chain
+3. **Truncated SHA** from 40-char VERCEL_GIT_COMMIT_SHA to 7 chars via bash substring `${var:0:7}`
+4. **Date handling:** Vercel doesn't provide a date env var — attempt `git log -1 --format="%ai"` with the SHA (works if Vercel provides a shallow clone with that commit), fall back to `"N/A"`
+5. **Graceful skip path:** if neither env vars nor git available → exit 0 (don't fail the build)
 
 ```bash
 #!/bin/bash
 # inject-commit-info.sh — Replace placeholder tokens in gameboy.html
 # with real git commit metadata before deployment.
 #
-# Supports two data sources:
-#   1. Vercel system environment vars (VERCEL_GIT_COMMIT_SHA, VERICEL_GIT_COMMIT_MESSAGE)
-#      → Used when available (Vercel build environment, no .git/ available)
-#   2. git log -1
-#      → Fallback for local development (repo root, .git/ available)
+# Priority chain:
+#   1. Vercel system env vars (VERCEL_GIT_COMMIT_SHA / _MESSAGE)
+#   2. git log -1 (local development)
+#   3. Skip (placeholders survive → runtime guard shows N/A)
 #
-# If neither source is available, the script skips replacement entirely.
-# Placeholder tokens survive → runtime guard catches them → ABOUT shows "N/A".
+# Usage: bash scripts/inject-commit-info.sh
+# Must be run from the repo root.
 
-set -euo pipefail
+set -u  # fail on undefined vars, but NOT -e (graceful fallback required)
 
 HTML_FILE="public/gameboy.html"
 SCRIPT_NAME="inject-commit-info"
 
-# ── Resolve commit metadata ──────────────────────────────────────────
+HASH=""
+MSG=""
+DATE=""
+FOUND=false
 
-# Source 1: Vercel system environment variables (preferred)
-# Vercel provides these during build; see https://vercel.com/docs/projects/environment-variables/system-environment-variables
+# ── Priority 1: Vercel system environment variables ──
 if [ -n "${VERCEL_GIT_COMMIT_SHA:-}" ]; then
-  HASH="${VERCEL_GIT_COMMIT_SHA:0:7}"  # first 7 chars = abbreviated hash
-  MSG="${VERCEL_GIT_COMMIT_MESSAGE:-unknown}"
-  # Derive date from the commit message context — Vercel doesn't expose a date var
-  # We still try git log for the date; if it fails, use "unknown"
-  DATE=$(git log -1 --format="%ai" 2>/dev/null || echo "unknown")
+    HASH="${VERCEL_GIT_COMMIT_SHA:0:7}"
+    MSG="${VERCEL_GIT_COMMIT_MESSAGE:-}"
 
-# Source 2: Local git repository
-elif git log -1 &>/dev/null; then
-  HASH=$(git log -1 --format="%h")
-  MSG=$(git log -1 --format="%s")
-  DATE=$(git log -1 --format="%ai")
+    # Vercel doesn't provide a date env var — try git with SHA
+    DATE=$(git log -1 --format="%ai" "$VERCEL_GIT_COMMIT_SHA" 2>/dev/null || echo "N/A")
 
-# Source 3: Nothing available — skip replacement, runtime guard handles it
-else
-  echo "[${SCRIPT_NAME}] WARN: No git metadata available. Keeping placeholders (runtime fallback → N/A)."
-  exit 0
+    # If git failed, DATE is "N/A" — that's acceptable
+    FOUND=true
 fi
 
-# ── Escape and inject ───────────────────────────────────────────────
+# ── Priority 2: Local git repository ──
+if [ "$FOUND" = false ] && HASH=$(git log -1 --format="%h" 2>/dev/null) && [ -n "$HASH" ]; then
+    MSG=$(git log -1 --format="%s" 2>/dev/null)
+    DATE=$(git log -1 --format="%ai" 2>/dev/null)
+    FOUND=true
+fi
 
-# sed-safe string escaping (delimiter = @)
+# ── Priority 3: No data available ──
+if [ "$FOUND" = false ]; then
+    echo "[${SCRIPT_NAME}] WARNING: No git commit info available. Placeholders will remain (runtime guard shows N/A)."
+    exit 0
+fi
+
+# ── Escape for sed ──
+# Escape: \, &, and @ (our delimiter)
 sed_escape() {
   printf '%s\n' "$1" | sed 's/[@\]/\\&/g; s/&/\\&/g'
 }
 
-# JSON-escape the commit message using Node.js for quotes/backticks etc.
+# JSON-escape the commit message using Node.js
 if command -v node &>/dev/null; then
   ESCAPED_MSG=$(node -e "console.log(JSON.stringify(process.argv[1]).slice(1,-1))" "$MSG")
 else
   ESCAPED_MSG="$MSG"
 fi
 
-# Ensure sed-safe
+# Ensure sed-safe: escape \, &, and @ (our delimiter)
 HASH_S=$(sed_escape "$HASH")
 MSG_S=$(sed_escape "$ESCAPED_MSG")
 DATE_S=$(sed_escape "$DATE")
 
-# Perform in-place replacements with @ delimiter
+# ── Perform replacements ──
 sed -i "s@__COMMIT_HASH__@${HASH_S}@g" "$HTML_FILE"
 sed -i "s@__COMMIT_MSG__@${MSG_S}@g" "$HTML_FILE"
 sed -i "s@__COMMIT_DATE__@${DATE_S}@g" "$HTML_FILE"
 
-echo "[${SCRIPT_NAME}] Injected: $HASH — $ESCAPED_MSG"
+echo "[${SCRIPT_NAME}] Injected: $HASH — ${ESCAPED_MSG:0:50}"
 ```
 
-### 2.2 No Changes Required
+### 2.3 Key Design Decisions
 
-| File | Reason |
-|------|--------|
-| `vercel.json` | `buildCommand` already configured and stays the same |
-| `public/gameboy.html` | Placeholder block unchanged |
-| `public/src/engine/core.js` | Runtime guard already correct |
-| `.github/workflows/deploy.yml` | No workflow change needed |
-| Existing tests | Same test suite covers all paths |
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Env var source | `VERCEL_GIT_COMMIT_SHA` / `_MESSAGE` | Vercel's documented system env vars — reliable, stable, CI-agnostic |
+| SHA truncation | `${var:0:7}` bash substring | Matches `git log -1 --format="%h"` format for display consistency |
+| Date strategy | `git log -1` with SHA, fallback to `"N/A"` | Vercel doesn't provide date env var; a shallow clone may have the head commit; if not, `N/A` is acceptable |
+| Error handling | `set -u` but NOT `set -e` | Script must survive individual command failures (e.g., `git log -1`) and still exit 0 |
+| Escape strategy | `sed` with `@` delimiter + Node.js JSON.stringify | Same as #75 — proven to handle quotes, backticks, special characters |
+| Skip vs fallback string | Skip replacement entirely | Better than injecting `"unknown"` — runtime guard shows `N/A` which is clear intent |
+| No CI workflow changes | Verdict: unnecessary | Vercel provides everything via env vars; no coupling to GitHub Actions |
 
-### 2.3 Key Decisions
-
-| Decision | Choice | Reason |
-|----------|--------|--------|
-| Env var source | Vercel system env vars (`VERCEL_GIT_COMMIT_*`) | Officially documented, always available during Vercel build |
-| Date derivation | `git log -1` fallback (date not in Vercel env) | Vercel doesn't expose commit date as env var; git log works if `.git/` happens to exist; `"unknown"` fallback otherwise |
-| SHA truncation | `${VAR:0:7}` bash substring | Consistent with previous fix's 7-char abbreviated format |
-| Failure behavior | `exit 0` (skip + keep placeholders) | Safe: runtime guard shows `N/A` instead of broken deployment |
-| `set -euo pipefail` | Kept | Script exits early on critical failures, preventing deployment of broken HTML |
-
-### 2.4 Data Flow
-
-```
-Vercel Build (buildCommand runs)
-  ↓
-inject-commit-info.sh
-  ↓
-VERCEL_GIT_COMMIT_SHA set? ──No──→ git log -1 works? ──No──→ exit 0 (placeholders → N/A)
-  ↓ Yes                           ↓ Yes
-Use env var SHA (7 chars)    Use git log metadata
-Use env var message           Use git log message
-Try git log for date          Use git log date
-  ↓                               ↓
-Replace __COMMIT_HASH__, __COMMIT_MSG__, __COMMIT_DATE__ in gameboy.html
-  ↓
-Deploy modified gameboy.html → real values → ABOUT screen shows correct info
-```
-
-### 2.5 Boundary Conditions
+### 2.4 Boundary Conditions
 
 | # | Condition | Behavior |
 |---|-----------|----------|
-| 1 | **Vercel deploy (CI)** | Env vars available → real SHA + message → ABOUT shows real values |
-| 2 | **Vercel deploy without commit message** | `VERCEL_GIT_COMMIT_MESSAGE` unset → `"unknown"` fallback |
-| 3 | **Local dev with git** (no env vars) | Falls back to `git log -1` → real values |
-| 4 | **Local dev without git** | Both sources fail → skip → runtime guard shows `N/A` |
-| 5 | **Local `file://` access** (no build step) | Placeholders intact → runtime guard shows `N/A` ✅ |
-| 6 | **Full 40-char SHA** | `${VAR:0:7}` truncates to 7 chars |
-| 7 | **Special chars in commit message** | Node.js JSON escaping handles quotes, backticks, slashes safely |
-| 8 | **Empty commit message** | `$MSG` is empty → shows blank in output → acceptable edge case |
-| 9 | **Vercel preview deployment (PR)** | Env vars reflect PR branch head commit |
-| 10 | **Vercel deploy from UI (no git push)** | `VERCEL_GIT_COMMIT_SHA` still available (Vercel provides it for all git-triggered deploys) |
+| 1 | **Vercel production deploy** | Env vars set → real values → ABOUT ✅ |
+| 2 | **Vercel preview deploy (PR)** | Same as production — env vars reflect PR head commit ✅ |
+| 3 | **Vercel deploy from UI (no git connection)** | No env vars, no `.git/` → skip → N/A ✅ |
+| 4 | **Local dev with git (`file://` or `http://`)** | No env vars, `.git/` available → git log works ✅ |
+| 5 | **Local dev without git** | No env vars, no `.git/` → skip → N/A ✅ |
+| 6 | **Full 40-char SHA from Vercel** | Truncated to 7 chars via `${VERCEL_GIT_COMMIT_SHA:0:7}` ✅ |
+| 7 | **Commit message with special chars** | Node.js JSON.stringify escapes safely ✅ |
+| 8 | **VERCEL_GIT_COMMIT_MSG empty/missing** | Falls to empty string — sed replaces with empty; better than "unknown" |
+| 9 | **Script exits non-zero on failure (regression)** | `set -u` only, `exit 0` on skip path — must not crash Vercel build ✅ |
+| 10 | **Vercel shallow clone doesn't have `.git/` at all** | `git log -1` prints error to stderr → captured by `2>/dev/null` → DATE = "N/A" ✅ |
 
-### 2.6 Rollback Plan
+### 2.5 Rollback Plan
 
-If the modified script causes issues:
-
-1. **Immediate:** Revert `scripts/inject-commit-info.sh` to the #75 version (git log only) — but this would regress to "unknown" on Vercel
-2. **Better rollback:** Set `"buildCommand": null` in `vercel.json` to disable the script entirely → placeholders survive → runtime guard shows `N/A` (safe state)
-3. **Fix:** Debug env var detection and re-deploy
+1. **Immediate:** Revert `scripts/inject-commit-info.sh` to the #75 version (which injects "unknown")
+2. **Restore:** `git checkout master -- scripts/inject-commit-info.sh`
+3. **Fix:** Publish hotfix with corrected env var detection
 
 ---
 
 ## 3. Files Changed
 
-| File | Change Description | Est. Lines |
-|------|--------------------|------------|
-| `scripts/inject-commit-info.sh` | MODIFY: Add Vercel env var priority source + `else` skip path | ±15 (net) |
+| File | Change Type | Description | Est. Lines |
+|------|-------------|-------------|------------|
+| `scripts/inject-commit-info.sh` | **MODIFY** | Add Vercel env var priority chain; remove `set -e`; add graceful skip path; add SHA truncation | ±15 |
+| `tests/test-inject-commit-info.sh` | **MODIFY** | Add Test 4 (Vercel env var simulation with mock env vars) and Test 5 (both env vars and git unavailable) | +40 |
 
 ---
 
 ## 4. Verification Checklist
 
-- [ ] Vercel system env var detection: when `VERCEL_GIT_COMMIT_SHA` is set, script uses env var SHA (first 7 chars) and message
-- [ ] Local dev fallback: without env vars but with `.git/`, script uses `git log -1`
-- [ ] Safe skip: without env vars and without `.git/`, script exits 0 without modifying HTML
-- [ ] SHA truncated: `${VERCEL_GIT_COMMIT_SHA:0:7}` produces exactly 7-char abbreviated hash
-- [ ] Date fallback: date value is `"unknown"` when Vercel env + git date both unavailable
-- [ ] No regression: existing `git log -1` behavior unchanged for local development
-- [ ] Runtime guard: after script runs, `window.__COMMIT_INFO` contains real values (not `unknown`, not `__xxx__`)
-- [ ] ABOUT screen: deployed site shows real commit hash, message, date
+### Unit Tests (Text Specs)
+
+**Test 1: Basic replacement in real repo** (existing, unchanged)
+- Inject script runs in real repo
+- No `__COMMIT_*__` tokens remain in output
+- Hash is valid 7-char hex string
+- Message and date are non-empty
+
+**Test 2: Fallback without git repo** (existing, updated assertion)
+- Inject script runs in temp dir without `.git/`
+- Script must NOT inject "unknown" — instead, tokens remain untouched
+- **Updated expectation:** Placeholders survive → `grep __COMMIT_HASH__` returns match
+- Script exits 0
+
+**Test 3: Special characters in commit message** (existing, unchanged)
+- Commit with quotes, ampersands, backticks
+- Script produces valid sed replacement
+- No `__COMMIT_*__` tokens remain
+
+**Test 4 (NEW): Vercel env var simulation**
+- Mock `VERCEL_GIT_COMMIT_SHA` and `VERCEL_GIT_COMMIT_MESSAGE` env vars
+- Inject script in temp dir without `.git/`
+- Hash is truncated 7-char hex from mock SHA
+- Message matches mock message
+- Date is "N/A" (since no `.git/` available for git date lookup)
+
+**Test 5 (NEW): Both env vars and git unavailable — graceful skip**
+- Inject script in temp dir without `.git/`, without Vercel env vars
+- Script exits 0
+- `__COMMIT_HASH__` tokens remain in output (no replacement)
+- **This is the test that would have caught the #82 regression**
+
+### Integration Checks
+
+- [ ] Vercel deploy: build logs show `[inject-commit-info] Injected: <hash> — <msg>`
+- [ ] Deployed ABOUT screen shows real commit hash (7-char), message, date
+- [ ] Preview deploy (PR branch) also shows correct commit info
+- [ ] Local dev: `bash scripts/inject-commit-info.sh` still works with `.git/`
+- [ ] Local dev without `.git/`: script exits 0, tokens untouched, runtime guard shows N/A
+- [ ] `createInitialState()` with real values — `state.commitInfo.hash === "abc1234"` etc.
+- [ ] Existing N/A fallback tests still pass
+
+### Regression Checks
+
+- [ ] `npm test` all tests pass
+- [ ] `tests/test-inject-commit-info.sh` all tests pass (existing + new)
+- [ ] Manual: navigate ABOUT screen in deployed game — no broken HTML, no JS errors
+- [ ] Edge: commit message with CJK characters (relevant for Chinese commits)
+- [ ] Edge: commit message with emoji (e.g., "🎉 Initial commit")
