@@ -227,7 +227,101 @@ echo "[${SCRIPT_NAME}] Injected: $HASH — ${ESCAPED_MSG:0:50}"
 
 ---
 
-## 4. Verification Checklist
+## 4. Test Specifications
+
+### 4.1 Unit Tests — Shell Script Logic (Manual)
+
+These tests validate the three code paths in `scripts/inject-commit-info.sh`.
+
+#### TC-1: Vercel env var path (priority source)
+
+| Field | Value |
+|-------|-------|
+| ID | TC-DESIGN-1 |
+| Name | VERCEL_GIT_COMMIT_SHA takes priority over git log |
+| Setup | Set env vars: `VERCEL_GIT_COMMIT_SHA=abc1234deadbeef01234567`, `VERCEL_GIT_COMMIT_MESSAGE="Fix: button alignment"`. Run script in a directory WITH `.git/` |
+| Steps | 1. `export VERCEL_GIT_COMMIT_SHA=abc1234deadbeef01234567` 2. `export VERCEL_GIT_COMMIT_MESSAGE="Fix: button alignment"` 3. `bash scripts/inject-commit-info.sh` 4. Check `gameboy.html` |
+| Expected | Script reads env var SHA (first 7 chars = `abc1234`) and message. Date comes from `git log -1`. No "unknown" appears. |
+| Postcondition | `grep -c "unknown" public/gameboy.html` returns 0 |
+
+#### TC-2: Local dev git fallback
+
+| Field | Value |
+|-------|-------|
+| ID | TC-DESIGN-2 |
+| Name | git log -1 fallback when no env vars |
+| Setup | No VERCEL_GIT_* env vars. Run in repo root WITH `.git/` |
+| Steps | 1. `unset VERCEL_GIT_COMMIT_SHA VERCEL_GIT_COMMIT_MESSAGE` 2. `bash scripts/inject-commit-info.sh` 3. Check `gameboy.html` |
+| Expected | Script reads metadata from `git log -1`. Real SHA (7-char) and message injected. Same behavior as original #75 fix. |
+| Postcondition | No regression: existing local dev behavior preserved |
+
+#### TC-3: Safe skip when no source available
+
+| Field | Value |
+|-------|-------|
+| ID | TC-DESIGN-3 |
+| Name | No env vars AND no git → skip replacement |
+| Setup | Run script outside a git repo (e.g., `/tmp/`) with no VERCEL_GIT_* vars |
+| Steps | 1. `cd /tmp && mkdir -p test-no-git && cd test-no-git` 2. Copy `gameboy.html` with placeholders 3. Copy and run `scripts/inject-commit-info.sh` 4. Check exit code and HTML |
+| Expected | Exit 0. HTML unchanged (placeholders remain). Runtime guard catches them → ABOUT shows `N/A` |
+| Postcondition | `grep "__COMMIT_" public/gameboy.html` still matches |
+
+#### TC-4: SHA truncation
+
+| Field | Value |
+|-------|-------|
+| ID | TC-DESIGN-4 |
+| Name | 40-char SHA truncated to 7 chars |
+| Setup | Set `VERCEL_GIT_COMMIT_SHA` to a full 40-char hex string |
+| Steps | 1. `export VERCEL_GIT_COMMIT_SHA=abcdef1234567890abcdef1234567890abcdef12` 2. `bash scripts/inject-commit-info.sh` 3. Check injected hash |
+| Expected | Hash injected is exactly `abcdef1` (first 7 chars). The full 40-char string NOT present in the output. |
+| Postcondition | `grep "hash.*abcdef123" public/gameboy.html` returns 0 (only 7-char version present) |
+
+#### TC-5: Special characters in commit message
+
+| Field | Value |
+|-------|-------|
+| ID | TC-DESIGN-5 |
+| Name | JSON escaping of special chars |
+| Setup | Set `VERCEL_GIT_COMMIT_MESSAGE` with quotes, backticks, slashes: `It's "done" — ready for \`deploy\`?` |
+| Steps | 1. Export message with special chars 2. Run script 3. Verify injected HTML is valid JS |
+| Expected | No script error. Node.js `JSON.stringify` properly escapes the message. HTML `<script>` block remains valid. |
+| Postcondition | Game loads without console error due to malformed commit info |
+
+### 4.2 Integration Tests (Manual)
+
+#### TC-6: Runtime guard still works
+
+| Field | Value |
+|-------|-------|
+| ID | TC-DESIGN-6 |
+| Name | Runtime guard catches placeholder leak |
+| Steps | 1. Open `public/gameboy.html` directly via `file://` (no build step) 2. Navigate to ABOUT screen |
+| Expected | `__COMMIT_HASH__` etc. remain in source. Runtime guard in `core.js` checks `startsWith('__')` → shows `N/A`. |
+
+#### TC-7: Full end-to-end Vercel deploy
+
+| Field | Value |
+|-------|-------|
+| ID | TC-DESIGN-7 |
+| Name | Deployed build shows real commit info |
+| Steps | 1. Merge implement PR to main 2. Wait for Vercel deploy 3. Visit deployed URL 4. Navigate to ABOUT screen |
+| Expected | Commit hash (7-char), message, and date show real values. No "unknown" visible. |
+
+### 4.3 Regression Tests
+
+#### TC-8: Current behavior unchanged for local dev
+
+| Field | Value |
+|-------|-------|
+| ID | TC-DESIGN-8 |
+| Name | Local dev git path unchanged |
+| Steps | 1. In repo root (with `.git/`) without Vercel env vars 2. `bash scripts/inject-commit-info.sh` 3. Check output |
+| Expected | Same behavior as #75: real values from `git log -1` injected. Script output matches pre-fix behavior. |
+
+---
+
+## 5. Verification Checklist
 
 ### Unit Tests (Text Specs)
 
