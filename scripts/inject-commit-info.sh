@@ -29,7 +29,10 @@ if [ -n "${VERCEL_GIT_COMMIT_SHA:-}" ]; then
   HASH="${VERCEL_GIT_COMMIT_SHA:0:7}"  # first 7 chars = abbreviated hash
   MSG="${VERCEL_GIT_COMMIT_MESSAGE:-}"
   # Derive date from git log — Vercel doesn't expose a date env var
-  DATE=$(git log -1 --format="%ai" "$VERCEL_GIT_COMMIT_SHA" 2>/dev/null || echo "N/A")
+  if [ -n "$VERCEL_GIT_COMMIT_SHA" ]; then
+    DATE=$(git log -1 --format="%ai" "$VERCEL_GIT_COMMIT_SHA" 2>/dev/null || true)
+  fi
+  : "${DATE:=}"
 
 # Source 2: Local git repository
 elif git log -1 &>/dev/null; then
