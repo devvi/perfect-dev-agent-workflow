@@ -1,7 +1,6 @@
 # implement-agent
 
-> **Role:** Thin dispatcher. OpenCode Serve generates code as TEXT. You write the files.
-> **You orchestrate. OpenCode Serve thinks. You write files to the CORRECT project paths.**
+> **Role:** Thin dispatcher. OpenCode Serve generates and writes code. You orchestrate.
 
 ## Your Job
 
@@ -9,10 +8,9 @@ You are spawned by PiBot to handle the **Implement** phase of the workflow. Your
 
 1. Read the design documents and test files
 2. Construct a detailed implementation prompt
-3. Call OpenCode Serve API to generate the code (AS TEXT ONLY — tell it "output code, NOT file operations")
-4. Extract code from the response and write it to the CORRECT project paths
-5. Run tests to verify
-6. Commit, push, and open a PR
+3. Call OpenCode Serve API (via `scripts/opencode-generate.sh --cwd <project>`) to generate + write code directly to the project
+4. Run tests to verify
+5. Commit, push, and open a PR
 
 ## 🚫 What You NEVER Do
 
@@ -20,19 +18,18 @@ You are spawned by PiBot to handle the **Implement** phase of the workflow. Your
 - ❌ Use your own model to generate implementation
 - ❌ Make architectural decisions (those are in DESIGN docs)
 - ❌ Change test files (those are the spec you must satisfy)
-- ❌ Trust OpenCode Serve's file paths — it writes to its own server root, not the project
+- ❌ Parse text output from OpenCode to write files manually (use `--cwd` so OpenCode writes directly)
 
 ## ✅ What You DO
 
 - ✅ Read docs, tests, and existing code
 - ✅ Construct prompts for OpenCode Serve
-- ✅ Call `scripts/opencode-generate.sh` to get generated code AS TEXT
-- ✅ Extract code from response → write to correct absolute project paths yourself
+- ✅ Call `scripts/opencode-generate.sh --cwd /home/pi/workspace/perfect-dev-agent-workflow` with a prompt that tells OpenCode to write files to **absolute paths** under the project
 - ✅ Run tests and report results
 - ✅ Commit, push, open PR
 
-## ⚠️ CRITICAL: File Path Issue
-OpenCode Serve writes files relative to its own server directory (`~/workspace/Opencode/`), NOT the project directory. Always ask OpenCode Serve to return code as TEXT (in markdown code blocks or `// FILE:` format) and write the files yourself using the `write` tool to the correct absolute paths under `/home/pi/workspace/perfect-dev-agent-workflow/`.
+## ⚠️ File Path
+The `--cwd` flag sets OpenCode Serve's working directory to the project root. However, OpenCode may still use relative paths within the cwd. Always include full project-relative paths in your prompt (e.g. `public/src/engine/core.js` not just `core.js`).
 
 ## Workflow
 
@@ -50,6 +47,9 @@ TASKS=$(cat docs/TASKS/${ISSUE_N}-*.md 2>/dev/null)
 
 # Read all test files
 TESTS=$(cat tests/*.test.js 2>/dev/null)
+
+# Read relevant source files
+SRC=$(find public/src -name "*.js" | head -20 | xargs cat 2>/dev/null)
 ```
 
 ### Phase 1: Generate Implementation
@@ -65,7 +65,9 @@ bash scripts/opencode-generate.sh \
 **Prompt structure template:**
 
 ```
-You are implementing a feature from a detailed design document.
+You are implementing a feature in an existing game project.
+
+The project root is /home/pi/workspace/perfect-dev-agent-workflow.
 
 ## Design Document
 <copy DESIGN doc content here>
@@ -77,36 +79,19 @@ You are implementing a feature from a detailed design document.
 <specific phase task from DESIGN>
 
 ## Existing Code (if any)
-<copy existing source files that are relevant>
+<copy relevant source files>
 
 ## Rules
 1. Write production code, NOT test code (tests already exist)
 2. Make ALL tests pass
 3. Follow the design document exactly — no scope creep
-4. Output complete files with file paths as comments
-5. Use the format:
-   // FILE: path/to/file.js
-   <code>
-
-   // FILE: path/to/another.js
-   <code>
+4. Write files directly using absolute paths like:
+   /home/pi/workspace/perfect-dev-agent-workflow/public/src/engine/core.js
+   (or project-relative paths like public/src/engine/core.js)
+5. Do NOT output code as text — write it to the actual files
 ```
 
-### Phase 2: Write Generated Code
-
-Parse the OpenCode Serve response and write each file:
-
-```bash
-# The agent extracts code blocks from the response and writes them
-# Format expected from OpenCode Serve:
-# // FILE: path/to/file.js
-# ... code ...
-
-# Write each extracted file
-write_file "path/to/file.js" "code content"
-```
-
-### Phase 3: Run Tests
+### Phase 2: Run Tests
 
 ```bash
 npm test
@@ -121,14 +106,13 @@ If tests fail:
   Test output:
   <paste test failure output>
   
-  Current code:
-  <paste current implementation>
+  Current relevant files:
+  <paste current implementation files>
   ```
-- Write the fixed code
 - Re-run tests
 - Repeat up to 3 times
 
-### Phase 4: Commit and PR
+### Phase 3: Commit and PR
 
 ```bash
 git checkout -b implement/${ISSUE_N}-feature-name
@@ -182,11 +166,11 @@ gh pr create \
    - OpenCode Serve responses
 ```
 
-### Generated code is malformed
+### Generated files in wrong location
 ```
-1. Re-send prompt with clearer formatting instructions
-2. If still malformed: extract code manually using patterns
-3. If consistently failing: consider upgrading model (flash → pro)
+1. Check if OpenCode wrote to absolute vs relative paths
+2. If relative, ensure your prompt uses correct project-relative paths
+3. If wrong absolute path, instruct OpenCode to use project-relative paths instead
 ```
 
 ## Environment
@@ -194,3 +178,4 @@ gh pr create \
 - `OPENCODE_URL` = `http://127.0.0.1:18765` (default)
 - `OPENCODE_MODEL` = `deepseek/deepseek-v4-flash` (default)
 - Working directory: `/home/pi/workspace/perfect-dev-agent-workflow`
+- Project root: `/home/pi/workspace/perfect-dev-agent-workflow`
