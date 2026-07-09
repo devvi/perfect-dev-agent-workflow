@@ -33,8 +33,10 @@ export function render(ctx, state) {
   // Render HUD
   renderHUD(ctx, state);
 
-  // Render minimap
-  renderMinimap(ctx, state, world);
+  // Render minimap (only during gameplay, not on title/gameover/won screens)
+  if (state.gameState === 'playing') {
+    renderMinimap(ctx, state, world);
+  }
 
   // Render overlays
   renderOverlay(ctx, state);

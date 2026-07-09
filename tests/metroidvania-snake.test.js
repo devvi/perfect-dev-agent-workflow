@@ -409,16 +409,16 @@ describe('Phase 2 — Minimap & Fog of War', () => {
       expect(exploredCount).toBe(1);
     });
 
-    it('UT1: background alpha value is 0.50', () => {
-      // Read the source file and verify the fillStyle alpha
+    it('UT1: background uses fully opaque fill (globalAlpha provides transparency)', () => {
+      // Read the source file and verify the fillStyle is fully opaque
       const source = readFileSync(
         new URL('../public/src/render/minimap.js', import.meta.url),
         'utf-8'
       );
-      // Find the background fillRect fillStyle line
+      // The fill is now fully opaque; globalAlpha=0.50 handles transparency
       const match = source.match(/ctx\.fillStyle = 'rgba\(10,\s*10,\s*26,\s*([^)]+)\)'/);
       expect(match).not.toBeNull();
-      expect(parseFloat(match[1])).toBeCloseTo(0.50, 2);
+      expect(parseFloat(match[1])).toBeCloseTo(1.0, 2);
     });
 
     it('UT2: room tile colors are unchanged (use PALETTE constants)', () => {
