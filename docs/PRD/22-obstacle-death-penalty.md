@@ -3,6 +3,8 @@
 > Parent Issue: #22
 > Agent: research-agent
 > Date: 2026-07-07
+> Status: Open
+> Priority: Medium
 
 ---
 
@@ -48,7 +50,7 @@
 
 ---
 
-## 2. Root Cause Analysis / Design Intent
+## 2. Root Cause Analysis (Bug) / Design Intent (Feature)
 
 ### Why Does Current Behavior Exist?
 
@@ -125,6 +127,8 @@ checkSnakeCollision → 'damage' → length-1 + screenShake=true
 
 ## 4. Solution Comparison
 
+> At least 2 approaches required.
+
 ### Approach A: 最小改动 — 修改碰撞返回值 + 新增 DEATH_WALL（推荐）
 
 **Description:** 在现有架构基础上做最小改动：
@@ -198,7 +202,7 @@ checkSnakeCollision → 'damage' → length-1 + screenShake=true
 
 ### Failure Paths
 1. **震动导致实际画面偏移过强：** 玩家在震动时感到眩晕或不适 → 震动幅度限制在 ±3px 内，持续时间不超过 500ms。
-2. **DEATH_WALL 与非即死墙视觉混淆：** 玩家无法区分钟类是"掉血"还是"即死" → DEATH_WALL 必须使用明显不同的颜色/样式（熔岩红、尖刺图案、骷髅标记等）。
+2. **DEATH_WALL 与非即死墙视觉混淆：** 玩家无法区分类别是"掉血"还是"即死" → DEATH_WALL 必须使用明显不同的颜色/样式（熔岩红、尖刺图案、骷髅标记等）。
 3. **撞墙扣血后蛇位置：** 蛇头撞到墙后停留在原位置（不向前移动），避免蛇头嵌入墙内导致反复扣血/卡住。
 
 > 这些直接成为 Plan 阶段的测试用例骨架。
@@ -249,4 +253,4 @@ checkSnakeCollision → 'damage' → length-1 + screenShake=true
 （Spike 结果将在 Plan 阶段实际运行后补充。Expected 推荐参数：强度 ±3px，持续时间 300ms（6 tick at 50FPS），指数衰减（乘因子 0.7 per tick），每次 tick 重新随机偏移方向。）
 
 ### Impact on Approach
-如果震动参数测试结果良好（玩家反馈 "痛了"但不影响操作），则 Approach A 中震动实现方案直接敲定。如果震动的实现复杂度超出预期（如需要单独震动状态机 vs 简化震动），可将震动作为一个独立子任务分离出来。Combat 场景（子弹击中敌人）的震动效果可留待后续扩展。
+如果震动参数测试结果良好（玩家反馈"痛了"但不影响操作），则 Approach A 中震动实现方案直接敲定。如果震动的实现复杂度超出预期（如需要单独震动状态机 vs 简化震动），可将震动作为一个独立子任务分离出来。Combat 场景（子弹击中敌人）的震动效果可留待后续扩展。

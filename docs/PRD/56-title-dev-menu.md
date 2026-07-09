@@ -3,6 +3,8 @@
 > Parent Issue: #56
 > Agent: research-agent
 > Date: 2026-07-08
+> Status: Open
+> Priority: Medium
 
 ---
 
@@ -23,7 +25,7 @@ The title screen (gameboy.html) is a minimal dark landing page with the game tit
 
 ---
 
-## 2. Design Intent
+## 2. Root Cause Analysis (Bug) / Design Intent (Feature)
 
 ### Why Does Current Behavior Exist?
 The title screen was a minimal MVP, focused on redirecting to the game. There was no prior requirement to expose deployment metadata or developer tooling in the UI.
@@ -78,6 +80,8 @@ User press same key again or Escape → state.devMenuOpen = false
 ---
 
 ## 4. Solution Comparison
+
+> At least 2 approaches required.
 
 ### Approach A: Commit Hash via Build-time Injection + Dev Menu via Keybind
 - **Description:** Use the CI/CD deploy workflow (`deploy.yml`) to replace a placeholder like `__COMMIT_HASH__` in `gameboy.html` with the actual short SHA before deploying. On the title screen, render the hash as text (e.g., bottom-right corner). Add a keybind (e.g., press backtick/grave accent `` ` `` or KeyD) to toggle the dev menu, which is rendered as a canvas overlay.
@@ -147,6 +151,8 @@ User press same key again or Escape → state.devMenuOpen = false
 1. **Deploy script fails to inject:** If the `sed` command fails, the commit hash placeholder remains unmodified. The game should gracefully fall back to `unknown` or `local`.
 2. **Commit message is very long:** The dev menu should truncate long messages (e.g., max 60 chars per line, wrap to multiple lines).
 3. **Canvas redraw reset:** If the game re-initializes (init()), the dev menu overlay state should be preserved or gracefully reset.
+
+> These directly become test case skeletons in Plan phase.
 
 ---
 

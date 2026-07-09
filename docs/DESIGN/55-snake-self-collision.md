@@ -1,15 +1,12 @@
-# Design: Snake Self-Collision Non-Lethal (Tail Removal + Stun)
+# Design: #55 — Snake Self-Collision Non-Lethal (Tail Removal + Stun)
 
-| Field | Value |
-|-------|-------|
-| Issue | #55 |
-| Status | Planned |
-| Priority | Medium |
-| Author | devvi |
+> Parent Issue: #55
+> Agent: plan-agent
+> Date: 2026-07-07
 
-## 1. Module Architecture
+---
 
-Two independent game engines are affected. Both follow the same high-level architecture but differ in their integration points.
+## 1. Architecture Overview
 
 ### 1.1 Engine A — Classic GameBoy Snake
 
@@ -31,7 +28,9 @@ Two independent game engines are affected. Both follow the same high-level archi
 
 **Current flow (self-collision):** `tickSnakeState(s)` → `checkSnakeCollision(s, newHead, ...)` → returns `['self']` → loop matches `'self'` → `s.gameState = 'gameover'` → returns `s`.
 
-## 2. Component / Module Design with Interfaces and States
+---
+
+## 2. Detailed Design
 
 ### 2.1 Collision Detection Interface
 
@@ -74,9 +73,9 @@ Only Engine B has a dedicated screen-shake mechanism. Engine A currently lacks s
 | Score display (both) | Score value changes (drops by 5) |
 | Stun indicator (both) | Stun counter engaged; existing stun UI (overlay/opacity) shows player is briefly locked |
 
-## 3. Data Flow: Collision Detection → Handler → Penalty Application
+### 2.5 Data Flow: Collision Detection → Handler → Penalty Application
 
-### 3.1 Engine A Flow
+#### Engine A Flow
 
 ```
 tick(direction)
@@ -101,7 +100,7 @@ tick(direction)
   └── return next (or gameover from other collisions)
 ```
 
-### 3.2 Engine B Flow
+#### Engine B Flow
 
 ```
 tickSnakeState(s)
@@ -129,70 +128,57 @@ tickSnakeState(s)
   └── return s (or gameover from other collisions)
 ```
 
-### 3.3 Key Design Invariant: First Collision Wins
+#### Key Design Invariant: First Collision Wins
 
-Both engines use early-return semantics for collision handling. The first collision type matched in the chain wins, and no subsequent collisions are processed for that tick. This is preserved:
-
+Both engines use early-return semantics for collision handling. This is preserved:
 - **Engine A:** `checkCollision()` returns a single tag; no stacking occurs.
 - **Engine B:** `checkSnakeCollision()` returns an array; the handler loop uses `if/else if` — first match wins.
 - **Consequence:** If self-collision and food collision happen on the same tick, only the first-handled type applies. The PRD recommends self-collision be handled before food in the chain to prevent eating-through-self issues.
 
-## 4. Test Specifications (Text Only — No Code)
+### 2.6 Rejected Alternatives
 
-### 4.1 Happy Path
+| Alternative | Rejected Because |
+|-------------|-----------------|
+| Alternative B — Head-overlap + middle segment removal | Complex index math; removing a middle body segment creates a "hole" in the snake that must be bridged on the next tick; edge cases near the head/tail add branching that increases bug surface |
+| Alternative C — Reverse direction + tail removal | Wall collision already uses reverse — reusing for self-collision reduces gameplay variety; self-collision often occurs in tight spaces where reversing makes no difference |
+| Alternative D — Status quo (instant death) | Inconsistent with wall, enemy, and obstacle collision behaviors that have all moved to non-lethal; self-collision becomes the "cheap death" outlier |
 
-| # | Scenario | Setup | Expected Behavior |
-|---|----------|-------|-------------------|
-| 1 | Snake head moves into own body (mid-body) | Snake length 4, head adjacent to segment 3; direction set to turn into body | Self-collision detected; head stays in place; tail segment removed (length becomes 3); score drops by 5; gameState remains 'playing'; stun counter set to STUCK_TICKS |
-| 2 | Snake head moves into own body (near tail) | Snake length 4, head adjacent to last segment | Same behavior as #1; no special casing for tail-adjacent collisions |
-| 3 | Snake head moves into own body (Engine B only) | Same setup in metroidvania engine, map present, collision.js detection path | Same behavior as #1 plus screen shake activated |
-| 4 | Repeated self-collision in tight space | Snake length 4; successive self-collisions forced | Each collision removes one tail segment; after 3 collisions, snake length reaches 1; final collision triggers gameover |
-
-### 4.2 Edge Cases
-
-| # | Scenario | Setup | Expected Behavior |
-|---|----------|-------|-------------------|
-| 5 | Snake length 2 self-collides (only head + tail) | Snake length 2 (head + tail); head turns back into the only body segment | Self-collision detected; guard condition `length <= 1` after pop triggers gameover (empty snake) |
-| 6 | Snake length 1 self-collides | Snake length 1 (head only, no body); head moves | Self-collision not possible with length 1 (no body segments to collide with); no special handling needed; guard is defensive only |
-| 7 | Self-collision during room transition (Engine B) | Snake crossing room boundary; body segments temporarily overlap | `duringTransition` flag is true; self-collision skipped; snake continues normally |
-| 8 | Simultaneous self-collision + food collision (Engine B) | Food right behind the body segment the head moves into | Collision array contains `['self', 'food']`; self-collision handler matches first; food is not consumed; food remains on board |
-| 9 | Score below penalty threshold | Score = 2; self-collision occurs | Score becomes `Math.max(0, 2-5) = 0`; no negative scores allowed |
-| 10 | Stun already active from wall collision | `stuckCounter > 0` from previous wall bump; player moves into own body | Self-collision is still detected; stun counter is reset to STUCK_TICKS (overwritten); penalty applies |
-
-### 4.3 Regression Checks
-
-| # | Scenario | What to Verify |
-|---|----------|----------------|
-| 11 | Wall collision still works | Wall collision still triggers stuck + reverse + score penalty; gameState remains 'playing' |
-| 12 | Enemy collision still works | Enemy collision still triggers length reduction (enemy-specific amount); gameState remains 'playing' |
-| 13 | Food consumption still works | Food collision still grows snake + increments score |
-| 14 | Obstacle collision still works | Hard obstacles still trigger gameover; soft obstacles still trigger damage |
-| 15 | Game over from other causes | Enemy eating head, obstacles, hard walls — all still trigger gameover correctly |
-| 16 | Score display (Engine A) | Score value decrements visually; no negative display |
-
-### 4.4 Visual / UX Checks
-
-| # | Scenario | What to Verify |
-|---|----------|----------------|
-| 17 | Screen shake on self-collision (Engine B) | Screen visibly shakes for the configured duration |
-| 18 | Stun indicator visible | During stun frames, player input is ignored; visual hint (opacity/overlay) reflects locked state |
-| 19 | No visual glitch at penalty moment | Snake body smoothly re-draws with one fewer segment; no extra frames with overlapping head/body |
-
-## 5. Rejected Alternatives
-
-### Alternative B — Head-overlap + middle segment removal
-- **Rejected because:** Complex index math; removing a middle body segment creates a "hole" in the snake that must be bridged on the next tick; edges cases near the head/tail add branching that increases bug surface.
-
-### Alternative C — Reverse direction + tail removal
-- **Rejected because:** Wall collision already uses reverse — reusing for self-collision reduces gameplay variety; self-collision often occurs in tight spaces where reversing makes no difference.
-
-### Alternative D — Status quo (instant death)
-- **Rejected because:** Inconsistent with wall, enemy, and obstacle collision behaviors that have all moved to non-lethal; self-collision becomes the "cheap death" outlier.
-
-## 6. Open Questions
+### 2.7 Open Questions
 
 | # | Question | Status | Resolution |
 |---|----------|--------|------------|
 | 1 | Should Engine A also have screen shake? | Unresolved | Engine A lacks a screen-shake mechanism; adding one is out of scope for #55. Score flash + stun indicator is sufficient. |
 | 2 | Should self-collision handler priority be before or after food in Engine B? | Open | Current order (from Issue #46) places wall before food. Self-collision should follow the same pattern: place before food to prevent eating-through-self. Final order to be confirmed during implementation. |
 | 3 | Visual feedback for Engine A — color flash on score? | Deferred | Can be addressed as part of a broader visual polish pass. Issue #55 focuses on gameplay mechanics only. |
+
+---
+
+## 3. Files Changed
+
+| File | Change Description | Est. Lines |
+|------|--------------------|------------|
+| `src/gameboy-snake-engine.js` | Replace self-collision → gameover with stun + tail removal + score penalty | ~20 |
+| `public/src/engine/core.js` | Replace self-collision → gameover with stun + tail removal + score penalty in Engine B | ~15 |
+| `tests/gameboy-snake.test.js` | Update existing self-collision tests + add new penalty tests | ~40 |
+| `tests/metroidvania-snake.test.js` | Update existing self-collision tests + add new penalty tests | ~40 |
+
+---
+
+## 4. Verification Checklist
+
+- [ ] Snake head moves into own body (mid-body) → head stays in place; tail segment removed (length becomes 3); score drops by 5; gameState remains 'playing'; stun counter set to STUCK_TICKS
+- [ ] Snake head moves into own body (near tail) → same behavior; no special casing for tail-adjacent collisions
+- [ ] Repeated self-collision in tight space → each collision removes one tail segment; after 3 collisions, snake length reaches 1; final collision triggers gameover
+- [ ] Snake length 2 self-collides (only head + tail) → guard condition `length <= 1` after pop triggers gameover (empty snake)
+- [ ] Snake length 1 self-collides — not possible with length 1 (no body segments to collide with); guard is defensive only
+- [ ] Self-collision during room transition (Engine B) → `duringTransition` flag is true; self-collision skipped; snake continues normally
+- [ ] Simultaneous self-collision + food collision (Engine B) → self-collision handler matches first; food is not consumed
+- [ ] Score below penalty threshold (score = 2) → score becomes `Math.max(0, 2-5) = 0`; no negative scores
+- [ ] Stun already active from wall collision → self-collision still detected; stun counter is reset to STUCK_TICKS (overwritten); penalty applies
+- [ ] Wall collision still works (no regression from #46)
+- [ ] Enemy collision still works → length reduction; gameState remains 'playing'
+- [ ] Food consumption still works → snake grows + increments score
+- [ ] Obstacle collision still works → hard obstacles trigger gameover; soft obstacles trigger damage
+- [ ] Game over from other causes — enemy eating head, obstacles, hard walls — all still trigger gameover correctly
+- [ ] Screen shake on self-collision (Engine B) — screen visibly shakes for configured duration
+- [ ] Stun indicator visible — visual hint reflects locked state

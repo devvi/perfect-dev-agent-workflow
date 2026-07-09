@@ -3,6 +3,8 @@
 > Parent Issue: #20
 > Agent: research-agent
 > Date: 2026-07-07
+> Status: Open
+> Priority: High
 
 ---
 
@@ -40,7 +42,7 @@
 
 ---
 
-## 2. Root Cause Analysis (Bug)
+## 2. Root Cause Analysis (Bug) / Design Intent (Feature)
 
 ### Why Does Current Behavior Exist?
 经过深入分析 `core.js` 的 `tick()` 函数和 `ai.js` 的 `updateEnemies()` 函数，发现**时序漏洞**是根本原因：
@@ -112,6 +114,8 @@ Option B: tick → [move snake → check enemy ← AI moves enemy ← cannot mov
 ---
 
 ## 4. Solution Comparison
+
+> At least 2 approaches required.
 
 ### Approach A: 碰撞重检（AI 后二次检测）（推荐）
 - **Description:** 在 `tick()` 中移动敌人 AI 后，增加一个后置碰撞检查。如果 AI 阶段后蛇头与敌人重叠，执行与前置碰撞相同的掉血逻辑。

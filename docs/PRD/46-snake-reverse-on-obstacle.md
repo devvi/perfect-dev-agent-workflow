@@ -3,6 +3,8 @@
 > Parent Issue: #46
 > Agent: research-agent
 > Date: 2026-07-08
+> Status: Open
+> Priority: Medium
 
 ---
 
@@ -48,7 +50,7 @@ s.score = Math.max(0, s.score - 5);
 
 ---
 
-## 2. Design Intent / Why Change Now
+## 2. Root Cause Analysis (Bug) / Design Intent (Feature)
 
 ### Why Does Current Behavior Exist?
 
@@ -126,6 +128,8 @@ damage → [if not already stuck] set stuckCounter=N, set pendingReverse=true
 
 ## 4. Solution Comparison
 
+> At least 2 approaches required.
+
 ### Approach A: tick 内的 stuck+reverse 状态机（推荐）
 
 **Description:** 在 `core.js` 的 `tick()` 中，将 `'damage'` 碰撞处理从"length-1"改为"stuck+reverse"状态机：
@@ -196,7 +200,7 @@ damage → [if not already stuck] set stuckCounter=N, set pendingReverse=true
 2. **与 Issue #22 的 damage 体系无缝衔接：** `'damage'` 碰撞结果保持不变，只是 tick 内的处理方式从"扣血"改为"stuck+reverse"
 3. **方向输入不变：** stuck 期间仍可缓冲方向，反向时自动同步 `nextDirection`
 4. **可测试性：** stuck 用 tick 计数（同步），测试只需 `tick()` 若干次 = 预期 stuck 状态
-5. **以后可扩展：** 若需 敌人碰撞也触发反向，只需在 `collidedEnemy` 分支复用相同逻辑
+5. **以后可扩展：** 若需敌人碰撞也触发反向，只需在 `collidedEnemy` 分支复用相同逻辑
 
 ---
 

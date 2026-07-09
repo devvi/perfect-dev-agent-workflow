@@ -1,27 +1,20 @@
-# Tasks: Snake Self-Collision Non-Lethal (Tail Removal + Stun)
+# Tasks: #55 — Snake Self-Collision Non-Lethal (Tail Removal + Stun)
 
-| Field | Value |
-|-------|-------|
+| 字段 | 值 |
+|------|----|
 | Issue | #55 |
-| Priority | Medium |
-| Author | devvi |
+| 优先级 | P1 |
 
 ## Overview
 
-Implement non-lethal self-collision for both game engines. When the snake head moves into a body segment, the head stays in place, one tail segment is removed, a stun counter is applied, and a score penalty is deducted. A guard condition triggers gameover only if the resulting snake length is ≤ 1 (empty/unplayable).
-
-**Strategy:** `docs/DESIGN/55-snake-self-collision.md` details the architecture, data flow, and test specifications. This document breaks implementation down into ordered steps across three phases.
-
----
+实现非致命自碰撞机制（双引擎）：蛇头撞到身体段时，头部原地不动，移除尾部一节，应用眩晕计数器，扣分，保护性判断当蛇长度 ≤ 1 时触发 gameover。设计详见 `docs/DESIGN/55-snake-self-collision.md`。
 
 ## Phase 1: Core Implementation (P0)
 
-All P0 items are prerequisites for any further work. They must be completed in order.
-
-| Step | File | Change | Dependencies | Priority |
-|------|------|--------|-------------|----------|
-| 1.1 | `src/gameboy-snake-engine.js` (lines 124–127) | Replace self-collision handler: `gameover` → tail pop + stun + score penalty + length-1 guard | None | P0 |
-| 1.2 | `public/src/engine/core.js` (lines 199–201) | Replace self-collision handler: `gameover` → tail pop + stun + score penalty + screen shake + length-1 guard | None (parallel to 1.1) | P0 |
+| Step | 文件 | 变更 | 前置 | 优先级 |
+|------|------|------|------|--------|
+| 1.1 | `src/gameboy-snake-engine.js` (lines 124–127) | Replace self-collision handler: `gameover` → tail pop + stun + score penalty + length-1 guard | 无 | P0 |
+| 1.2 | `public/src/engine/core.js` (lines 199–201) | Replace self-collision handler: `gameover` → tail pop + stun + score penalty + screen shake + length-1 guard | 无 | P0 |
 | 1.3 | Both engines | Re-run full test suites to confirm no existing functionality regressed | 1.1, 1.2 | P0 |
 
 ### Step 1.1 Detail — Engine A Handler
@@ -36,10 +29,6 @@ All P0 items are prerequisites for any further work. They must be completed in o
 - Call `next.snake.pop()` to remove one tail segment
 - Update score: `next.score = Math.max(0, next.score - 5)`
 - Keep the early return pattern
-
-**Risks:**
-- SNake.COLLISION constant must be imported or accessible (check existing `STUCK_TICKS` usage)
-- The `STUCK_TICKS` constant is assumed to be defined in the engine's scope; verify before committing
 
 ### Step 1.2 Detail — Engine B Handler
 
@@ -56,46 +45,23 @@ All P0 items are prerequisites for any further work. They must be completed in o
 - Add screen shake: `s.screenShake = { intensity: 4, duration: 8 }`
 - Keep the early return pattern
 
-**Risks:**
-- Screen shake key (`s.screenShake`) must match the rendering engine's expected format; verify against existing wall-collision screen shake in the same file
-
----
-
 ## Phase 2: Test Updates & Edge Case Coverage (P0)
 
-Tests must be updated to assert the new non-lethal behavior, not the old gameover behavior.
-
-| Step | File | Change | Dependencies | Priority |
-|------|------|--------|-------------|----------|
+| Step | 文件 | 变更 | 前置 | 优先级 |
+|------|------|------|------|--------|
 | 2.1 | `tests/gameboy-snake.test.js:303` | Test `should set gameState to "gameover" on self collision` → rewrite: assert `gameState` stays `'playing'`, `snake.length` decreases by 1, `score` decreases by 5, `stuckCounter` is set | 1.1 | P0 |
-| 2.2 | `tests/gameboy-snake.test.js:534` | Test `should still trigger gameover on self collision, not stuck` → rewrite: assert that self-collision now triggers stun (not gameover, not stuck reverse) | 1.1 | P0 |
-| 2.3 | `tests/metroidvania-snake.test.js` | If any test asserts `gameState === 'gameover'` on self-collision for Engine B, update to assert the new behavior (probably lines 283–298 area) | 1.2 | P0 |
+| 2.2 | `tests/gameboy-snake.test.js:534` | Test `should still trigger gameover on self collision, not stuck` → rewrite: assert self-collision now triggers stun (not gameover, not stuck reverse) | 1.1 | P0 |
+| 2.3 | `tests/metroidvania-snake.test.js` | If any test asserts `gameState === 'gameover'` on self-collision for Engine B, update to assert the new behavior | 1.2 | P0 |
 | 2.4 | New test (Engine A) | Add test: length-1 guard — snake of length 2 self-collides → pop reduces to length 1 → gameover triggered | 1.1, 2.1 | P0 |
 | 2.5 | New test (Engine B) | Add test: length-1 guard — snake of length 2 self-collides → pop reduces to length 1 → gameover triggered | 1.2, 2.3 | P0 |
 | 2.6 | New test (Engine B) | Add test: duringTransition flag protects against false-positive self-collision | 1.2, 2.3 | P0 |
 | 2.7 | New test (both) | Add test: self-collision at score 0 → score stays at 0 (no negative score) | 1.1, 1.2 | P1 |
 | 2.8 | New test (Engine B) | Add test: simultaneous self-collision + food → self-collision handled, food not consumed | 1.2, 2.3 | P1 |
 
-### Test Scenario Reference
-
-For each test, the following assertions are needed (adjust for engine-specific fields):
-
-- **Non-lethal assertion:** `gameState === 'playing'` (not `'gameover'`)
-- **Length assertion:** `snake.length === previousLength - 1`
-- **Score assertion:** `score === Math.max(0, previousScore - 5)`
-- **Stun assertion:** `stuckCounter > 0` (or equal to STUCK_TICKS)
-- **No reverse:** `pendingReverse === false` (or absence of reverse state)
-- **No head movement (Engine A):** head position unchanged from previous tick
-- **Screen shake (Engine B):** `screenShake` is set with expected intensity/duration
-
----
-
 ## Phase 3: Polish & Validation (P1)
 
-Lower-priority items that improve correctness, visual quality, and development workflow assurance.
-
-| Step | File | Change | Dependencies | Priority |
-|------|------|--------|-------------|----------|
+| Step | 文件 | 变更 | 前置 | 优先级 |
+|------|------|------|------|--------|
 | 3.1 | Both engines | Run full test suite + manual playtest to verify wall, enemy, food, obstacle collisions not regressed | 2.1–2.6 | P1 |
 | 3.2 | Both engines | Verify edge case: rapid successive self-collisions in a tight corridor (spiral pattern) | 1.1, 1.2 | P1 |
 | 3.3 | Engine B | Verify that `duringTransition` protection still works after code change (test + visual inspection if possible) | 1.2, 2.6 | P1 |
@@ -105,15 +71,11 @@ Lower-priority items that improve correctness, visual quality, and development w
 
 ### Collision Handler Ordering (Step 3.6)
 
-Verify and adjust if needed the order of collision handlers in each engine:
-
 **Engine A (gameboy-snake-engine.js):**
 Check that `'self'` is handled before `'food'`. Current behavior checks `'wall'` → `'self'` → `'food'` → ... This order is correct: self-collision before food.
 
 **Engine B (core.js):**
 Check that `'self'` tag handling appears before food in the collision tag loop. If food is checked first, swap the order so self-collision takes priority.
-
----
 
 ## Dependency Graph
 
@@ -140,24 +102,22 @@ Phase 3 ────────────────────────
   │                                                      │
   ├─ 3.1 (full regression suite) ← depends on everything│
   ├─ 3.2 (spiral edge case)                             │
-  ├─ 3.3 (transition protection verify)                  │
-  ├─ 3.4 (Engine A manual playtest)                      │
-  ├─ 3.5 (Engine B manual playtest)                      │
-  └─ 3.6 (collision order verify)                        │
+  ├─ 3.3 (transition protection verify)                 │
+  ├─ 3.4 (Engine A manual playtest)                     │
+  ├─ 3.5 (Engine B manual playtest)                     │
+  └─ 3.6 (collision order verify)                       │
                                                         │
   All done ──────────────────────────────────────────────┘
 ```
 
----
+## Summary: Changed Files
 
-## Summary of Files Changed
-
-| File | Phase | Change Type |
-|------|-------|-------------|
-| `src/gameboy-snake-engine.js` | 1 | Handler logic (3 lines replaced with ~8 lines) |
-| `public/src/engine/core.js` | 1 | Handler logic (3 lines replaced with ~10 lines) |
-| `tests/gameboy-snake.test.js` | 2 | 2 existing tests rewritten, 2 new tests added |
-| `tests/metroidvania-snake.test.js` | 2 | 1 existing test updated, ~3 new tests added |
+| 文件 | 变更类型 |
+|------|----------|
+| `src/gameboy-snake-engine.js` | 修改（Handler logic: 3 lines replaced with ~8 lines） |
+| `public/src/engine/core.js` | 修改（Handler logic: 3 lines replaced with ~10 lines） |
+| `tests/gameboy-snake.test.js` | 修改（2 existing tests rewritten, 2 new tests added） |
+| `tests/metroidvania-snake.test.js` | 修改（1 existing test updated, ~3 new tests added） |
 
 **No new source files** — all changes are in-place modifications to existing files.
 **No collision detection changes** — `collision.js` and the inline collision check remain untouched.

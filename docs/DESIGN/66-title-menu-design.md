@@ -1,7 +1,7 @@
-# Design: Title Screen — Interactive Menu (Start Game / About)
+# Design: #66 — Title Screen — Interactive Menu (Start Game / About)
 
 > Parent Issue: #66
-> Plan Agent: subagent
+> Agent: subagent
 > Date: 2026-07-08
 
 ---
@@ -46,11 +46,11 @@ The feature adds an interactive menu to the title screen with two items (START G
 | Render | Overlays | `public/src/render/overlays.js` | Menu cursor rendering + about screen overlay |
 | Entry | HTML/Input | `public/gameboy.html` | Title-screen key dispatch for menu navigation |
 
-**Important:** This feature is independent of issue #56. While it reuses the `window.__COMMIT_INFO` pattern, it provides its own fallback so either issue can ship first. See section 2.1 for the commit metadata strategy.
+**Important:** This feature is independent of issue #56. While it reuses the `window.__COMMIT_INFO` pattern, it provides its own fallback so either issue can ship first.
 
 ---
 
-## 2. Component/Module Design
+## 2. Detailed Design
 
 ### 2.1 Commit Metadata Strategy
 
@@ -74,7 +74,7 @@ The ABOUT screen needs commit hash, message, and date at runtime. Two scenarios:
   ```
 - The ABOUT screen handles unreplaced placeholders gracefully (shows "N/A")
 
-**Design decision:** Both approaches produce the same runtime object shape. The ABOUT screen only depends on the shape, not how it's populated. If #56 ships first, #66 uses it directly. If #66 ships first, it adds its own minimal script block that #56 will later upgrade.
+**Design decision:** Both approaches produce the same runtime object shape. The ABOUT screen only depends on the shape, not how it's populated.
 
 ### 2.2 Game State Additions (core.js)
 
@@ -188,17 +188,6 @@ export function renderOverlay(ctx, state) {
 
 ### 2.4 Input Handling (gameboy.html)
 
-**Current behavior (to be replaced):**
-```js
-if (state.gameState === 'title') {
-  if (e.code === 'Enter' || e.code === 'Space' || e.code.startsWith('Arrow')) {
-    e.preventDefault();
-    start();
-    return;
-  }
-}
-```
-
 **New behavior:**
 
 ```js
@@ -238,10 +227,9 @@ if (state.gameState === 'title') {
 ```
 
 **Design notes:**
-- State mutations use spread operator (`{ ...state, ... }`) to match existing code style
+- State mutations use spread operator to match existing code style
 - `render(ctx, state)` is called immediately on every menu action for instant visual feedback
 - Arrow keys only trigger re-render of the title screen; they do NOT start the game
-- Space also works as selection (consistent with game-over/win restart behavior)
 - Menu wraps: pressing ArrowDown on "ABOUT" (index 1) wraps to "START GAME" (index 0)
 
 ### 2.5 Game Restart Behavior
@@ -251,26 +239,9 @@ When the game restarts from game-over/victory screens via `init()`:
 - `menuIndex = 0`, `menuMode = 'main'` are automatically reset
 - No special handling needed
 
-### 2.6 Testing Hook (optional, for testability)
+### 2.6 Data Flow
 
-The `renderTitleScreen()` and `renderAboutScreen()` functions draw directly to canvas. For unit testing without a real canvas, the menu navigation logic (core.js state transitions) is testable directly:
-
-```js
-// These are testable without rendering:
-createInitialState().menuIndex   // → 0
-createInitialState().menuMode    // → 'main'
-// Navigation:
-{ ...state, menuIndex: (1 + 2) % 2 }  // ArrowDown → 1
-{ ...state, menuIndex: (0 + 1 + 2) % 2 } // ArrowUp on 1 → 0 (wrap)
-```
-
-The rendering functions can be tested via snapshot comparisons or by adding a minimal mock canvas.
-
----
-
-## 3. Data Flow
-
-### 3.1 State Machine Diagram
+#### State Machine Diagram
 
 ```
                     init() / page load
@@ -306,7 +277,7 @@ The rendering functions can be tested via snapshot comparisons or by adding a mi
               └─────────────────────┘
 ```
 
-### 3.2 Render Flow
+#### Render Flow
 
 ```
 render(ctx, state)
@@ -336,142 +307,18 @@ render(ctx, state)
   └─ renderScanlines()   ← screen-wide effect
 ```
 
-### 3.3 Input Flow for Menu Navigation
-
-```
-User presses ArrowDown on title screen (menuMode='main')
-  │
-  ▼
-keydown listener fires
-  │
-  ├─ state.gameState === 'title'? Yes
-  ├─ state.menuMode === 'about'? No
-  ├─ e.code === 'ArrowDown'? Yes
-  │
-  ▼
-  newIndex = (state.menuIndex + 1 + 2) % 2 = 1
-  state = { ...state, menuIndex: 1 }
-  render(ctx, state)
-    │
-    ▼
-  renderOverlay() → renderTitleScreen()
-    ▶ START GAME  (index 0, selected = false)
-      ABOUT       (index 1, selected = true → ▶ cursor)
-```
-
----
-
-## 4. Test Specifications
-
-This section describes **what** to test, not how to implement tests.
-
-### 4.1 Unit Test Scenarios (State Management)
-
-These test the menu state transitions in `core.js` without any rendering.
-
-#### Group A: Initial State (P0)
-
-| ID | Scenario | Setup | Expected |
-|----|----------|-------|----------|
-| A1 | Default menuIndex | `createInitialState()` | `state.menuIndex === 0` |
-| A2 | Default menuMode | `createInitialState()` | `state.menuMode === 'main'` |
-| A3 | commitInfo shape | `createInitialState()` with `window.__COMMIT_INFO` defined | `state.commitInfo.hash`, `.message`, `.date` all defined |
-| A4 | commitInfo fallback | `window.__COMMIT_INFO` undefined | `state.commitInfo.hash === 'N/A'` (fallback) |
-| A5 | commitInfo ignores raw placeholder | `window.__COMMIT_INFO.hash = "__COMMIT_HASH__"` | Fallback `'N/A'` used, not raw string |
-
-#### Group B: Menu Navigation (P0)
-
-| ID | Scenario | Input | Expected |
-|----|----------|-------|----------|
-| B1 | ArrowDown navigates forward | `menuIndex=0`, dispatch ArrowDown | `menuIndex=1` |
-| B2 | ArrowUp navigates backward | `menuIndex=1`, dispatch ArrowUp | `menuIndex=0` |
-| B3 | ArrowDown wraps at bottom | `menuIndex=1`, dispatch ArrowDown | `menuIndex=0` |
-| B4 | ArrowUp wraps at top | `menuIndex=0`, dispatch ArrowUp | `menuIndex=1` |
-
-#### Group C: Menu Selection (P0)
-
-| ID | Scenario | Input | Expected |
-|----|----------|-------|----------|
-| C1 | Enter on START GAME (index 0) | `menuIndex=0`, Enter | `gameState` transitions to `'playing'` |
-| C2 | Enter on ABOUT (index 1) | `menuIndex=1`, Enter | `menuMode === 'about'`, `gameState` remains `'title'` |
-
-#### Group D: About Screen Dismiss (P0)
-
-| ID | Scenario | Input | Expected |
-|----|----------|-------|----------|
-| D1 | Any key dismisses about screen | `menuMode='about'`, press any key | `menuMode='main'`, `menuIndex=0` |
-| D2 | Enter on about screen | `menuMode='about'`, press Enter | Dismisses (any key behavior) |
-| D3 | Arrow key on about screen | `menuMode='about'`, press ArrowDown | Dismisses (any key behavior) |
-| D4 | Space on about screen | `menuMode='about'`, press Space | Dismisses (any key behavior) |
-
-#### Group E: Reset on Game Restart (P1)
-
-| ID | Scenario | Setup | Expected |
-|----|----------|-------|----------|
-| E1 | Menu resets on init after game-over | Game over → `init()` | `menuIndex === 0`, `menuMode === 'main'` |
-| E2 | Menu resets on init after win | Win → `init()` | `menuIndex === 0`, `menuMode === 'main'` |
-| E3 | Menu resets on page load | Full page reload | `menuIndex === 0`, `menuMode === 'main'` |
-
-### 4.2 Rendering Test Scenarios (Requires Canvas Mock)
-
-#### Group F: Title Screen Rendering (P1)
-
-| ID | Scenario | Setup | Expected |
-|----|----------|-------|----------|
-| F1 | Menu items rendered | Title screen, `menuMode='main'` | "START GAME" and "ABOUT" strings appear on canvas |
-| F2 | Cursor on default item | `menuIndex=0` | Cursor prefix (▶) is drawn before "START GAME" |
-| F3 | Cursor moves to ABOUT | `menuIndex=1`, re-render | Cursor prefix appears before "ABOUT", not "START GAME" |
-| F4 | Cursor offset for non-selected | `menuIndex=0` | "ABOUT" has `  ` (2-space) prefix instead of `▶ ` |
-| F5 | Existing title content preserved | Title screen rendered | Title, subtitle, controls info all still visible |
-
-#### Group G: About Screen Rendering (P1)
-
-| ID | Scenario | Setup | Expected |
-|----|----------|-------|----------|
-| G1 | About screen renders | `menuMode='about'` | "ABOUT" header, commit info, and "Press any key" text visible |
-| G2 | Commit hash displayed | Valid `commitInfo.hash` | Hash text visible on about screen |
-| G3 | Commit message displayed | Valid `commitInfo.message` | Message text visible on about screen |
-| G4 | Commit date displayed | Valid `commitInfo.date` | Date text visible on about screen |
-| G5 | Fallback text on missing data | `commitInfo.hash = 'N/A'` | "N/A" displayed instead of blank |
-| G6 | About screen over full canvas | Full-screen dark overlay rendered | Game world not visible beneath about overlay |
-
-#### Group H: Edge Cases (P1)
-
-| ID | Scenario | Setup | Expected |
-|----|----------|-------|----------|
-| H1 | Very long commit message | Message > 60 chars | Text is truncated or wrapped; no canvas overflow |
-| H2 | Empty commit message | Empty string | No rendering error; field shows empty or "N/A" |
-| H3 | Unicode in commit message | Chinese/emoji text | Rendered correctly (monospace fallback) |
-
-### 4.3 Integration & Play-Test Scenarios
-
-| ID | Scenario | Steps | Expected |
-|----|----------|-------|----------|
-| I1 | Full title menu flow | Load game → press ArrowDown → Enter | "ABOUT" selected → About screen opens |
-| I2 | Full about dismiss flow | About screen → press any key | Returns to title menu, cursor on START GAME |
-| I3 | Full start game flow | Load game → Enter on START GAME | Game starts correctly |
-| I4 | Menu navigation + game start | ArrowDown → ArrowUp → Enter on START GAME | Game starts from START GAME |
-| I5 | Rapid arrow keys | Rapidly press ArrowDown 5 times | Menu wraps correctly (no off-by-one) |
-| I6 | Space also works for selection | Load game → press Space on START GAME | Game starts |
-| I7 | Play state unaffected after menu | Navigate menu → Enter on START GAME | Normal playing controls work |
-| I8 | Game-over restart resets menu | Game over → restart → title screen | Menu is at default state (index 0, main mode) |
-
----
-
-## 5. Dependencies & Risks
+### 2.7 Dependencies & Risks
 
 | Dependency | Risk | Mitigation |
 |-----------|------|------------|
 | `window.__COMMIT_INFO` availability | Medium — #56 may not be done | Minimal inline script block in `gameboy.html` + fallback in `createInitialState()` |
 | Canvas `fillText` text rendering | None | Standard API, no layout engine needed |
-| `start()` function signature | Low | Must remain a no-argument function called from the keydown handler |
-| Existing test suite | Low | Menu navigation only changes title-screen behavior; all existing tests for playing/game-over/paused states remain unaffected |
+| `start()` function signature | Low | Must remain a no-argument function called from keydown handler |
+| Existing test suite | Low | Menu navigation only changes title-screen behavior; all existing tests remain unaffected |
 
 **No external libraries or build tools are required.** The feature is pure vanilla JS.
 
----
-
-## 6. Non-Goals & Future Considerations
+### 2.8 Non-Goals & Future Considerations
 
 | Topic | Status | Notes |
 |-------|--------|-------|
@@ -481,3 +328,39 @@ These test the menu state transitions in `core.js` without any rendering.
 | Save/Load menu entry | Post-MVP | Already accessible via S key on game-over |
 | Animated cursor blink | Post-MVP | Adds visual polish but unnecessary for MVP |
 | Sound effects on menu navigation | Post-MVP | No audio system exists yet |
+
+---
+
+## 3. Files Changed
+
+| File | Change Description | Est. Lines |
+|------|--------------------|------------|
+| `public/src/engine/core.js` | Add `menuIndex`, `menuMode`, `commitInfo` fields to state | ~10 |
+| `public/src/render/overlays.js` | Refactor `renderTitleScreen()` for menu cursor; add `renderAboutScreen()` | ~80 |
+| `public/gameboy.html` | Rewrite title-screen keydown handler for menu navigation | ~40 |
+
+---
+
+## 4. Verification Checklist
+
+- [ ] A1: Default menuIndex — `createInitialState()` → `state.menuIndex === 0`
+- [ ] A2: Default menuMode — `createInitialState()` → `state.menuMode === 'main'`
+- [ ] A3: commitInfo shape — `state.commitInfo.hash`, `.message`, `.date` all defined
+- [ ] A4: commitInfo fallback — `window.__COMMIT_INFO` undefined → `state.commitInfo.hash === 'N/A'`
+- [ ] A5: commitInfo ignores raw placeholder — `window.__COMMIT_INFO.hash = "__COMMIT_HASH__"` → fallback `'N/A'` used
+- [ ] B1: ArrowDown navigates forward — `menuIndex=0`, ArrowDown → `menuIndex=1`
+- [ ] B2: ArrowUp navigates backward — `menuIndex=1`, ArrowUp → `menuIndex=0`
+- [ ] B3: ArrowDown wraps — `menuIndex=1`, ArrowDown → `menuIndex=0`
+- [ ] B4: ArrowUp wraps — `menuIndex=0`, ArrowUp → `menuIndex=1`
+- [ ] C1: Enter on START GAME → gameState transitions to `'playing'`
+- [ ] C2: Enter on ABOUT → `menuMode === 'about'`, gameState remains `'title'`
+- [ ] D1: Any key dismisses about screen → `menuMode='main'`, `menuIndex=0`
+- [ ] E1: Menu resets on init after game-over → `menuIndex === 0`, `menuMode === 'main'`
+- [ ] F1: Menu items rendered — "START GAME" and "ABOUT" strings appear on canvas
+- [ ] F2: Cursor on default item — `menuIndex=0` → cursor prefix (▶) before "START GAME"
+- [ ] F3: Cursor moves to ABOUT — `menuIndex=1` → cursor prefix appears before "ABOUT"
+- [ ] G1: About screen renders — "ABOUT" header, commit info, and "Press any key" text visible
+- [ ] G5: Fallback text on missing data — `commitInfo.hash = 'N/A'` → "N/A" displayed
+- [ ] I1: Full title menu flow — ArrowDown → Enter → About screen opens
+- [ ] I3: Full start game flow — Enter on START GAME → game starts correctly
+- [ ] I8: Game-over restart resets menu — menu at default state (index 0, main mode)

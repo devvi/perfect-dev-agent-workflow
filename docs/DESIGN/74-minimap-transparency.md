@@ -1,7 +1,7 @@
 # Design: #74 — 小地图半透明 (Minimap Semi-Transparent)
 
 > Parent Issue: #74
-> Plan Agent: subagent
+> Agent: subagent
 > Date: 2026-07-09
 
 ---
@@ -40,17 +40,7 @@ gameState.player.position   ──┘
 
 No data flow changes. The same state is consumed; only the background `fillStyle` alpha value changes.
 
----
-
-## 2. Module Impact
-
-### 2.1 Files Changed
-
-| File | Change | Lines Affected |
-|------|--------|---------------|
-| `public/src/render/minimap.js` | Background `fillStyle` alpha: `0.85` → `0.50` | 1 line |
-
-### 2.2 Files Not Changed
+### Files Not Changed
 
 | File | Reason |
 |------|--------|
@@ -63,9 +53,9 @@ No data flow changes. The same state is consumed; only the background `fillStyle
 
 ---
 
-## 3. Rendering Details
+## 2. Detailed Design
 
-### 3.1 Background Alpha Selection
+### 2.1 Background Alpha Selection
 
 Per the PRD's recommendation (Alternative A):
 
@@ -84,7 +74,7 @@ ctx.fillStyle = 'rgba(10, 10, 26, 0.50)';
 - Border stroke (`#306230`, full opacity) remains unchanged
 - Label "MAP" text remains at full opacity
 
-### 3.2 Rendering Order (unchanged)
+### 2.2 Rendering Order (unchanged)
 
 1. Save context
 2. Draw background rectangle (alpha 0.50)
@@ -99,47 +89,13 @@ ctx.fillStyle = 'rgba(10, 10, 26, 0.50)';
 
 All layers EXCEPT the background fillRect remain at their current alpha values.
 
----
+### 2.3 Module Impact
 
-## 4. Test Specifications
+| File | Change | Lines Affected |
+|------|--------|---------------|
+| `public/src/render/minimap.js` | Background `fillStyle` alpha: `0.85` → `0.50` | 1 line |
 
-### 4.1 Unit Tests (minimap-rendering focused)
-
-| # | Test | Input | Expected |
-|---|------|-------|----------|
-| UT1 | Background alpha value | Inspect `rgba()` string in source | Alpha component is `0.50` (or equivalently `0.5`) |
-| UT2 | Room tile colors unchanged | Compare `fillStyle` values for tile rendering | All room type colors match PALETTE constants (no change) |
-| UT3 | Player dot opacity | Inspect player dot rendering code | Player dot `fillStyle` is unchanged (full opacity) |
-| UT4 | Grid line alpha unchanged | Inspect grid line rendering code | Grid line `rgba` matches original values |
-| UT5 | Border unchanged | Inspect border stroke style | Border `strokeStyle` unchanged |
-
-### 4.2 Integration Tests
-
-| # | Test | Setup | Expected |
-|---|------|-------|----------|
-| IT1 | Minimap renders without error | Create game state with 4 explored rooms | `renderMinimap()` completes without throwing |
-| IT2 | Explored room count correct | Create state with 8 explored rooms | Minimap still renders 8 room tiles |
-| IT3 | Player position dot visible | Player at (320, 320) (minimap zone) | Player dot renders at correct minimap position |
-
-### 4.3 Visual / Acceptance Tests
-
-| # | Test | Criteria |
-|---|------|----------|
-| VT1 | Semi-transparent background | When a bright room entity (gold/save) is in the bottom-right area, its color is visible through the minimap background |
-| VT2 | Room colors distinguishable | All room type colors (green, gold, red, blue, fog) can be identified on the minimap |
-| VT3 | Player dot not obscured | The player position dot remains clearly visible against the semi-transparent background |
-| VT4 | Grid lines visible | Grid lines are still noticeable through the minimap area |
-| VT5 | Label readable | "MAP" text is clearly readable |
-
-### 4.4 Test Scope
-
-- All existing tests in `tests/metroidvania-snake.test.js` must continue to pass (no regression)
-- No new test file required — unit tests can be added to the existing test suite
-- Visual tests are manual/inspection-based (canvas pixel validation is fragile)
-
----
-
-## 5. Edge Cases
+### 2.4 Edge Cases
 
 | # | Edge Case | Expected Behavior |
 |---|-----------|-------------------|
@@ -150,9 +106,7 @@ All layers EXCEPT the background fillRect remain at their current alpha values.
 | 5 | GameBoy color palette selected | Same transparency behavior regardless of palette |
 | 6 | Fog-of-war tiles | Fog tiles (`#0A0A1A`) match background color exactly; transparency doesn't affect fog distinction |
 
----
-
-## 6. Out of Scope
+### 2.5 Out of Scope
 
 | Item | Rationale |
 |------|-----------|
@@ -163,3 +117,29 @@ All layers EXCEPT the background fillRect remain at their current alpha values.
 | Player dot glow/blink changes | Not requested; current blink is sufficient |
 | Room color palette changes | Colors defined in constants; scope is transparency only |
 | Minimap data source changes | No state/world changes needed |
+
+---
+
+## 3. Files Changed
+
+| File | Change Description | Est. Lines |
+|------|--------------------|------------|
+| `public/src/render/minimap.js` | Background `fillStyle` alpha: `0.85` → `0.50` | 1 line |
+
+---
+
+## 4. Verification Checklist
+
+- [ ] UT1: Background alpha value — `rgba()` string alpha component is `0.50`
+- [ ] UT2: Room tile colors unchanged — all room type colors match PALETTE constants
+- [ ] UT3: Player dot opacity — player dot `fillStyle` is unchanged (full opacity)
+- [ ] UT4: Grid line alpha unchanged — grid line `rgba` matches original values
+- [ ] UT5: Border unchanged — border `strokeStyle` unchanged
+- [ ] IT1: Minimap renders without error — `renderMinimap()` completes without throwing
+- [ ] IT2: Explored room count correct — 8 explored rooms still renders 8 room tiles
+- [ ] VT1: Semi-transparent background — bright room entity visible through minimap background
+- [ ] VT2: Room colors distinguishable — all room type colors identifiable on minimap
+- [ ] VT3: Player dot not obscured — player position dot clearly visible
+- [ ] VT4: Grid lines visible — grid lines noticeable through minimap area
+- [ ] VT5: Label readable — "MAP" text clearly readable
+- [ ] All existing tests in `tests/metroidvania-snake.test.js` continue to pass

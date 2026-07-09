@@ -3,6 +3,8 @@
 > Parent Issue: #15
 > Agent: research-agent
 > Date: 2026-07-07
+> Status: Open
+> Priority: High
 
 ---
 
@@ -38,7 +40,7 @@
 
 ---
 
-## 2. Root Cause Analysis / Design Intent
+## 2. Root Cause Analysis (Bug) / Design Intent (Feature)
 
 ### Why Does Current Behavior Exist?
 当前的贪吃蛇是 Issue #5 的 MVP 实现，核心目标是在 1-2 小时内快速交付一个可玩的 GameBoy 风格游戏。设计上刻意保持最小功能集（移动、吃食物、碰撞、胜利），专注于视觉风格（GameBoy 4 色调色板、外壳、像素间隙、扫描线）。

@@ -3,6 +3,8 @@
 > Parent Issue: #21
 > Agent: research-agent
 > Date: 2026-07-07
+> Status: Open
+> Priority: High
 
 ---
 
@@ -35,9 +37,11 @@
 
 ---
 
-## 2. Root Cause Analysis
+## 2. Root Cause Analysis (Bug) / Design Intent (Feature)
 
-### Primary Root Cause: Projectile Movement Granularity Causes Position Skip
+### Why Does Current Behavior Exist?
+
+#### Primary Root Cause: Projectile Movement Granularity Causes Position Skip
 
 **`public/src/engine/combat.js` — `updateProjectiles` 函数：**
 
@@ -58,7 +62,7 @@ export function updateProjectiles(state) {
 }
 ```
 
-默认 `projectileSpeed = 2`，子弹每 tick 跳跃 **2 格**。 碰撞检测仅检查跳跃后的终点位置：
+默认 `projectileSpeed = 2`，子弹每 tick 跳跃 **2 格**。碰撞检测仅检查跳跃后的终点位置：
 
 **`public/src/engine/collision.js` — `checkProjectileCollision`：**
 
@@ -86,7 +90,7 @@ const enemy = room.entities.enemies.find(e => e.x === proj.x && e.y === proj.y);
 
 只有当子弹终点恰好等于敌人头位置时才会命中。敌人有 50% 的概率被跳过（速度为偶数时）。
 
-### Secondary Issue: Only Head Position Checked
+#### Secondary Issue: Only Head Position Checked
 
 `checkProjectileCollision` 仅检查敌人**头位置** (`e.x, e.y`)，不检查敌人身体段 (`e.segments[]`)。如果子弹击中敌人身体中间段而非头部，也不会触发碰撞。
 
@@ -102,15 +106,6 @@ const enemy = room.entities.enemies.find(e =>
   e.segments.some(s => s.x === proj.x && s.y === proj.y)  // body
 );
 ```
-
-### Why Does Current Behavior Exist?
-
-Issue #15 的实现中：
-
-- `updateProjectiles` 的离散跳跃设计是为了保持引擎简单（不需要子 tick 插值）
-- `checkProjectileCollision` 未考虑弹道连续性，这是典型的"离散碰撞检测"缺失
-- 敌人身体段碰撞未被纳入设计，是疏忽
-- 单元测试 (`applyProjectileDamage` 的测试) 通过了，因为测试直接调用该函数而不经过碰撞检测和弹道移动
 
 ### Why Change Now?
 
@@ -171,6 +166,8 @@ fire() → createProjectile(头前方1格) → tick()
 ---
 
 ## 4. Solution Comparison
+
+> At least 2 approaches required.
 
 ### Approach A: Line-Sweep Continuous Collision Detection（推荐）
 
@@ -266,7 +263,7 @@ export const DEFAULT_PROJECTILE_SPEED = 1;
 
 1. **根本性解决：** 离散跳跃是根本问题，line sweep 是游戏开发中标准的连续碰撞检测方案
 2. **未来扩展不限制：** 支持任意 `projectileSpeed` 值（包括 power-up 加速到 3/4/5 的情况）
-3. **缝墙碰撞同步修复：** 裂缝墙和门的命中同样受益
+3. **裂缝墙碰撞同步修复：** 裂缝墙和门的命中同样受益
 4. **性能代价极小：** 针对速度为 2 的情况，每 tick 仅多检查 2 个单元格
 5. **符合 #15 预期：** 设计文档中已测试用例 #15 要求"Projectile hits enemy → enemy hp -1"，line sweep 确保这个测试在游戏循环中也成立
 
@@ -304,7 +301,7 @@ export const DEFAULT_PROJECTILE_SPEED = 1;
 
 | Dependency | Status | Risk |
 |------------|--------|-------|
-| `updateProjectiles` in `combat.js` | Stable — 需要修改返回值 | Low — 现有接口小改 |
+| `updateProjectiles` in `combat.js` | Stable — 需要修改返回值 | Low |
 | `checkProjectileCollision` in `collision.js` | Stable — 需要扩展检测逻辑 | Low |
 | `handleProjectileCollisions` in `core.js` | Stable — 需要调用 line sweep | Low |
 

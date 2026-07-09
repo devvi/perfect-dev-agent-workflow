@@ -1,10 +1,16 @@
-## Implementation Plan
+# Design: #46 — 蛇撞到障碍后反向 (Snake Reverse on Obstacle)
+
+> Parent Issue: #46
+> Agent: plan-agent
+> Date: 2026-07-07
+
+---
+
+## 1. Architecture Overview
 
 ### Issue Summary
 
-**#46: 蛇撞到不会即死的障碍后，可以反向**
-
-蛇撞到非即死障碍（WALL/STONE_WALL/room boundary）后，不应只是减少一段长度，而应：
+**#46:** 蛇撞到非即死障碍（WALL/STONE_WALL/room boundary）后，不应只是减少一段长度，而应：
 1. 短暂 **stuck（停滞）**（~4-6 ticks），蛇不动，玩家可缓冲方向
 2. 蛇尾变蛇头，整条蛇 **反向运动**
 3. 保留已有反馈（屏幕震动、扣分）
@@ -19,9 +25,24 @@ Research branch `research/46-snake-reverse-on-obstacle` was completed (committed
 - Stuck is synchronous (tick-count based), no async needed
 - Direction buffering continues during stuck period
 
+### Architecture Flow
+
+```
+tick N:   damaged → stuckCounter=5, snake frozen, screen shake
+tick N+1: stuckCounter=4, frozen
+tick N+2: stuckCounter=3, frozen
+tick N+3: stuckCounter=2, frozen
+tick N+4: stuckCounter=1, frozen
+tick N+5: stuckCounter=0 → reverse! snake moves in new direction
+```
+
+Total stuck time: 5 ticks × 150ms = 750ms
+
 ---
 
-### Phase 1: Core Logic — Stuck + Reverse State Machine
+## 2. Detailed Design
+
+### 2.1 Phase 1: Core Logic — Stuck + Reverse State Machine
 
 **Files:**
 - `public/src/engine/constants.js` — Add `STUCK_TICKS = 5`
@@ -74,21 +95,7 @@ Research branch `research/46-snake-reverse-on-obstacle` was completed (committed
 
 4. **`changeDirection()`** — No change needed; already accepts input regardless of state fields.
 
-**Stuck flow:**
-```
-tick N:   damaged → stuckCounter=5, snake frozen, screen shake
-tick N+1: stuckCounter=4, frozen
-tick N+2: stuckCounter=3, frozen
-tick N+3: stuckCounter=2, frozen
-tick N+4: stuckCounter=1, frozen
-tick N+5: stuckCounter=0 → reverse! snake moves in new direction
-```
-
-**Total stuck time:** 5 ticks × 150ms = 750ms (good for player readiness)
-
----
-
-### Phase 2: Rendering — Stuck Visual Feedback
+### 2.2 Phase 2: Rendering — Stuck Visual Feedback
 
 **Files:**
 - `public/src/render/renderer.js` ~5-10 lines
@@ -102,9 +109,7 @@ tick N+5: stuckCounter=0 → reverse! snake moves in new direction
 **HUD (optional):**
 - Show "⚠️ STUCK!" warning text when stuckCounter > 0
 
----
-
-### Phase 3: Classic Engine Sync — `src/gameboy-snake-engine.js`
+### 2.3 Phase 3: Classic Engine Sync — `src/gameboy-snake-engine.js`
 
 **File:** `src/gameboy-snake-engine.js` ~30-40 lines
 
@@ -116,9 +121,7 @@ The simple engine currently treats ALL wall/self collisions as immediate `gameov
 
 **Design note:** The simple engine has no `CELL` types — only grid boundaries. So "non-lethal obstacle" = grid boundary (wall). Self collision = gameover (lethal).
 
----
-
-### Phase 4: Tests
+### 2.4 Phase 4: Tests
 
 **File:** `tests/metroidvania-snake.test.js` — Add test suite (~6 test cases)
 
@@ -133,47 +136,19 @@ The simple engine currently treats ALL wall/self collisions as immediate `gameov
 | 7 | Edge: snake length=1 | Single segment hits WALL | Reverse works (same cell, direction flips) |
 
 **File:** `tests/gameboy-snake.test.js` — Add similar test suite for classic engine (~4 test cases)
-
 **File:** `tests/play-test.mjs` — Unchanged (play test is pass/fail based on canvas rendering)
 
----
+### 2.5 Edge Cases & Safety
 
-### File Change Summary
+| Edge Case | Behavior | Mitigation |
+|-----------|----------|------------|
+| Reverse head in obstacle | Push head one more step in new direction | After reverse, check `checkSnakeCollision()` on new head |
+| Snake length = 1 | `snake.reverse()` on 1 element = same array. Direction flips, snake moves away | If opposite wall also present, re-trigger stuck |
+| Stuck during room transition corner | Stuck only triggered by `'damage'` collision. Room transitions are `'door'` collision type | No conflict |
+| Stuck period double-trigger | When `stuckCounter > 0`, stuck handler returns early before collision check | No double stuck |
+| Pause during stuck | Stuck ticks should not decrement (future feature) | For now — no pause, OK |
 
-| File | Change | Lines | Risk |
-|------|--------|-------|------|
-| `public/src/engine/constants.js` | Add `STUCK_TICKS = 5` | +1 | 🟢 Low |
-| `public/src/engine/core.js` | Stuck+reverse state machine in tick() | ~60 | 🟡 Medium |
-| `public/src/render/renderer.js` | Stuck visual (flash/alpha) | ~10 | 🟢 Low |
-| `public/src/render/hud.js` | Optional: "STUCK!" text | ~5 | 🟢 Low |
-| `src/gameboy-snake-engine.js` | Classic engine reverse support | ~40 | 🟡 Medium |
-| `tests/metroidvania-snake.test.js` | 7 new test cases | ~80 | 🟢 Low |
-| `tests/gameboy-snake.test.js` | 4 new test cases | ~40 | 🟢 Low |
-
-**Total:** ~236 lines across 7 files
-
----
-
-### Edge Cases & Safety
-
-**Edge Case 1:** Reverse head in obstacle
-- *Mitigation:* After reverse, check `checkSnakeCollision()` on new head. If collision → push head one more step in new direction.
-
-**Edge Case 2:** Snake length = 1
-- *Behavior:* `snake.reverse()` on 1 element = same array. Direction flips, snake moves away. If opposite wall also present, re-trigger stuck.
-
-**Edge Case 3:** Stuck during room transition corner
-- *Mitigation:* stuck is only triggered by `'damage'` collision. Room transitions are `'door'` collision type, not `'damage'`. No conflict.
-
-**Edge Case 4:** Stuck period double-trigger
-- *Mitigation:* When `stuckCounter > 0`, the stuck handler returns early before collision check. No collision, no double stuck.
-
-**Edge Case 5:** Pause during stuck
-- *Mitigation:* If game were paused (future feature), stuck ticks should not decrement. For now — no pause, OK.
-
----
-
-### Dependencies
+### 2.6 Dependencies
 
 | Depends On | Status |
 |-----------|--------|
@@ -186,16 +161,43 @@ The simple engine currently treats ALL wall/self collisions as immediate `gameov
 | Enemy collision reverse | Medium (reuse same stuck+reverse logic) |
 | Interactive obstacles | Low |
 
----
-
-### Implementation Order
+### 2.7 Implementation Order
 
 1. ✅ Research complete (branch `research/46-snake-reverse-on-obstacle`)
-2. 📝 **THIS PLAN** — Plan review
+2. 📝 Plan review
 3. Phase 1: Core logic (constants.js + core.js)
 4. Phase 2: Visual feedback (renderer.js)
 5. Phase 3: Classic engine (gameboy-snake-engine.js)
 6. Phase 4: Tests
 7. Play test & verify
 
-**Estimated effort:** 1-2 hours implementation + 30 min testing
+---
+
+## 3. Files Changed
+
+| File | Change Description | Est. Lines | Risk |
+|------|--------------------|------------|------|
+| `public/src/engine/constants.js` | Add `STUCK_TICKS = 5` | +1 | 🟢 Low |
+| `public/src/engine/core.js` | Stuck+reverse state machine in tick() | ~60 | 🟡 Medium |
+| `public/src/render/renderer.js` | Stuck visual (flash/alpha) | ~10 | 🟢 Low |
+| `public/src/render/hud.js` | Optional: "STUCK!" text | ~5 | 🟢 Low |
+| `src/gameboy-snake-engine.js` | Classic engine reverse support | ~40 | 🟡 Medium |
+| `tests/metroidvania-snake.test.js` | 7 new test cases | ~80 | 🟢 Low |
+| `tests/gameboy-snake.test.js` | 4 new test cases | ~40 | 🟢 Low |
+
+**Total:** ~236 lines across 7 files
+
+---
+
+## 4. Verification Checklist
+
+- [ ] Basic stuck+reverse: Snake hits WALL → `stuckCounter` set to STUCK_TICKS, no movement
+- [ ] Stuck duration: tick() called STUCK_TICKS times → after N ticks, snake reversed
+- [ ] Reverse direction: snake moving RIGHT, hits WALL → after stuck, direction = LEFT
+- [ ] Post-reverse position safety: snake tail near wall, reverse → new head not in obstacle cell
+- [ ] Input buffering during stuck: key pressed during stuck → `nextDirection` updated, applied after reverse
+- [ ] Score penalty: snake hits WALL → score -= 5
+- [ ] Edge: snake length=1 → reverse works (same cell, direction flips)
+- [ ] Classic engine: wall collision → stuck+reverse instead of gameover; self collision remains gameover
+- [ ] All existing tests pass
+- [ ] Manual play test: game renders correctly, stuck visual feedback visible

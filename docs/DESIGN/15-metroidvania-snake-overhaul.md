@@ -1,4 +1,4 @@
-# Design: 银河城风格贪吃蛇重构
+# Design: #15 — 银河城风格贪吃蛇重构 (Metroidvania Snake Overhaul)
 
 > Parent Issue: #15
 > Agent: plan-agent
@@ -65,9 +65,11 @@ perfect-dev-agent-workflow/
 
 ---
 
-## 2. Data Structures
+## 2. Detailed Design
 
-### Constants & Enums
+### 2.1 Data Structures
+
+#### Constants & Enums
 
 ```js
 // Room dimensions (matches existing grid)
@@ -107,7 +109,7 @@ const CELL = {
 };
 ```
 
-### World State
+#### World State
 
 ```js
 // === WORLD MAP ===
@@ -126,8 +128,8 @@ WorldMap {
 Room {
   x, y,                         // Grid position in world
   type: ROOM_TYPE,              // normal/start/goal/save/hidden/gacha/key_shrine
-  explored: false,              // Has player ever entered?
-  tiles: Cell[][],              // 20×20 grid of CELL enum values
+  explored: false,               // Has player ever entered?
+  tiles: Cell[][],               // 20×20 grid of CELL enum values
   doors: {                      // directional doors
     up:    { connectedTo: { roomX, roomY }, locked: false, keyId: null },
     down:  { connectedTo: { roomX, roomY }, locked: false, keyId: null },
@@ -191,7 +193,7 @@ GameState {
 }
 ```
 
-### Entities
+#### Entities
 
 ```js
 // === SNAKE SEGMENT ===
@@ -228,7 +230,7 @@ PowerUp {
 }
 ```
 
-### Save Data
+#### Save Data
 ```js
 SaveData {
   snake: Segment[],
@@ -244,11 +246,9 @@ SaveData {
 }
 ```
 
----
+### 2.2 Key Functions / Components
 
-## 3. Key Functions / Components
-
-### Engine Module: `core.js`
+#### Engine Module: `core.js`
 
 | Function | Signature | Responsibility |
 |----------|-----------|----------------|
@@ -259,7 +259,7 @@ SaveData {
 | `fire(state)` | `(GameState) → GameState` | Fire projectile from snake head. Deducts 1 from length. Checks cooldown/max. |
 | `interact(state)` | `(GameState) → GameState` | Use gacha machine / interact with special tiles |
 
-### Engine Module: `world.js`
+#### Engine Module: `world.js`
 
 | Function | Signature | Responsibility |
 |----------|-----------|----------------|
@@ -269,7 +269,7 @@ SaveData {
 | `roomToWorldCoords(rx, ry, cx, cy)` | `(number, number, number, number) → { x, y }` | Convert room-local to world coords |
 | `getCellAt(world, wx, wy)` | `(WorldMap, number, number) → CELL` | Get tile type at world position |
 
-### Engine Module: `generator.js`
+#### Engine Module: `generator.js`
 
 | Function | Signature | Responsibility |
 |----------|-----------|----------------|
@@ -282,7 +282,7 @@ SaveData {
 | `placeEnemiesAndItems(map, difficulty)` | `(WorldMap, number) → WorldMap` | Place enemies, food, items across rooms |
 | `verifySolvability(map)` | `(WorldMap) → boolean` | BFS from start: check goal reachable with keys |
 
-### Engine Module: `collision.js`
+#### Engine Module: `collision.js`
 
 | Function | Signature | Responsibility |
 |----------|-----------|----------------|
@@ -290,7 +290,7 @@ SaveData {
 | `checkProjectileCollision(proj, state)` | `(Projectile, GameState) → CollisionResult` | Bullet hits enemy/cracked wall/wall |
 | `checkRoomTransition(state, newHead)` | `(GameState, Segment) → GameState` | Detect if head crosses a door → room switch |
 
-### Engine Module: `combat.js`
+#### Engine Module: `combat.js`
 
 | Function | Signature | Responsibility |
 |----------|-----------|----------------|
@@ -299,14 +299,14 @@ SaveData {
 | `applyProjectileDamage(state, projId, target)` | `(GameState, number, Entity) → GameState` | Damage enemy, remove projectile |
 | `updateCooldowns(state)` | `(GameState) → GameState` | Decrement fire cooldown |
 
-### Engine Module: `ai.js`
+#### Engine Module: `ai.js`
 
 | Function | Signature | Responsibility |
 |----------|-----------|----------------|
 | `updateEnemies(state)` | `(GameState) → GameState` | Tick all enemies: move toward snake if in range |
 | `enemyChasePath(enemy, snakeHead, room)` | `(Enemy, Segment, Room) → { x, y }` | Simple greedy pathfinding (avoid walls, move toward snake) |
 
-### Engine Module: `items.js`
+#### Engine Module: `items.js`
 
 | Function | Signature | Responsibility |
 |----------|-----------|----------------|
@@ -315,7 +315,7 @@ SaveData {
 | `applyPowerUp(state, powerUp)` | `(GameState, PowerUp) → GameState` | Apply power-up effect to state |
 | `tickPowerUps(state)` | `(GameState) → GameState` | Decrement durations, remove expired |
 
-### Engine Module: `save.js`
+#### Engine Module: `save.js`
 
 | Function | Signature | Responsibility |
 |----------|-----------|----------------|
@@ -324,7 +324,7 @@ SaveData {
 | `applySave(saveData)` | `(SaveData) → GameState` | Rebuild GameState from save |
 | `clearSave()` | `() → void` | Remove localStorage save |
 
-### Rendering (separate module, pure rendering — no game state mutation)
+#### Rendering (separate module, pure rendering — no game state mutation)
 
 | Function | Responsibility |
 |----------|----------------|
@@ -336,11 +336,9 @@ SaveData {
 | `renderGachaUI(ctx, state)` | Draw gacha machine interaction overlay |
 | `renderCrackedWallHint(ctx, wallCell)` | Visual crack indicator on destructible walls |
 
----
+### 2.3 Rendering / UI Strategy
 
-## 4. Rendering / UI Strategy
-
-### Layer Order (bottom to top)
+#### Layer Order (bottom to top)
 1. **LCD background** — `#9bbc0f`
 2. **Room tiles** — Floor (gap pattern), walls (solid dark), doors (highlight), cracked walls (hairline cracks)
 3. **Food items** — Small animated dots
@@ -354,33 +352,31 @@ SaveData {
 11. **Scanlines** — Same as existing (semi-transparent horizontal lines)
 12. **Cracked wall hint** — Subtle animation on crack tiles
 
-### Viewport Strategy
+#### Viewport Strategy
 - **Main canvas:** 400×400px (same as existing)
 - Only current room is rendered on the main canvas
 - Minimap is rendered on a separate smaller canvas positioned via CSS overlay
 - Room transitions: instant swap (no scrolling; door = immediate new room render)
 
-### Minimap
+#### Minimap
 - Each room = small rectangle (e.g., 16×16px per room on 100×100px minimap)
 - Colors: black (unexplored), dark green (explored), bright green (current), gold (goal), blue (save)
 - Player indicator: blinking dot
 - Door indicators: small gaps/notches on room edges
 - Size gate indicators: small lock icon on door
 
-### HUD Elements
+#### HUD Elements
 - **Top bar:** SCORE [left], LENGTH [center], KEYS [right]
 - **Item slots:** Below score, show active power-ups with remaining duration
 - **Room name:** Bottom of game canvas (optional)
 
-### GameBoy Shell Integration
+#### GameBoy Shell Integration
 - Same shell as existing, but added:
   - A/B buttons now have specific functions: A = fire, B = interact/gacha
   - SELECT/START: SELECT = pause/toggle minimap, START = menu
   - Visual indicators for firing and interaction
 
----
-
-## 5. Input Handling
+### 2.4 Input Handling
 
 | Input | Action | State |
 |-------|--------|-------|
@@ -395,127 +391,20 @@ SaveData {
 | Any arrow (idle) | start game | title |
 | Space | restart after gameover/won | gameover/won |
 
----
+### 2.5 Phased Implementation Tasks
 
-## 6. Phased Implementation Tasks
+| Phase | Description | Tasks |
+|-------|-------------|-------|
+| Phase 1 | Map Generation Engine (Core Architecture) | constants.js, world.js, generator.js, key/lock placement, core.js, collision.js |
+| Phase 2 | Minimap & Fog of War | render/minimap.js, core.js room enter → explore update |
+| Phase 3 | Combat & Projectiles | combat.js, collision.js bullet collision, cooldown system |
+| Phase 4 | Enemy AI | entities.js, ai.js, collision.js snake ↔ enemy, projectile ↔ enemy |
+| Phase 5 | Enhanced Food System | entities.js food spawn, ai.js food-stealing, core.js speed curve |
+| Phase 6 | Save & Hidden Rooms | save.js, items.js, generator.js hidden rooms, render/room.js |
+| Phase 7 | UI Integration | gameboy.html expanded, render/hud.js, render/overlays.js, input bindings |
+| Phase 8 | Testing & Deployment | E2E tests, LocalStorage tests, Vercel check, docs update |
 
-### Phase 1 — Map Generation Engine (Core Architecture)
-
-| Task | File | Description |
-|------|------|-------------|
-| 1.1 | `constants.js` | Enums, room constants, palette |
-| 1.2 | `world.js` | Room/WorldMap data structures + coordinate helpers |
-| 1.3 | `generator.js` | Procedural map generation (spanning tree + random doors) |
-| 1.4 | `generator.js` | Key/lock placement + solvability verification |
-| 1.5 | `core.js` | World coordinate snake movement + room transitions |
-| 1.6 | `collision.js` | Wall/self/food collision in world coords |
-
-### Phase 2 — Minimap & Fog of War
-
-| Task | File | Description |
-|------|------|-------------|
-| 2.1 | `render/minimap.js` | Minimap rendering (rooms, explore state) |
-| 2.2 | `render/minimap.js` | Fog of war overlay |
-| 2.3 | `core.js` | Room enter → explore state update |
-
-### Phase 3 — Combat & Projectiles
-
-| Task | File | Description |
-|------|------|-------------|
-| 3.1 | `combat.js` | Projectile data structure + fire logic |
-| 3.2 | `combat.js` | Projectile flight + decay |
-| 3.3 | `collision.js` | Bullet → enemy/wall/cracked wall collision |
-| 3.4 | `combat.js` | Cooldown system + max projectiles |
-
-### Phase 4 — Enemy AI
-
-| Task | File | Description |
-|------|------|-------------|
-| 4.1 | `entities.js` | Enemy data structure + spawn |
-| 4.2 | `ai.js` | Enemy chase AI (greedy pathfinding) |
-| 4.3 | `collision.js` | Snake ↔ enemy collision (damage) |
-| 4.4 | `collision.js` | Projectile ↔ enemy collision |
-
-### Phase 5 — Enhanced Food System
-
-| Task | File | Description |
-|------|------|-------------|
-| 5.1 | `entities.js` | Food spawn across rooms |
-| 5.2 | `ai.js` | Enemy food-stealing logic |
-| 5.3 | `core.js` | Speed curve (length → tick interval) |
-| 5.4 | `entities.js` | Emergency food respawn |
-
-### Phase 6 — Save & Hidden Rooms
-
-| Task | File | Description |
-|------|------|-------------|
-| 6.1 | `save.js` | Save/load from localStorage |
-| 6.2 | `items.js` | Gacha machine + power-up system |
-| 6.3 | `generator.js` | Hidden room generation (cracked walls) |
-| 6.4 | `render/room.js` | Cracked wall visual + gacha UI |
-
-### Phase 7 — UI Integration
-
-| Task | File | Description |
-|------|------|-------------|
-| 7.1 | `public/gameboy.html` | Expanded HTML: minimap canvas, action buttons |
-| 7.2 | `render/hud.js` | HUD rendering |
-| 7.3 | `render/overlays.js` | Title/gameover/victory screens |
-| 7.4 | `public/gameboy.html` | A/B button binding |
-| 7.5 | `gameboy.html` | Keyboard mapping updates |
-| 7.6 | `gameboy.html` | Visual polish (transitions, animations) |
-
-### Phase 8 — Testing & Deployment
-
-| Task | File | Description |
-|------|------|-------------|
-| 8.1 | Tests | E2E flow: generate map → explore → fight → win |
-| 8.2 | Tests | LocalStorage save/load |
-| 8.3 | Verif. | Vercel deployment check |
-| 8.4 | Docs | Update README, STATUS |
-
----
-
-## 7. Acceptance Test Cases
-
-Mapped to research boundary conditions (Section 5 of PRD):
-
-| # | Test | Expected | Phase |
-|---|------|----------|-------|
-| 1 | World map generation (5×5) creates 25 rooms | Map.rooms has 25 entries | P1 |
-| 2 | Map generation guarantees solvability (100 runs) | All 100 runs: goal reachable from start | P1 |
-| 3 | Snake moves in world coords through rooms | Coords transition correctly at door boundaries | P1 |
-| 4 | Room transition at door: head enters connected room | `currentRoom` updates; room content loaded | P1 |
-| 5 | Length gate: < req → blocked; >= req → pass (edge: equal) | Blockade vs passage | P1 |
-| 6 | Key door: without key → blocked; with key → unlocked | Door state changes | P1 |
-| 7 | Room unexplored → entered → marked explored | `room.explored` transitions | P2 |
-| 8 | Minimap shows explored rooms; unexplored are black | Visual verify | P2 |
-| 9 | Fire projectile: snake length -1, bullet created | `snake.length` decrements by 1 | P3 |
-| 10 | Projectile decays after max travel distance | Projectile removed when range = 0 | P3 |
-| 11 | Fire cooldown: can't fire during cooldown | `fire()` returns state unchanged | P3 |
-| 12 | Max projectiles (3): 4th fire blocked | Only 3 projectiles exist at once | P3 |
-| 13 | Enemy chase: snake in room → enemy moves toward it | Enemy position changes toward snake | P4 |
-| 14 | Snake touches enemy → snake length -1 | Length decrements by 1 | P4 |
-| 15 | Projectile hits enemy → enemy hp -1 | Enemy.hp and length decrease | P4 |
-| 16 | Enemy hp reaches 0 → enemy removed | Enemy disappears from room | P4 |
-| 17 | Snake eats food → length +1, food respawns | Length increments; new food spawns not on snake | P5 |
-| 18 | Enemy walks over food → food consumed, enemy grows | Food removed; enemy hp+1 | P5 |
-| 19 | Speed curve: length 3 → 150ms ; length 20 → slower | Tick interval increases with length | P5 |
-| 20 | No food accessible → emergency respawn triggered | Food appears in current room | P5 |
-| 21 | Enter save room → auto-save | localStorage has valid save data | P6 |
-| 22 | Die after save → load from save point | State restored to save point | P6 |
-| 23 | Fire at cracked wall → wall removed, hidden room revealed | CELL.CRACKED_WALL → CELL.FLOOR | P6 |
-| 24 | Use gacha machine → length -5, receive power-up | Length decreases; inventory has new item | P6 |
-| 25 | Power-up: doubleShot → fire creates 2 projectiles | Two projectiles spawned per fire | P6 |
-| 26 | Reach goal room → game victory | `gameState === 'won'` | P7 |
-| 27 | Snake length hits 0 → game over (load save) | `gameState === 'gameover'` | P7 |
-| 28 | Unsolvable map edge case → regenerate (max 3 attempts) | Generation succeeds within 3 tries | P1 |
-| 29 | Save data format mismatch → reset, no crash | Save cleared, game loads fresh | P6 |
-| 30 | Enemy follows through door → returns to home after 2 rooms | Enemy re-appears in home room | P4 |
-
----
-
-## 8. Error Handling / Boundary Cases
+### 2.6 Error Handling / Boundary Cases
 
 | Condition | Handling |
 |-----------|----------|
@@ -530,3 +419,63 @@ Mapped to research boundary conditions (Section 5 of PRD):
 | Gacha interaction with length < 5 | Show "NOT ENOUGH LENGTH" message; no consumption |
 | Same room marked as both gacha and save | Generator avoids assigning conflicting types |
 | Player enters locked door room from the side without lock | Lock is on specific door direction; other entrances work normally |
+
+---
+
+## 3. Files Changed
+
+| File | Change Description | Est. Lines |
+|------|-------------------|------------|
+| `public/src/engine/constants.js` | NEW: enums, room constants, palette | ~30 |
+| `public/src/engine/core.js` | NEW: game loop, state management | ~200 |
+| `public/src/engine/world.js` | NEW: Room/WorldMap data structures, coordinate helpers | ~100 |
+| `public/src/engine/generator.js` | NEW: procedural map generation, key/lock placement | ~250 |
+| `public/src/engine/entities.js` | NEW: Snake, Enemy, Projectile models | ~80 |
+| `public/src/engine/collision.js` | NEW: wall/self/food/enemy/door detection | ~120 |
+| `public/src/engine/combat.js` | NEW: attack system, bullet management | ~80 |
+| `public/src/engine/items.js` | NEW: gacha machine, power-up effects | ~60 |
+| `public/src/engine/ai.js` | NEW: enemy pathfinding, chasing | ~70 |
+| `public/src/engine/save.js` | NEW: localStorage save/load | ~40 |
+| `public/src/render/renderer.js` | NEW: main render dispatch | ~50 |
+| `public/src/render/room.js` | NEW: room rendering (tiles, entities) | ~100 |
+| `public/src/render/minimap.js` | NEW: minimap + fog of war | ~60 |
+| `public/src/render/hud.js` | NEW: score, items, speed indicator | ~40 |
+| `public/src/render/overlays.js` | NEW: start/game-over/victory screens | ~60 |
+| `public/gameboy.html` | SIGNIFICANTLY EXPANDED: new game page | +400 |
+| `tests/metroidvania-snake.test.js` | NEW: comprehensive test suite | ~500 |
+| `index.html` | Update link to gameboy.html | ±2 |
+
+---
+
+## 4. Verification Checklist
+
+- [ ] World map generation (5×5) creates 25 rooms — `Map.rooms` has 25 entries
+- [ ] Map generation guarantees solvability (100 runs) — all 100 runs: goal reachable from start
+- [ ] Snake moves in world coords through rooms — coords transition correctly at door boundaries
+- [ ] Room transition at door: head enters connected room — `currentRoom` updates; room content loaded
+- [ ] Length gate: < req → blocked; >= req → pass (edge: equal) — blockade vs passage
+- [ ] Key door: without key → blocked; with key → unlocked — door state changes
+- [ ] Room unexplored → entered → marked explored — `room.explored` transitions
+- [ ] Minimap shows explored rooms; unexplored are black — visual verify
+- [ ] Fire projectile: snake length -1, bullet created — `snake.length` decrements by 1
+- [ ] Projectile decays after max travel distance — projectile removed when range = 0
+- [ ] Fire cooldown: can't fire during cooldown — `fire()` returns state unchanged
+- [ ] Max projectiles (3): 4th fire blocked — only 3 projectiles exist at once
+- [ ] Enemy chase: snake in room → enemy moves toward it — enemy position changes toward snake
+- [ ] Snake touches enemy → snake length -1 — length decrements by 1
+- [ ] Projectile hits enemy → enemy hp -1 — `Enemy.hp` and length decrease
+- [ ] Enemy hp reaches 0 → enemy removed — enemy disappears from room
+- [ ] Snake eats food → length +1, food respawns — length increments; new food spawns not on snake
+- [ ] Enemy walks over food → food consumed, enemy grows — food removed; enemy hp+1
+- [ ] Speed curve: length 3 → 150ms; length 20 → slower — tick interval increases with length
+- [ ] No food accessible → emergency respawn triggered — food appears in current room
+- [ ] Enter save room → auto-save — localStorage has valid save data
+- [ ] Die after save → load from save point — state restored to save point
+- [ ] Fire at cracked wall → wall removed, hidden room revealed — `CELL.CRACKED_WALL` → `CELL.FLOOR`
+- [ ] Use gacha machine → length -5, receive power-up — length decreases; inventory has new item
+- [ ] Power-up: doubleShot → fire creates 2 projectiles — two projectiles spawned per fire
+- [ ] Reach goal room → game victory — `gameState === 'won'`
+- [ ] Snake length hits 0 → game over (load save) — `gameState === 'gameover'`
+- [ ] Unsolvable map edge case → regenerate (max 3 attempts) — generation succeeds within 3 tries
+- [ ] Save data format mismatch → reset, no crash — save cleared, game loads fresh
+- [ ] Enemy follows through door → returns to home after 2 rooms — enemy re-appears in home room

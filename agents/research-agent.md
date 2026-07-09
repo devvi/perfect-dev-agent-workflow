@@ -54,7 +54,7 @@ Read the most relevant matches. Weave K's existing design philosophy and pattern
 
 ### Step 2: Research & Analysis
 
-Read `templates/RESEARCH_TEMPLATE.md` and fill ALL 7 sections:
+Read `templates/PRD_TEMPLATE.md` and fill ALL 7 sections:
 
 1. **Problem Definition** — current vs expected behavior, user scenarios
 2. **Root Cause / Design Intent** — why current state exists, why change now

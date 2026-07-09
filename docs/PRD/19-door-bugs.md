@@ -3,6 +3,8 @@
 > Parent Issue: #19
 > Agent: research-agent
 > Date: 2026-07-07
+> Status: Open
+> Priority: High
 
 ---
 
@@ -30,7 +32,7 @@ Snake should always pass through door passages safely and transition to the adja
 
 ---
 
-## 2. Root Cause Analysis
+## 2. Root Cause Analysis (Bug) / Design Intent (Feature)
 
 ### Why Does Current Behavior Exist?
 The implement branch (Issue #15) added room-based movement with doors, but the door system has multiple defects:
@@ -114,6 +116,8 @@ tick() {
 ---
 
 ## 4. Solution Comparison
+
+> At least 2 approaches required.
 
 ### Approach A: Door Passage Overhaul (Recommended)
 

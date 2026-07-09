@@ -3,6 +3,8 @@
 > Parent Issue: #5
 > Agent: research-agent
 > Date: 2026-07-06
+> Status: Open
+> Priority: Medium
 
 ---
 
@@ -27,7 +29,7 @@
 
 ---
 
-## 2. Design Intent
+## 2. Root Cause Analysis (Bug) / Design Intent (Feature)
 
 ### Why Does Current Behavior Exist?
 现有 `index.html` 是 Issue #1 的成果，当时选择了深色现代风格作为 MVP。Issue #5 则是全新的视觉方向——围绕 GameBoy 复古美学重建整个体验。
@@ -73,6 +75,8 @@
 ---
 
 ## 4. Solution Comparison
+
+> At least 2 approaches required.
 
 ### Approach A: 新建独立文件 `gameboy.html`
 - **Description:** 创建一个全新的 HTML 文件 `gameboy.html`，与现有的 `index.html` 并存。使用完整 GameBoy 外壳视觉效果（屏幕边框、指示灯、字体），游戏逻辑从现有代码重构优化。Vercel 部署为 `/gameboy` 路由。

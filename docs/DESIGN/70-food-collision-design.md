@@ -1,7 +1,7 @@
 # Design: #70 — Food Collision Returns `damage` Instead of `food`
 
 > Parent Issue: #70
-> Plan Agent: subagent
+> Agent: subagent
 > Date: 2026-07-09
 
 ---
@@ -131,8 +131,6 @@ if (collisions.includes('damage')) {
 }
 ```
 
-**Note:** The `newHead` variable already exists in the `tick()` scope by the time we reach the damage check — it is defined at ~line 104.
-
 ### 2c. Key Design Decisions
 
 | Decision | Choice | Rationale |
@@ -145,57 +143,7 @@ if (collisions.includes('damage')) {
 
 ---
 
-## 3. Test Specifications
-
-All tests go in `tests/metroidvania-snake.test.js` under a new `describe('Issue #70 — Food collision on wall cells')` block.
-
-### Test Group A: `checkSnakeCollision` returns correct combined results
-
-| # | Scenario | Setup | Expected Result |
-|---|----------|-------|-----------------|
-| A1 | Food on FLOOR cell | Place food on a FLOOR cell in room | `['food']` (regression) |
-| A2 | Food on border WALL cell | Place food on a border cell that is `CELL.WALL` | `['damage', 'food']` |
-| A3 | Food on interior WALL cell | Place food on an interior `CELL.WALL` cell | `['damage', 'food']` |
-| A4 | Food on STONE_WALL cell | Place food on a `CELL.STONE_WALL` cell | `['damage', 'food']` |
-| A5 | No food on wall | Wall cell with no food entity | `['damage']` (regression) |
-| A6 | Food on SPIKE cell | Place food on a `CELL.SPIKE` cell | `['death']` (death wins) |
-| A7 | Food on out-of-bounds | `head.x = -1` with food at that position in legacy mode | `['damage']` (bounds before food) |
-| A8 | Legacy mode food on wall | `!world` path, food on wall | `['damage']` (legacy wall check at line 29 fires first) |
-
-### Test Group B: `tick()` processes combined `['damage', 'food']` correctly
-
-| # | Scenario | Setup | Expected Result |
-|---|----------|-------|-----------------|
-| B1 | tick with food on WALL | Place snake moving into a WALL cell with food | Food removed from room; score +10 -5 = net +5; stuckCounter set; gameState = 'playing' |
-| B2 | tick with food on STONE_WALL | Same as B1 but STONE_WALL | Same as B1 |
-| B3 | tick with food on WALL, check net score | Score starts at 100 | After tick: score = 105 (100 + 10 - 5) |
-| B4 | tick with food on WALL, food removed from room | Verify room.entities.food array | food entity no longer present in room |
-| B5 | tick with wall but no food | WALL cell, no food | score = score - 5; food unchanged; stuckCounter set |
-| B6 | tick with FLOOR food (regression) | Food on FLOOR, no wall | Snake grows +1, score += 10, no stuckCounter |
-
-### Test Group C: Edge cases
-
-| # | Scenario | Setup | Expected Result |
-|---|----------|-------|-----------------|
-| C1 | Multiple food items at same WALL cell | Two `{ x, y }` food entities on same WALL cell | First food consumed (spliced), second remains for next tick |
-| C2 | Food on WALL + enemy at same cell | Food + enemy on a WALL cell | `['damage', 'food', 'enemy']` — damage handles food removal, enemy pops tail |
-| C3 | Wall collision with 0 score, food on wall | score = 0 | score stays 0 after stuck penalty (max(0, 0-5) = 0, then +10 = 10) |
-| C4 | Snake length 1 hits wall with food | Single segment snake moving into wall+food | stuckCounter set, food removed, gameState = 'playing' (not gameover) |
-
-### Test Construction Approach
-
-Each test should follow the existing pattern in `tests/metroidvania-snake.test.js`:
-
-1. **Create a minimal game state** using either `createInitialState(generateWorldMap(...))` or `minimalState()` helper
-2. **Place food in the room** via `room.entities.food.push({ x, y })`
-3. **Set the cell type** to WALL/STONE_WALL at the target coordinates
-4. **Call `checkSnakeCollision()` directly** for group A tests
-5. **Call `tick()` with appropriate direction** for group B tests
-6. **Assert on the return value** — `toContain('food')`, `toContain('damage')`, score deltas, room food state
-
----
-
-## 4. Files Changed
+## 3. Files Changed
 
 | File | Change Summary | Est. Lines |
 |------|---------------|------------|
@@ -207,16 +155,23 @@ Each test should follow the existing pattern in `tests/metroidvania-snake.test.j
 
 ---
 
-## 5. Verification Checklist
+## 4. Verification Checklist
 
 - [ ] All existing tests pass (178 tests at baseline)
-- [ ] Food on FLOOR cell → `['food']` (regression A1)
-- [ ] Food on border WALL → `['damage', 'food']` (A2)
-- [ ] Food on interior WALL → `['damage', 'food']` (A3)
-- [ ] Food on STONE_WALL → `['damage', 'food']` (A4)
-- [ ] No food on wall → `['damage']` (A5, regression)
-- [ ] Food on SPIKE → `['death']` (A6)
-- [ ] tick(): food on WALL → food removed, score net +5 (B1-B4)
-- [ ] tick(): wall without food → score -5 (B5, regression)
-- [ ] tick(): food on FLOOR (regression B6)
-- [ ] Edge cases C1-C4
+- [ ] A1: Food on FLOOR cell → `['food']` (regression)
+- [ ] A2: Food on border WALL → `['damage', 'food']`
+- [ ] A3: Food on interior WALL → `['damage', 'food']`
+- [ ] A4: Food on STONE_WALL → `['damage', 'food']`
+- [ ] A5: No food on wall → `['damage']` (regression)
+- [ ] A6: Food on SPIKE → `['death']` (death wins)
+- [ ] A7: Food on out-of-bounds → `['damage']` (bounds before food)
+- [ ] B1: tick with food on WALL → food removed; score +10 -5 = net +5; stuckCounter set; gameState = 'playing'
+- [ ] B2: tick with food on STONE_WALL → same as B1
+- [ ] B3: tick with food on WALL, net score = 105 (starting 100)
+- [ ] B4: tick with food on WALL → food entity no longer present in room
+- [ ] B5: tick with wall but no food → score = score - 5; food unchanged
+- [ ] B6: tick with FLOOR food (regression) → snake grows +1, score += 10, no stuckCounter
+- [ ] C1: Multiple food items at same WALL cell → first food consumed, second remains
+- [ ] C2: Food on WALL + enemy at same cell → `['damage', 'food', 'enemy']`
+- [ ] C3: Wall collision with 0 score, food on wall → score = 10
+- [ ] C4: Snake length 1 hits wall with food → stuckCounter set, food removed, gameState = 'playing'

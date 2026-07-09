@@ -1,13 +1,14 @@
-# PRD: Title Screen — Interactive Menu (Start Game / About)
+# Research: Title Screen — Interactive Menu (Start Game / About)
 
-| Field | Value |
-|-------|-------|
-| Issue | #66 |
-| Priority | Medium |
-| Labels | enhancement, workflow/research |
-| Author | devvi |
+> Parent Issue: #66
+> Agent: research-agent
+> Date: 2026-07-08
+> Status: Open
+> Priority: Medium
 
-## 1. Problem / Root Cause
+---
+
+## 1. Problem Definition
 
 ### Current Behavior
 
@@ -26,18 +27,60 @@ Per issue #66:
 4. Selecting **ABOUT** switches to an overlay showing: current commit hash (abbreviated SHA), commit message, and commit timestamp
 5. From the ABOUT screen, pressing any key returns to the title menu
 
+### User Scenarios
+
+- **Scenario A（首次体验）：** 玩家打开游戏 → 看到 START GAME 和 ABOUT 两个选项 → 方向键选择 → Enter 确认
+- **Scenario B（查看版本信息）：** 玩家选择 ABOUT → 看到 commit hash、消息、日期 → 按任意键返回菜单
+- **Scenario C（快速开始）：** 熟悉游戏的玩家直接按 Enter（默认选中 START GAME）→ 立即开始游戏
+- **Frequency:** 每次启动游戏时触发
+
 ---
 
-## 2. Impact
+## 2. Design Intent
+
+### Why Does Current Behavior Exist?
+
+The title screen was a minimal MVP, merely a gate to gameplay. No design was ever made for a structured menu system. The input handler in `public/gameboy.html` has a single `if (state.gameState === 'title')` branch that unconditionally starts the game on any arrow/enter/space keypress — there is no state machine for menu navigation, no cursor/index tracking, and no concept of "selected menu item" in the game state.
+
+### Why Change Now?
+
+1. **用户体验提升：** 菜单系统是游戏的基础功能，提供结构化的导航体验
+2. **About 信息展示：** ABOUT 页面可以展示版本信息、作者、致谢等
+3. **未来扩展性：** 有了菜单框架后，可以轻松添加更多条目（设置、音效、语言等）
+
+### Previous Constraints
+
+- 纯 Canvas 渲染（无 DOM 菜单）
+- 键盘控制（非鼠标/触屏）
+- 无外部依赖
+
+---
+
+## 3. Impact Analysis
 
 | Area | Impact |
 |------|--------|
 | **Title Screen Rendering** (`public/src/render/overlays.js`) | `renderTitleScreen()` must be refactored from a static prompt to a menu renderer that draws selectable items and a cursor indicator. A new `renderAboutScreen()` function must be added. |
 | **Game State** (`public/src/engine/core.js`) | Requires new fields: `menuIndex` (selected item index), `menuMode` (`'main'` / `'about'`). The `createInitialState()` function must initialize these. |
 | **Input Handling** (`public/gameboy.html`) | The title-screen keydown branch must be rewritten to handle: up/down arrows for navigation, Enter for selection, and any-key-dismiss on the about screen. Must not interfere with playing-state controls. |
-| **Commit Metadata** (`public/gameboy.html` or new inline script) | The ABOUT screen needs commit hash, message, and timestamp at runtime. This requires either: (a) build-time injection (reusing #56's design with `__COMMIT_HASH__` placeholders), or (b) runtime git-info via an alternative mechanism. |
+| **Commit Metadata** (`public/gameboy.html` or new inline script) | The ABOUT screen needs commit hash, message, and timestamp at runtime. |
 | **Test Suite** | New test scenarios needed for: menu navigation, menu item selection, about screen display and dismiss. |
 | **Backward Compatibility** | Low risk — existing controls are only modified in the `title` state. Playing/game-over/paused states are unaffected. |
+
+### Directly Affected Modules
+
+| File | Module | Nature of Change |
+|------|--------|------------------|
+| `public/src/render/overlays.js` | Overlay Rendering | 重构 `renderTitleScreen()` 为菜单渲染；新增 `renderAboutScreen()` |
+| `public/src/engine/core.js` | Game State | 新增 `menuIndex`、`menuMode` 字段到 `createInitialState()` |
+| `public/gameboy.html` | Input Handling | 重写 title-screen keydown 分支 |
+| `.github/workflows/deploy.yml` | CI/CD | 若需注入 commit 信息（复用 #56 模式） |
+
+### Indirectly Affected Modules
+
+| File | Module | Why Affected |
+|------|--------|--------------|
+| `tests/metroidvania-snake.test.js` | Tests | 新增菜单导航测试 |
 
 ### Data Flow
 
@@ -50,9 +93,16 @@ Title Screen (state.gameState === 'title', menuMode === 'main')
   └─ Any key while menuMode === 'about' → menuMode = 'main'
 ```
 
+### Documents to Update
+
+- [ ] `docs/PRD/66-title-menu-prd.md` (本文件)
+- [ ] `docs/TASKS/66-title-menu-prd.md` (任务文件)
+
 ---
 
-## 3. Alternatives
+## 4. Solution Comparison
+
+> At least 2 approaches required.
 
 ### Alternative A: Canvas-based Menu with State Machine (Recommended)
 
@@ -73,6 +123,7 @@ Title Screen (state.gameState === 'title', menuMode === 'main')
 - Requires modifying game state shape (adds `menuIndex`, `menuMode`)
 - Existing input handler logic must be restructured (currently a simple if-block)
 
+**Risk:** Low
 **Effort:** Small (~2–3 hours)
 
 ### Alternative B: DOM Overlay Menu Div
@@ -91,6 +142,7 @@ Title Screen (state.gameState === 'title', menuMode === 'main')
 - More complex to handle focus/input across DOM + canvas listeners
 - Would need to hide menus when game starts (extra cleanup)
 
+**Risk:** Medium
 **Effort:** Medium (~3–4 hours)
 
 ### Alternative C: Hybrid — DOM Menu with Canvas Background
@@ -108,11 +160,12 @@ Title Screen (state.gameState === 'title', menuMode === 'main')
 - Introduces DOM manipulation that must be cleaned up on init/restart
 - The pixel-art aesthetic is harder to maintain with HTML
 
+**Risk:** Medium
 **Effort:** Medium (~3–4 hours)
 
 ### Recommendation
 
-→ **Alternative A (Canvas-based Menu)** because:
+→ **Alternative A (Canvas-based Menu)** 因为：
 1. Consistency with the existing all-canvas rendering pipeline
 2. No DOM complexity or sync issues
 3. The commit-info injection mechanism from #56 applies directly
@@ -121,7 +174,7 @@ Title Screen (state.gameState === 'title', menuMode === 'main')
 
 ---
 
-## 4. Boundary Conditions & Acceptance Criteria
+## 5. Boundary Conditions & Acceptance Criteria
 
 ### Normal Path
 
@@ -166,9 +219,11 @@ Title Screen (state.gameState === 'title', menuMode === 'main')
 | 2 | Commit hash placeholder not replaced | Show "local" instead of `__COMMIT_HASH__` |
 | 3 | Menu state not reset after game-over | `init()` resets state completely, including menu fields |
 
+> These directly become test case skeletons in Plan phase.
+
 ---
 
-## 5. Dependencies & Blockers
+## 6. Dependencies & Blockers
 
 ### Depends On
 
@@ -177,8 +232,7 @@ Title Screen (state.gameState === 'title', menuMode === 'main')
 | Game state shape (`core.js`) | Stable | Low | Adding `menuIndex` and `menuMode` is non-breaking |
 | Canvas renderer (`overlays.js`) | Stable | Low | New render functions only; existing overlay logic unchanged |
 | Input handler (`gameboy.html`) | Stable | Medium | Must restructure title-screen key dispatch without breaking other states |
-| Commit hash injection (#56) | Not implemented | High | The ABOUT screen needs commit metadata. If #56 is not implemented first, a simpler inline fallback must be provided (e.g., hardcoded `__COMMIT_HASH__` placeholder manually replaced in index.html, or a build script). |
-| Tests | Not yet written | Low | Test file exists (`tests/gameboy.test.js` or similar); new test cases needed |
+| Commit hash injection (#56) | Not implemented | High | The ABOUT screen needs commit metadata. If #56 is not implemented first, a simpler inline fallback must be provided. |
 
 ### Risks
 
@@ -186,13 +240,25 @@ Title Screen (state.gameState === 'title', menuMode === 'main')
 |------|-----------|------------|
 | Input conflict — arrow keys for menu vs game | Low | Arrow keys only navigate menu when `state.gameState === 'title'`, which is mutually exclusive with playing state |
 | State initialization — menu fields forgotten in `init()` | Low | `createInitialState()` is the single source of truth; add menu fields there |
-| #56 not implemented before #66 | Medium | The ABOUT screen can use a simpler approach: a manual token placeholder in `gameboy.html` + a local build script, or a `git rev-parse` run at test time. The PRD for both features can coexist; #66's ABOUT screen adapts to whatever mechanism supplies commit info. |
+| #56 not implemented before #66 | Medium | The ABOUT screen can use a simpler approach: a manual token placeholder in `gameboy.html` + a local build script |
+
+### Blocks
+
+| Future Work | Priority |
+|-------------|----------|
+| Settings/Options menu | Post-MVP |
+
+### Preparation Needed
+
+- [ ] 确认 #56 的 commit hash 注入机制是否已经实现——否则提供 inline fallback
 
 ---
 
-## 6. Implementation Notes
+## 7. Spike / Experiment (Optional)
 
-### 6.1 Game State Additions (`public/src/engine/core.js`)
+### Implementation Notes
+
+#### 6.1 Game State Additions (`public/src/engine/core.js`)
 
 ```js
 // In createInitialState():
@@ -216,7 +282,6 @@ function renderTitleScreen(ctx, state) {
 ```
 
 New function:
-
 ```
 function renderAboutScreen(ctx, state) {
   // Semi-transparent dark overlay
@@ -226,7 +291,6 @@ function renderAboutScreen(ctx, state) {
 ```
 
 The `renderOverlay()` dispatch must be updated:
-
 ```js
 if (state.gameState === 'title') {
   if (state.menuMode === 'about') {
@@ -238,8 +302,6 @@ if (state.gameState === 'title') {
 ```
 
 ### 6.3 Input Handler Changes (`public/gameboy.html`)
-
-Replace the current title-screen input block:
 
 ```js
 if (state.gameState === 'title') {
@@ -276,21 +338,8 @@ if (state.gameState === 'title') {
 ### 6.4 Commit Metadata Source
 
 The ABOUT screen needs commit info at runtime. This depends on the pattern established by #56:
-- **Reuse** the `window.__COMMIT_INFO` object designed in #56 (containing `hash`, `message`, `author`, `date`)
-- **If #56 is not yet implemented**, provide a simple inline fallback in `gameboy.html`:
-
-```html
-<script>
-  window.__COMMIT_INFO = window.__COMMIT_INFO || {
-    hash: "__COMMIT_HASH__",
-    message: "__COMMIT_MSG__",
-    date: "__COMMIT_DATE__",
-    author: "dev"
-  };
-</script>
-```
-
-This allows both features to coexist: #56 replaces the placeholders at build time; #66's ABOUT screen reads `window.__COMMIT_INFO`.
+- **Reuse** the `window.__COMMIT_INFO` object designed in #56
+- **If #56 is not yet implemented**, provide a simple inline fallback in `gameboy.html`
 
 ### 6.5 Menu Visual Layout (Canvas Coordinates, centered at 400×400)
 
@@ -327,16 +376,3 @@ Menu:
 - [ ] Commit info uses `window.__COMMIT_INFO` (fallback to "local" / "N/A" if placeholder not replaced)
 - [ ] Existing playing/game-over/paused controls are unaffected
 - [ ] All existing tests pass
-
----
-
-## 7. References
-
-- Issue #66: 在title界面加上一个菜单 (this issue)
-- Issue #56: Title screen deploy commit hash + dev menu (related — commit metadata injection)
-- `public/src/render/overlays.js` — title screen / overlay rendering
-- `public/src/engine/core.js` — game state (createInitialState)
-- `public/gameboy.html` — input handler, entry point
-- `public/src/engine/constants.js` — game constants, palette
-- `docs/PRD/56-title-dev-menu.md` — PRD for commit hash injection (dependency for ABOUT screen)
-- `docs/DESIGN/56-title-dev-menu.md` — Design doc for commit metadata mechanism

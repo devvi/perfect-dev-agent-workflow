@@ -1,13 +1,14 @@
-# PRD: Fix Title About Screen — Commit Info Shows N/A
+# Research: Fix Title About Screen — Commit Info Shows N/A
 
-| Field | Value |
-|-------|-------|
-| Issue | #75 |
-| Priority | Low |
-| Labels | bug, workflow/research |
-| Author | Subagent |
+> Parent Issue: #75
+> Agent: research-agent (Subagent)
+> Date: 2026-07-09
+> Status: Open
+> Priority: Low
 
-## 1. Problem / Root Cause
+---
+
+## 1. Problem Definition
 
 ### Current Behavior
 
@@ -71,17 +72,51 @@ Per issue #66 (original title menu feature), the ABOUT screen should display rea
 | Msg | Commit message (truncated to ~55 chars) |
 | Date | Commit timestamp (e.g., `2026-07-09 00:09`) |
 
+### User Scenarios
+
+- **Scenario A (deployed build):** 用户部署后打开游戏 → ABOUT 页面显示正确的 commit hash、消息和日期
+- **Scenario B (local dev):** 本地运行（无构建步骤）→ ABOUT 页面显示 `N/A`（预期行为）
+- **Scenario C (preview deploy):** Vercel PR preview → 显示该分支的 head commit
+- **Frequency:** 每次打开 ABOUT 页面
+
 ---
 
-## 2. Impact
+## 2. Root Cause Analysis (Bug) / Design Intent (Feature)
+
+### Why Does Current Behavior Exist?
+
+#66 设计时预留了 `__COMMIT_INFO` 区块用于构建时注入，但 `vercel.json` 的 `buildCommand: null` 和无构建脚本导致占位符从未被替换。
+
+### Why Change Now?
+
+ABOUT 页面是 Issue #66 的核心功能之一。如果始终显示 `N/A`，菜单系统的"查看版本"功能完全无用。
+
+### Previous Constraints
+
+- 不能改变 `createInitialState()` 中的 guard 逻辑（它正确地防止了占位符泄露）
+- 构建脚本必须在 Vercel deploy 之前运行
+- 本地开发时应保持 `N/A`（无构建步骤）
+
+---
+
+## 3. Impact Analysis
 
 | Area | Impact |
 |------|--------|
 | **Deployment Pipeline** (`vercel.json`, `deploy.yml`) | Must add a build script that reads git commit info and injects it into `gameboy.html` before deployment |
 | **`public/gameboy.html`** | The `__COMMIT_INFO` block remains as-is; the replacement happens externally during build |
 | **Public/User Experience** | Low severity — cosmetic bug on the ABOUT screen only. Does not affect gameplay. |
-| **Local Development** | No impact. Running locally (file:// or local dev server) has no build step, so `N/A` is the expected and correct fallback. |
-| **Test Suite** | Existing tests in `metroidvania-snake.test.js` already test the `N/A` fallback behavior for non-deployment environments. No changes needed. |
+| **Local Development** | No impact. Running locally has no build step, so `N/A` is the expected and correct fallback. |
+| **Test Suite** | Existing tests already test the `N/A` fallback behavior for non-deployment environments. No changes needed. |
+
+### Directly Affected Modules
+
+| File | Module | Nature of Change |
+|------|--------|------------------|
+| `public/gameboy.html` | Build Artifact | 占位符将被构建时替换（文件本身不变） |
+| `vercel.json` | Deployment Config | 设置 `buildCommand` 来运行注入脚本 |
+| `scripts/inject-commit-info.sh` (new) | Build Script | 新建脚本，读取 git log 并替换占位符 |
+| `.github/workflows/deploy.yml` | CI/CD Pipeline | 可能需要在 Vercel action 之前运行注入 |
 
 ### Data Flow (After Fix)
 
@@ -95,9 +130,18 @@ git push → GitHub Actions (deploy.yml)
   → renderAboutScreen() → displays commit hash, message, date
 ```
 
+### Documents to Update
+
+- [ ] `docs/PRD/75-title-about-empty-prd.md` (本文件)
+- [ ] `docs/TASKS/75-title-about-empty-prd.md` (任务文件)
+- [ ] `vercel.json` (添加 buildCommand)
+- [ ] `.github/workflows/deploy.yml` (可能微调)
+
 ---
 
-## 3. Alternatives
+## 4. Solution Comparison
+
+> At least 2 approaches required.
 
 ### Alternative A: Build-time Sed Script in Deploy Workflow (Recommended)
 
@@ -120,100 +164,112 @@ sed -i "s/__COMMIT_DATE__/$DATE/g" public/gameboy.html
 - Works with any CI/provider (GitHub Actions, Vercel, Netlify)
 - Only ~10 lines of code
 - Easy to test locally
-- Can handle special characters in commit messages (escaping)
-- No npm packages needed
 
 **Cons:**
 - Sed can break on commit messages with `/`, `&`, or special sed characters
 - Modifies the file in-place (build artifact pollution if run locally without cleanup)
-- Date format must be decided (ISO 8601 is git default: `%ai`)
 
+**Risk:** Low
 **Effort:** Small (~0.5–1 hour)
 
 ### Alternative B: Node.js Build Script with JSON Reading
 
-**Description:** Write a Node.js script that writes commit info to a separate JSON file (e.g., `public/.commit-info.json`) during build. Modify `gameboy.html` to load this JSON file at runtime, or inline it as a `<script>` tag.
-
-**Implementation sketch:**
-```js
-// scripts/write-commit-info.js
-import { execSync } from 'child_process';
-import { writeFileSync } from 'fs';
-
-const hash = execSync('git log -1 --format="%h"').toString().trim();
-const msg  = execSync('git log -1 --format="%s"').toString().trim();
-const date = execSync('git log -1 --format="%ai"').toString().trim();
-
-const htmlPath = 'public/gameboy.html';
-let html = readFileSync(htmlPath, 'utf8');
-html = html.replace('"__COMMIT_HASH__"', `"${hash}"`);
-html = html.replace('"__COMMIT_MSG__"',  `"${msg}"`);
-html = html.replace('"__COMMIT_DATE__"', `"${date}"`);
-writeFileSync(htmlPath, html);
-```
+**Description:** Write a Node.js script that writes commit info to a separate JSON file or replaces tokens in `gameboy.html` during build.
 
 **Pros:**
 - JSON escaping handles special characters safely
 - More robust than sed for complex commit messages
-- Leverages existing Node.js runtime in the deployment environment
-- Can be extended to include additional metadata later
+- Leverages existing Node.js runtime
 
 **Cons:**
-- Requires Node.js (already available in the deploy workflow, but adds execution overhead)
+- Requires Node.js (already available in CI, but adds execution overhead)
 - More code than the bash alternative
 
+**Risk:** Low
 **Effort:** Small (~0.5–1 hour)
 
 ### Alternative C: Vercel Serverless Function (API Endpoint for Commit Info)
 
-**Description:** Create a Vercel serverless function at `api/commit-info.js` that reads the commit metadata from a build-time-generated JSON file stored as a static asset. The client-side JS fetches the info at runtime via a fetch call.
-
-**Implementation sketch:**
-```js
-// api/commit-info.js
-export default function handler(req, res) {
-  res.status(200).json({
-    hash: process.env.COMMIT_HASH || '__COMMIT_HASH__',
-    message: process.env.COMMIT_MSG || '__COMMIT_MSG__',
-    date: process.env.COMMIT_DATE || '__COMMIT_DATE__',
-  });
-}
-```
+**Description:** Create a Vercel serverless function that reads commit metadata and serves it via API.
 
 **Pros:**
 - Clean separation of concerns — HTML stays pristine
 - No file modification needed
-- Can be cached and revalidated
 
 **Cons:**
 - Adds a network request to the client on every ABOUT screen open
 - Over-engineered for a simple metadata display
 - Requires Vercel Functions (may add cold-start latency)
-- Changes data flow from synchronous (in-memory) to asynchronous
-- Increases deployment complexity
+- Changes data flow from synchronous to asynchronous
 
+**Risk:** Medium
 **Effort:** Medium (~1–2 hours)
+
+### Recommendation
+
+→ **Alternative A (Build-time Sed Script)** 因为：
+1. Simple, zero dependencies — pure bash + sed
+2. Works with any CI/provider (GitHub Actions, Vercel, Netlify)
+3. Only ~10 lines of code
+4. Easy to test locally
+5. Can handle special characters in commit messages (escaping)
 
 ---
 
-## 4. Boundary Conditions
+## 5. Boundary Conditions & Acceptance Criteria
+
+### Normal Path
+
+| # | Condition | Expected |
+|---|-----------|----------|
+| 1 | **Deployed build** | ABOUT screen shows real commit hash (7-char SHA), message, and date |
+| 2 | **Local file:// access** | `N/A` fallback (guard catches unreplaced placeholders) |
+| 3 | **Vercel Preview Deployments** | Shows head commit of the PR branch |
+
+### Edge Cases
 
 | # | Condition | Expected Behavior |
 |---|-----------|-------------------|
-| 1 | **Local file:// access** | `window.__COMMIT_INFO` stays as placeholder `__xxx__`; guard in `createInitialState()` catches it → displays `N/A` correctly |
-| 2 | **No git repo / no `git` binary** | Build script must detect failure (`git log -1` returns non-zero exit code) and fall back to `unknown` or leave placeholders intact so the runtime guard shows `N/A` |
-| 3 | **Shallow clone (CI environments)** | Git history contains only the most recent commit, so `git log -1` works correctly even on shallow clones |
-| 4 | **Commit message with special characters (quotes, slashes, backslashes)** | Build script must properly escape characters in sed replacement (or use Node.js with JSON serialization for safe escaping) |
-| 5 | **Vercel Preview Deployments (non-master branches)** | Preview deploys from PR branches should show the head commit of that branch (the deploy workflow checks out the PR code, so `git log -1` naturally shows the correct commit) |
-| 6 | **Empty repository (no commits)** | `git log -1` fails → build script falls back → placeholders remain → runtime guard shows `N/A` |
+| 1 | **No git repo / no `git` binary** | Build script detects failure → placeholders remain → runtime guard shows `N/A` |
+| 2 | **Shallow clone (CI environments)** | `git log -1` works correctly even on shallow clones |
+| 3 | **Commit message with special characters** | Build script must properly escape characters |
+| 4 | **Empty repository (no commits)** | `git log -1` fails → fallback → `N/A` |
+
+### Failure Paths
+
+1. **Sed fails on commit message with `/`:** 使用 Node.js 进行 JSON escaping 作为后备
+2. **Build script not executed:** 占位符保持原样 → `N/A` fallback（安全降级）
+
+> 这些直接成为 Plan 阶段的测试用例。
 
 ---
 
-## 5. Proposed Solution (Recommended: Alternative A)
+## 6. Dependencies & Blockers
 
-### Build Script
+### Depends On
 
-Create `scripts/inject-commit-info.sh`:
+| Dependency | Status | Risk |
+|------------|--------|------|
+| `public/gameboy.html` | Stable | Low |
+| `vercel.json` | Stable | Low |
+| `.github/workflows/deploy.yml` | Stable | Low |
+
+### Blocks
+
+无。
+
+### Preparation Needed
+
+- [ ] 创建 `scripts/inject-commit-info.sh`
+- [ ] 更新 `vercel.json` 添加 `"buildCommand"`
+
+---
+
+## 7. Spike / Experiment (Optional — depth/deep only)
+
+### Implementation: Proposed Solution
+
+#### Build Script: `scripts/inject-commit-info.sh`
 
 ```bash
 #!/bin/bash
@@ -246,8 +302,4 @@ echo "Injected commit info: $HASH — $ESCAPED_MSG"
 ### Pipeline Changes
 
 - `vercel.json`: Set `"buildCommand": "bash scripts/inject-commit-info.sh"` (Vercel will run this before serving static files)
-- Or alternatively, add the script call to the deploy workflow in `deploy.yml` before the Vercel action step
-
-### Who to Assign
-
-Anyone familiar with shell scripting and CI pipelines.
+- Or add the script call to the deploy workflow in `deploy.yml` before the Vercel action step

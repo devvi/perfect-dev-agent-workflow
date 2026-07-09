@@ -1,4 +1,4 @@
-# Design: GameBoy 风格贪吃蛇游戏
+# Design: #5 — GameBoy 风格贪吃蛇游戏 (GameBoy Snake Game)
 
 > Parent Issue: #5
 > Agent: plan-agent
@@ -44,9 +44,11 @@ perfect-dev-agent-workflow/
 
 ---
 
-## 2. Data Structures
+## 2. Detailed Design
 
-### Constants
+### 2.1 Data Structures
+
+#### Constants
 ```js
 const GRID_SIZE = 20;         // 20×20 grid
 const CELL_SIZE = 20;         // pixels per cell
@@ -64,7 +66,7 @@ const PALETTE = {
 };
 ```
 
-### Game State
+#### Game State
 ```js
 // Direction vectors
 const DIR = {
@@ -90,11 +92,9 @@ const DIR = {
 }
 ```
 
----
+### 2.2 Key Functions / Components
 
-## 3. Key Functions / Components
-
-### Engine Module (`src/gameboy-snake-engine.js`)
+#### Engine Module (`src/gameboy-snake-engine.js`)
 
 | Function | Signature | Responsibility |
 |----------|-----------|----------------|
@@ -107,7 +107,7 @@ const DIR = {
 | `spawnFood(snake)` | `(Array) → {x,y}` | Returns random position not occupied by snake body |
 | `resetGame()` | `() → GameState` | Alias for `createInitialState()` |
 
-### Game Loop & Rendering (inline in `gameboy.html`)
+#### Game Loop & Rendering (inline in `gameboy.html`)
 
 | Component | Responsibility |
 |-----------|----------------|
@@ -122,23 +122,9 @@ const DIR = {
 | `renderScanlines(ctx)` | Optional: semi-transparent horizontal lines |
 | `renderGameBoyFrame(ctx, canvas)` | Draw outer GameBoy shell, label, indicator light |
 
-### Input Handling
+### 2.3 Rendering / UI Strategy
 
-| Event | Action |
-|-------|--------|
-| `keydown ArrowUp` | `changeDirection(state, DIR.UP)` |
-| `keydown ArrowDown` | `changeDirection(state, DIR.DOWN)` |
-| `keydown ArrowLeft` | `changeDirection(state, DIR.LEFT)` |
-| `keydown ArrowRight` | `changeDirection(state, DIR.RIGHT)` |
-| `keydown ' '` (Space) | If `won` or `gameover`, restart game |
-| `keydown Enter` | If `won` or `gameover`, restart game |
-| `keydown Arrow*` | If `idle`, start game then set direction |
-
----
-
-## 4. Rendering / UI Strategy
-
-### Layer Order (bottom to top)
+#### Layer Order (bottom to top)
 1. **LCD background** — Fill canvas with `#9bbc0f`
 2. **Pixel grid** — Draw 1px dark gaps between cells (20×20 grid)
 3. **Snake** — Light green with head slightly brighter
@@ -148,21 +134,19 @@ const DIR = {
 7. **Scanlines** — Optional every-other-row dark horizontal lines (3% opacity)
 8. **GameBoy frame** — Outer border (dark grey), label "GAME BOY", battery indicator
 
-### Canvas Sizing
+#### Canvas Sizing
 - **Logical size:** 400×400 (20 cells × 20px)
 - **CSS:** `width: 400px; height: 400px; max-width: 100%; height: auto;`
 - **High DPI:** Use `canvas.width = 400 * devicePixelRatio`, then CSS scale down
 - **Pixel-perfect:** `image-rendering: pixelated;`
 
-### GameBoy Shell Frame
+#### GameBoy Shell Frame
 - Outer border: 20px thick dark grey (`#444`)
 - Rounded corners (CSS `border-radius`)
 - Text "GAME BOY" at bottom-center in pixelated monospace
 - Small red/green LED indicator (top-right)
 
----
-
-## 5. Input Handling
+### 2.4 Input Handling
 
 - **Direction buffer:** `keydown` handler writes to `state.nextDirection`; `tick()` consumes it once per tick. Prevents multi-input jitter.
 - **Reverse direction lock:** If `direction + nextDirection` sums to 0 (x or y cancel out), reject the input.
@@ -170,16 +154,14 @@ const DIR = {
 - **Restart:** Space / Enter in gameover/won state triggers full reset.
 - **Passive key events:** No `preventDefault()` during overlay to allow page scroll if needed; but directional arrows should be prevented on the canvas.
 
----
+### 2.5 Phased Implementation Tasks
 
-## 6. Phased Implementation Tasks
-
-### Phase 1: Core Engine + Boot (TDD)
+#### Phase 1: Core Engine + Boot (TDD)
 - [ ] Create `src/gameboy-snake-engine.js` with all pure functions
 - [ ] Write `tests/gameboy-snake.test.js` covering all functions and edge cases
 - [ ] Verify tests compile and fail (TDD — no rendering yet)
 
-### Phase 2: GameBoy HTML Page
+#### Phase 2: GameBoy HTML Page
 - [ ] Create `public/gameboy.html` with inline HTML/CSS shell
 - [ ] Game loop with `setInterval`, engine integration
 - [ ] All rendering layers: background → grid → snake → food → score
@@ -187,41 +169,14 @@ const DIR = {
 - [ ] Input handling (arrow keys, space, enter)
 - [ ] Game-over / win overlays
 
-### Phase 3: Visual Polish
+#### Phase 3: Visual Polish
 - [ ] GameBoy shell frame with label and indicator
 - [ ] Scanline overlay effect
 - [ ] High DPI canvas support
 - [ ] Responsive sizing (CSS max-width)
 - [ ] About page link update
 
----
-
-## 7. Acceptance Test Cases
-
-Mapped to research boundary conditions:
-
-| # | Test | Expected | Phase |
-|---|------|----------|-------|
-| 1 | New game state is idle with snake length 3 | `state.gameState === 'idle'`, `state.snake.length === 3` | P1 |
-| 2 | Arrow key starts game (idle→playing) | `state.gameState === 'playing'` after `startGame()` | P1 |
-| 3 | Snake moves one cell per tick in current direction | Position changes by (1,0) for RIGHT | P1 |
-| 4 | Eating food increments length by 1 and score by 10 | `snake.length +1`, `score +10` | P1 |
-| 5 | New food spawns not on snake body | Food position not in snake array | P1 |
-| 6 | Reverse direction is rejected (180° turn) | Calling `changeDirection(LEFT)` while moving RIGHT is ignored | P1 |
-| 7 | Collision with wall → gameover | `gameState === 'gameover'` when head x ∉ [0, GRID_SIZE) | P1 |
-| 8 | Collision with self → gameover | `gameState === 'gameover'` when head overlaps body | P1 |
-| 9 | Snake fills entire grid → victory | `gameState === 'won'` when `snake.length >= TOTAL_CELLS` | P1 |
-| 10 | Space/Enter restarts after gameover | State resets to initial after restart | P1 |
-| 11 | Multi-key input between ticks only applies last valid | Only one direction change per tick | P1 |
-| 12 | Food spawns deterministically when snake covers most grid | Handles edge case of no empty cells | P1 |
-| 13 | Canvas rendering uses GameBoy palette colors | Visual verification | P2 |
-| 14 | Pixel grid has 1px gaps between cells | Visual verification | P2 |
-| 15 | GameBoy shell frame renders correctly | Visual verification | P3 |
-| 16 | Scanline overlay renders | Visual verification | P3 |
-
----
-
-## 8. Error Handling / Boundary Cases
+### 2.6 Error Handling / Boundary Cases
 
 | Condition | Handling |
 |-----------|----------|
@@ -232,3 +187,35 @@ Mapped to research boundary conditions:
 | Window resize | CSS `max-width: 100%` keeps aspect ratio; no logic change |
 | No arrow keys present (mobile) | Post-MVP: add virtual D-pad overlay |
 | devicePixelRatio non-integer | Use `Math.floor(400 * devicePixelRatio)` for crisp pixels |
+
+---
+
+## 3. Files Changed
+
+| File | Change Description | Est. Lines |
+|------|--------------------|------------|
+| `src/gameboy-snake-engine.js` | NEW: extract core engine pure functions | ~150 |
+| `public/gameboy.html` | NEW: GameBoy HTML page with canvas, game loop, rendering, shell | ~300 |
+| `tests/gameboy-snake.test.js` | NEW: comprehensive engine test suite | ~300 |
+| `public/index.html` | Update link to gameboy.html | ±1 |
+
+---
+
+## 4. Verification Checklist
+
+- [ ] New game state is idle with snake length 3 — `state.gameState === 'idle'`, `state.snake.length === 3`
+- [ ] Arrow key starts game (idle→playing) — `state.gameState === 'playing'` after `startGame()`
+- [ ] Snake moves one cell per tick in current direction — position changes by (1,0) for RIGHT
+- [ ] Eating food increments length by 1 and score by 10 — `snake.length +1`, `score +10`
+- [ ] New food spawns not on snake body — food position not in snake array
+- [ ] Reverse direction is rejected (180° turn) — `changeDirection(LEFT)` while moving RIGHT is ignored
+- [ ] Collision with wall → gameover — `gameState === 'gameover'` when head x ∉ [0, GRID_SIZE)
+- [ ] Collision with self → gameover — `gameState === 'gameover'` when head overlaps body
+- [ ] Snake fills entire grid → victory — `gameState === 'won'` when `snake.length >= TOTAL_CELLS`
+- [ ] Space/Enter restarts after gameover — state resets to initial after restart
+- [ ] Multi-key input between ticks only applies last valid — only one direction change per tick
+- [ ] Food spawns deterministically when snake covers most grid — handles edge case of no empty cells
+- [ ] Canvas rendering uses GameBoy palette colors — visual verification
+- [ ] Pixel grid has 1px gaps between cells — visual verification
+- [ ] GameBoy shell frame renders correctly — visual verification
+- [ ] Scanline overlay renders — visual verification

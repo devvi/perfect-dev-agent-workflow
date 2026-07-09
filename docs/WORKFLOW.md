@@ -21,7 +21,9 @@ your-project/
 │       ├── feature.yml
 │       └── bug.yml
 ├── templates/
-│   └── RESEARCH_TEMPLATE.md
+│   ├── PRD_TEMPLATE.md
+│   ├── DESIGN_TEMPLATE.md
+│   └── TASKS_TEMPLATE.md
 ├── scripts/
 │   └── setup-labels.sh
 └── AGENTS.md

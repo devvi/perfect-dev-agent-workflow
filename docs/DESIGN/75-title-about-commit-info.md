@@ -1,7 +1,7 @@
 # Design: #75 — Title About Screen Commit Info Shows N/A
 
 > Parent Issue: #75
-> Plan Agent: subagent
+> Agent: subagent
 > Date: 2026-07-09
 
 ---
@@ -46,9 +46,9 @@ A shell script `scripts/inject-commit-info.sh` reads `git log -1` metadata and u
 
 ---
 
-## 2. File Changes
+## 2. Detailed Design
 
-### File 1: `scripts/inject-commit-info.sh` (NEW)
+### 2.1 File 1: `scripts/inject-commit-info.sh` (NEW)
 
 A build-time script that:
 1. Reads commit hash, message, and date via `git log -1`
@@ -89,7 +89,7 @@ sed -i "s/__COMMIT_DATE__/$DATE/g" "$HTML_FILE"
 echo "[inject-commit-info] Injected: $HASH — $ESCAPED_MSG"
 ```
 
-### File 2: `vercel.json` (MODIFIED)
+### 2.2 File 2: `vercel.json` (MODIFIED)
 
 Add a `buildCommand` so the injection script runs before Vercel serves the static files:
 
@@ -109,7 +109,7 @@ Add a `buildCommand` so the injection script runs before Vercel serves the stati
 - Vercel then reads the modified file from `public/` and deploys it
 - `outputDirectory` remains `null` → Vercel uses its default (`public/`)
 
-### No Changes Required
+### 2.3 No Changes Required
 
 | File | Reason |
 |------|--------|
@@ -118,11 +118,9 @@ Add a `buildCommand` so the injection script runs before Vercel serves the stati
 | `.github/workflows/deploy.yml` | Vercel action handles `buildCommand` automatically; no workflow change needed |
 | Test suite | Existing N/A fallback tests cover both local and CI environments |
 
----
+### 2.4 Pipeline Integration
 
-## 3. Pipeline Integration
-
-### Vercel Deploy Flow
+#### Vercel Deploy Flow
 
 ```
 git push → GitHub Actions (deploy.yml)
@@ -134,15 +132,7 @@ git push → GitHub Actions (deploy.yml)
   → Vercel serves gameboy.html with real commit info
 ```
 
-### Why deploy.yml doesn't need changes
-
-The `amondnet/vercel-action` automatically runs the `buildCommand` defined in `vercel.json` before deploying. The deploy workflow already has all needed pieces:
-- `actions/checkout@v6` fetches full git history (including commit info)
-- Vercel action reads the project config from `vercel.json`
-
----
-
-## 4. Boundary Conditions
+### 2.5 Boundary Conditions
 
 | # | Condition | Behavior |
 |---|-----------|----------|
@@ -155,107 +145,7 @@ The `amondnet/vercel-action` automatically runs the `buildCommand` defined in `v
 | 7 | **Vercel buildCommand failure** | `set -e` → script fails → Vercel deploy fails → not deployed with broken HTML ✅ |
 | 8 | **Concurrent deploys** | Each deploy gets its own workspace; no race condition ✅ |
 
----
-
-## 5. Test Specifications
-
-### 5.1 Unit Tests
-
-#### Test: `inject-commit-info.sh` — replaces placeholders
-
-```
-Input: gameboy.html with __COMMIT_HASH__, __COMMIT_MSG__, __COMMIT_DATE__
-Steps:
-  1. Create temp copy of gameboy.html in /tmp
-  2. Run bash scripts/inject-commit-info.sh with modified CWD
-  3. Verify __COMMIT_HASH__ is replaced with a 7-char hex string
-  4. Verify __COMMIT_MSG__ is replaced with non-empty string
-  5. Verify __COMMIT_DATE__ is replaced with ISO 8601 date string
-  6. Verify no __xxx__ tokens remain in the file
-
-Implementation: shell test script (tests/test-inject-commit-info.sh)
-```
-
-#### Test: `inject-commit-info.sh` — fallback on no git repo
-
-```
-Input: gameboy.html with placeholder tokens
-Setup: Run script outside a git repo (or in temp dir without .git/)
-Steps:
-  1. cd /tmp/no-git-dir
-  2. Create gameboy.html with tokens
-  3. Run inject-commit-info.sh
-  4. Verify tokens are replaced with "unknown" strings
-  5. Verify script exits with code 0 (no crash)
-
-Implementation: shell test with mktemp
-```
-
-#### Test: `inject-commit-info.sh` — commit msg with special chars
-
-```
-Input: A git commit with message containing quotes ("), slashes (/),
-       backticks (`), and ampersands (&)
-Steps:
-  1. Create a temp git repo
-  2. Commit with message: "feat: fix "quotes" & special/chars `test`"
-  3. Run inject-commit-info.sh
-  4. Verify __COMMIT_MSG__ is replaced with the exact escaped message
-  5. Verify sed did not break (file is valid HTML)
-
-Implementation: shell test in temp git repo
-```
-
-### 5.2 Integration / E2E Tests
-
-#### Test: `gameboy.html` — placeholders survive after script
-
-```
-Input: Run inject-commit-info.sh on current gameboy.html
-Steps:
-  1. Run bash scripts/inject-commit-info.sh
-  2. Check public/gameboy.html
-  3. Open public/gameboy.html in browser
-  4. Verify window.__COMMIT_INFO has non-placeholder values
-  5. Verify ABOUT screen shows real commit info
-  6. git checkout -- public/gameboy.html (restore placeholders)
-
-Implementation: manual or headless browser test
-```
-
-#### Test: `createInitialState()` — real values pass guard
-
-```
-Input: window.__COMMIT_INFO with real values (simulated in test env)
-Steps:
-  1. Set window.__COMMIT_INFO = { hash: "abc1234", message: "feat: x", date: "2026-07-09" }
-  2. Call createInitialState(world)
-  3. Verify state.commitInfo.hash === "abc1234"
-  4. Verify state.commitInfo.message === "feat: x"
-
-Implementation: existing test suite in metroidvania-snake.test.js
-```
-
-### 5.3 Existing Test Coverage (No Changes Needed)
-
-The test suite in `tests/metroidvania-snake.test.js` already covers:
-
-```js
-// Test: commitInfo fallback when window.__COMMIT_INFO is missing or has placeholders
-it('commitInfo fallback when window.__COMMIT_INFO missing', () => {
-  const world = generateWorldMap(5, 5);
-  const state = createInitialState(world);
-  expect(state.commitInfo.hash).toBe('N/A');
-  expect(state.commitInfo.message).toBe('N/A');
-  expect(state.commitInfo.date).toBe('N/A');
-});
-```
-
-This test validates that the N/A fallback works correctly. After the fix, this test **must still pass** — the only difference is that in deployed environments, the placeholders will already be replaced by real metadata.
-
----
-
-## 6. Rollback Plan
+### 2.6 Rollback Plan
 
 If the build script causes deployment failures:
 
@@ -263,3 +153,29 @@ If the build script causes deployment failures:
 2. **Restore:** `git checkout master -- public/gameboy.html scripts/` to reset modified files
 3. **Debug:** Check Vercel deploy logs for build command output
 4. **Fix:** Patch the script and re-deploy
+
+---
+
+## 3. Files Changed
+
+| File | Change Description | Est. Lines |
+|------|--------------------|------------|
+| `scripts/inject-commit-info.sh` | NEW: build-time shell script for git metadata injection | ~20 |
+| `vercel.json` | Add `"buildCommand": "bash scripts/inject-commit-info.sh"` | +1 |
+
+---
+
+## 4. Verification Checklist
+
+- [ ] Script: replaces `__COMMIT_HASH__` with a 7-char hex string
+- [ ] Script: replaces `__COMMIT_MSG__` with non-empty string
+- [ ] Script: replaces `__COMMIT_DATE__` with ISO 8601 date string
+- [ ] Script: no `__xxx__` tokens remain in the file after replacement
+- [ ] Script fallback: outside git repo → tokens replaced with "unknown", exit code 0
+- [ ] Script: commit msg with special chars ("`, /, &) — file is valid HTML after replacement
+- [ ] Integration: after running script, `window.__COMMIT_INFO` has non-placeholder values
+- [ ] Integration: ABOUT screen shows real commit info (manual browser check)
+- [ ] Integration: `createInitialState()` with real values — `state.commitInfo.hash === "abc1234"` etc.
+- [ ] Regression: existing N/A fallback tests still pass with `window.__COMMIT_INFO` missing
+- [ ] `vercel.json` buildCommand correctly triggers script during deploy
+- [ ] Rollback: set `"buildCommand": null` disables the script without side effects

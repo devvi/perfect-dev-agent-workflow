@@ -3,6 +3,8 @@
 > Parent Issue: #11
 > Agent: research-agent
 > Date: 2026-07-06
+> Status: Open
+> Priority: High
 
 ---
 
@@ -26,7 +28,7 @@ The game should load without any 404 errors. The `gameboy-snake-engine.js` modul
 
 ---
 
-## 2. Root Cause Analysis
+## 2. Root Cause Analysis (Bug) / Design Intent (Feature)
 
 ### Why Does Current Behavior Exist?
 The root cause is a **mismatch between the import path and the Vercel deployment structure**.

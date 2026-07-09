@@ -1,7 +1,7 @@
-# Design: Title Screen — Deploy Commit Hash & Dev Menu
+# Design: #56 — Title Screen — Deploy Commit Hash & Dev Menu
 
 > Parent Issue: #56
-> Plan Agent: subagent
+> Agent: subagent
 > Date: 2026-07-08
 
 ---
@@ -52,7 +52,7 @@ The feature involves three architectural layers:
 
 ---
 
-## 2. Component/Module Design
+## 2. Detailed Design
 
 ### 2.1 Build-Time Injection (deploy.yml)
 
@@ -195,11 +195,9 @@ After `renderOverlay(ctx, state)`, the dev menu is already handled because the o
 
 **Low priority:** Optionally show the commit hash as a subtitle or in the footer. The page is a simple redirect to `gameboy.html`, so this is cosmetic.
 
----
+### 2.9 Data Flow
 
-## 3. Data Flow
-
-### Build-Time Injection Flow
+#### Build-Time Injection Flow
 
 ```
 developer pushes to master
@@ -227,7 +225,7 @@ Step: "Inject commit metadata"
 amondnet/vercel-action → deploys modified gameboy.html
 ```
 
-### Runtime Rendering Flow
+#### Runtime Rendering Flow
 
 ```
 Page Load
@@ -273,93 +271,7 @@ User presses Backquote / Escape / Enter again
   → render(ctx, state)   ← title screen without dev menu
 ```
 
----
-
-## 4. Test Specifications
-
-This section describes **what** to test, not how to implement tests.
-
-### 4.1 Unit Test Scenarios (Logic, no rendering)
-
-#### Group A: Fallback Behavior (P0)
-
-| ID | Scenario | Input / Setup | Expected Behavior |
-|----|----------|--------------|-------------------|
-| A1 | All placeholders intact (local dev) | `window.__COMMIT_INFO.hash === "__COMMIT_HASH__"` | Display shows "local" not the raw placeholder string |
-| A2 | Partial replacement | `window.__COMMIT_INFO.hash = "abc1234"` but `message` still contains `__COMMIT_MSG__` | Hash shows "abc1234", message shows "N/A" |
-| A3 | Metadata object missing entirely | `window.__COMMIT_INFO` is undefined/null | All fields show fallback values ("N/A", "local") |
-
-#### Group B: State Management (P0)
-
-| ID | Scenario | Input / Setup | Expected Behavior |
-|----|----------|--------------|-------------------|
-| B1 | Dev menu toggle on title screen | Title state, press Backquote | `state.devMenuOpen` becomes `true` |
-| B2 | Dev menu toggle off | Dev menu open, press Backquote again | `state.devMenuOpen` becomes `false` |
-| B3 | Dev menu auto-close on game start | Dev menu open, press Enter | `state.devMenuOpen` resets to `false`, game starts |
-| B4 | Dev menu auto-close on Escape | Dev menu open, press Escape | `state.devMenuOpen` becomes `false` |
-| B5 | Dev menu not available in playing state | Playing state, press Backquote | `devMenuOpen` should not change (or silently ignored) |
-| B6 | Dev menu not available in gameover state | Game over, press Backquote | `devMenuOpen` should not change |
-| B7 | Dev menu not available in paused state | Paused, press Backquote | `devMenuOpen` should not change |
-
-#### Group C: Input Handling (P0)
-
-| ID | Scenario | Input / Setup | Expected Behavior |
-|----|----------|--------------|-------------------|
-| C1 | Backquote does not interfere with game controls | Playing state, press Backquote | Normal game controls unaffected |
-| C2 | Backquote does not start the game | Title screen, press Backquote | Game does not start, only dev menu toggles |
-| C3 | Starting game while dev menu open | Dev menu open, press Enter | Both dev menu closes + game starts |
-| C4 | Enter from dev menu | Dev menu open, press Enter | Game starts normally (dev menu + start sequence) |
-
-#### Group D: Title Screen Hash Rendering (P1)
-
-| ID | Scenario | Setup | Expected Behavior |
-|----|----------|-------|-------------------|
-| D1 | Hash displayed on title | Title state with valid commit hash | Hash text is rendered at bottom-right region |
-| D2 | Hash format | Valid short SHA (7 chars) | Format matches `@ abc1234` pattern |
-| D3 | Hash position | Title state | Hash is below all other title content, near bottom edge |
-| D4 | Hash with long SHA | 40-char full SHA | Render first 7 chars only (abbreviated) |
-
-#### Group E: Dev Menu Content (P1)
-
-| ID | Scenario | Setup | Expected Behavior |
-|----|----------|-------|-------------------|
-| E1 | Dev menu shows all fields | Valid commit metadata | Hash, message, author, date all visible |
-| E2 | Dev menu with long message | Message > 60 characters | Message wraps/truncates to fit panel width |
-| E3 | Dev menu with special characters | Author name has Unicode or spaces | Rendered correctly, no rendering breakage |
-| E4 | Dev menu layout | All fields populated | Fields are left-aligned, colon-separated, properly spaced |
-
-#### Group F: Build Injection (P1)
-
-| ID | Scenario | Input / Setup | Expected Behavior |
-|----|----------|--------------|-------------------|
-| F1 | sed replaces hash | `__COMMIT_HASH__` in `gameboy.html` | After `sed`, placeholder is replaced with actual short SHA |
-| F2 | sed replaces message | `__COMMIT_MSG__` in `gameboy.html` | Message placeholder replaced with commit subject |
-| F3 | sed handles special characters | Commit message contains `/`, `&`, `\n` | sed does not fail; placeholder replaced |
-| F4 | Multiple placeholder occurrences | Multiple `__COMMIT_HASH__` in file | All occurrences replaced (not just first) |
-| F5 | Deploy with no metadata | Fresh checkout, no HEAD commit (edge case) | Pipeline handles gracefully, game still deploys with fallback values |
-
-### 4.2 Integration & Play-Test Scenarios
-
-| ID | Scenario | Steps | Expected |
-|----|----------|-------|----------|
-| I1 | Full flow: local dev | Open `gameboy.html` directly from filesystem | Shows "local" hash, Backquote toggles dev menu with "Local development build" |
-| I2 | Full flow: deployed | Visit production URL | Shows real commit hash, dev menu contains real commit data |
-| I3 | Mobile tap activation (optional) | Tap commit hash text 5 times rapidly | Dev menu opens (if implemented) |
-| I4 | Canvas resize / different screen | Render at different canvas sizes | Text is visible and not clipped |
-
-### 4.3 Edge Cases
-
-| ID | Edge Case | Expected Handling |
-|----|-----------|-------------------|
-| EC1 | Commit hash from merge commit | Shows merge commit's SHA (from HEAD, which is the merge commit) — acceptable |
-| EC2 | Empty commit message | Shows "(no message)" or empty line in dev menu |
-| EC3 | Multiple rapid Backquote presses | Toggle works idempotently: odd press = open, even press = close |
-| EC4 | Dev menu + gamepad input | No conflict; gamepad not currently supported |
-| EC5 | Browser tab hidden during dev menu | Re-render on visibility change preserves devMenuOpen state |
-
----
-
-## 5. Dependencies & Risks
+### 2.10 Dependencies & Risks
 
 | Dependency | Risk | Mitigation |
 |-----------|------|------------|
@@ -370,9 +282,7 @@ This section describes **what** to test, not how to implement tests.
 
 **No external libraries or build tools are required.** The feature is pure vanilla JS + shell script.
 
----
-
-## 6. Non-Goals & Future Considerations
+### 2.11 Non-Goals & Future Considerations
 
 | Topic | Status | Notes |
 |-------|--------|-------|
@@ -381,3 +291,39 @@ This section describes **what** to test, not how to implement tests.
 | Dev menu with FPS/debug overlays | Post-MVP | Possible future enhancement |
 | Dev plugin system | Post-MVP | Would allow developer-extendable panels |
 | Mobile device dev menu via touch | Post-MVP | Tap-detection or on-screen button — not critical for MVP |
+
+---
+
+## 3. Files Changed
+
+| File | Change Description | Est. Lines |
+|------|--------------------|------------|
+| `.github/workflows/deploy.yml` | NEW step: inject commit metadata (sed replacements) | +10 |
+| `public/gameboy.html` | Add inline `<script>` for `window.__COMMIT_INFO` + Backquote key listener | ~15 |
+| `public/src/engine/core.js` | Add `devMenuOpen` + `commitInfo` fields to `createInitialState()` | ~5 |
+| `public/src/render/overlays.js` | Modify `renderTitleScreen()` for commit hash; add `renderDevMenu()` | ~60 |
+| `public/src/render/renderer.js` | No changes needed (overlay dispatches handle dev menu) | 0 |
+
+---
+
+## 4. Verification Checklist
+
+- [ ] A1: All placeholders intact (local dev) — display shows "local" not raw placeholder string
+- [ ] A2: Partial replacement — hash shows "abc1234", message shows "N/A"
+- [ ] A3: Metadata object missing entirely — all fields show fallback values
+- [ ] B1: Dev menu toggle on title screen — Backquote → `state.devMenuOpen` becomes `true`
+- [ ] B2: Dev menu toggle off — Backquote again → `state.devMenuOpen` becomes `false`
+- [ ] B3: Dev menu auto-close on game start — Enter → dev menu closes, game starts
+- [ ] B4: Dev menu auto-close on Escape — Escape → `state.devMenuOpen` becomes `false`
+- [ ] B5: Dev menu not available in playing state — Backquote → silently ignored
+- [ ] B6: Dev menu not available in gameover state — Backquote → silently ignored
+- [ ] C1: Backquote does not interfere with game controls — normal controls unaffected
+- [ ] C2: Backquote does not start the game — only dev menu toggles
+- [ ] D1: Hash displayed on title — valid commit hash visible at bottom-right
+- [ ] D2: Hash format — `@ abc1234` pattern
+- [ ] E1: Dev menu shows all fields — hash, message, author, date all visible
+- [ ] E2: Dev menu with long message — message wraps/truncates to fit panel width
+- [ ] F1: sed replaces hash — after `sed`, placeholder replaced with actual short SHA
+- [ ] F2: sed replaces message — message placeholder replaced with commit subject
+- [ ] I1: Full flow local dev — shows "local" hash, Backquote toggles dev menu with "Local development build"
+- [ ] I2: Full flow deployed — shows real commit hash, dev menu contains real commit data

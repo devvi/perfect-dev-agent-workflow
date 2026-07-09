@@ -1,28 +1,29 @@
-## Implementation Plan
+# Design: #50 — 蛇长度跟速度无关 (Snake Speed-Length Relationship)
+
+> Parent Issue: #50
+> Agent: plan-agent
+> Date: 2026-07-07
+
+---
+
+## 1. Architecture Overview
 
 ### Issue Summary
 
-**#50: 蛇长度跟速度无关**
+**#50:** Snake movement speed should be inversely proportional to its length — longer snakes should move slower, shorter snakes faster. Currently, speed remains constant regardless of length.
 
-Snake movement speed should be inversely proportional to its length — longer snakes should move slower, shorter snakes faster. Currently, speed remains constant regardless of length.
-
-**Research Summary**
-
-Research branch `research/50` was completed. The full PRD is in `docs/PRD/50-[Bug]-蛇长度跟速度无关.md`.
-
-**Two engines are affected:**
+### Two Engines Affected
 
 1. **Engine A (Classic GameBoy, `public/src/gameboy-snake-engine.js`)** — Missing implementation entirely. No speed/length relationship exists. No `calculateSpeed()` function, no `currentTickInterval` field.
 
 2. **Engine B (Metroidvania, `public/src/engine/core.js` + `public/gameboy.html`)** — `calculateSpeed()` is implemented and called in `tick()` (line 256 of core.js), but the game loop in `gameboy.html` uses `setInterval` which captures the delay at creation time and never re-reads the dynamically updated `state.currentTickInterval`.
 
-**Root cause:** `setInterval` fixes its delay parameter at call time. After `tick()` updates `state.currentTickInterval` (e.g., 150 → 153 → 156…), the running `setInterval` continues firing at the original captured delay. The new value is never applied.
+### Root Cause
 
----
+`setInterval` fixes its delay parameter at call time. After `tick()` updates `state.currentTickInterval` (e.g., 150 → 153 → 156…), the running `setInterval` continues firing at the original captured delay. The new value is never applied.
 
 ### Approach: Minimal, Two-Engine Fix
 
-**Recommended approach:**
 - Engine A: Add `calculateSpeed()` + `currentTickInterval` + call in `tick()` when food is eaten
 - Engine B: Replace `setInterval` with recursive `setTimeout` in `gameboy.html` so interval is read fresh each tick
 
@@ -35,7 +36,9 @@ Where `BASE_TICK_INTERVAL = 150` and `SPEED_SLOPE = 0.02`.
 
 ---
 
-### Phase 1: Engine A — Classic GameBoy Snake Speed Logic
+## 2. Detailed Design
+
+### 2.1 Phase 1: Engine A — Classic GameBoy Snake Speed Logic
 
 **File:** `public/src/gameboy-snake-engine.js` (~15-20 lines added)
 
@@ -63,7 +66,6 @@ export function calculateSpeed(length, baseInterval) {
 // At end of tick(), before `return next;`:
 next.currentTickInterval = calculateSpeed(next.snake.length, BASE_TICK_INTERVAL);
 ```
-(Should also be called in the non-food branch, or placed once at the very end of `tick()` before return.)
 
 **Key design decisions:**
 - Formula is identical to Engine B's for consistency
@@ -72,15 +74,13 @@ next.currentTickInterval = calculateSpeed(next.snake.length, BASE_TICK_INTERVAL)
 - No upper clamp needed; game loop handles arbitrary intervals
 - `currentTickInterval` exported for the game loop to read
 
----
-
-### Phase 2: Engine B — Metroidvania Game Loop Fix
+### 2.2 Phase 2: Engine B — Metroidvania Game Loop Fix
 
 **File:** `public/gameboy.html` (~10 lines modified)
 
 **2.1 — Replace `setInterval` with recursive `setTimeout` in `runTick()`:**
 
-Current pattern (lines 96-126):
+Current pattern:
 ```js
 function runTick() {
   if (gameLoop) clearInterval(gameLoop);
@@ -140,9 +140,7 @@ function runTick() {
 
 **Note:** `clearInterval` calls in `init()`, `start()`, and key handlers must become `clearTimeout`.
 
----
-
-### Phase 3: Tests
+### 2.3 Phase 3: Tests
 
 **File:** `tests/gameboy-snake.test.js` — Add test suite (~8 test cases)
 
@@ -157,8 +155,6 @@ function runTick() {
 | 7 | `currentTickInterval` in state after tick with food | Snake eats food, check state | `currentTickInterval` > `BASE_TICK_INTERVAL` |
 | 8 | `currentTickInterval` unchanged when no food eaten | Snake moves without eating | `currentTickInterval` = `BASE_TICK_INTERVAL` |
 
-Note: Tests 7-8 require setting up a `tick()` call with controlled food position.
-
 **File:** `tests/metroidvania-snake.test.js` — Add test suite (~4 test cases)
 
 | # | Test Case | Input | Expected |
@@ -168,26 +164,11 @@ Note: Tests 7-8 require setting up a `tick()` call with controlled food position
 | 3 | Game loop reads fresh interval | (Playwright test) 2 food items in sequence | Tick interval increases after 2nd food |
 | 4 | No regression: SNES-12 passes | Existing play test | Same score as before |
 
----
-
-### File Change Summary
-
-| File | Change | Lines | Risk |
-|------|--------|-------|------|
-| `public/src/gameboy-snake-engine.js` | Add constants + `calculateSpeed()` + state field + export | ~20 | 🟢 Low |
-| `public/gameboy.html` | Replace setInterval with recursive setTimeout | ~15 | 🟡 Medium |
-| `tests/gameboy-snake.test.js` | 8 new test cases for calculateSpeed | ~60 | 🟢 Low |
-| `tests/metroidvania-snake.test.js` | 2 new test cases for tick interval | ~20 | 🟢 Low |
-
-**Total:** ~115 lines across 4 files
-
----
-
-### Edge Cases & Safety
+### 2.4 Edge Cases & Safety
 
 | Edge Case | Behavior | Mitigation |
 |-----------|----------|------------|
-| Length 1 (after combat damage) | `calculateSpeed(1)` = 144, *faster* than baseline | Considering clamping to min(BASE_TICK_INTERVAL) |
+| Length 1 (after combat damage) | `calculateSpeed(1)` = 144, *faster* than baseline | Consider clamping to min(BASE_TICK_INTERVAL) |
 | Length 400 (max) | ~1341ms interval — very slow | Intentional; design allows max slowdown |
 | Game paused | `state.gameState` not 'playing', timer won't fire | Natural with recursive setTimeout |
 | Game over during scheduled timeout | Timer fires when game over | tickFn returns early on non-playing state |
@@ -195,9 +176,7 @@ Note: Tests 7-8 require setting up a `tick()` call with controlled food position
 | Speed becomes extremely slow | Player can still buffer direction | Direction buffering is input-driven, not tick-driven |
 | `clearTimeout` vs `clearInterval` in all code paths | Search-and-replace all 6 references | Manual check needed |
 
----
-
-### Dependencies
+### 2.5 Dependencies
 
 | Depends On | Status |
 |-----------|--------|
@@ -211,15 +190,37 @@ Note: Tests 7-8 require setting up a `tick()` call with controlled food position
 | Future speed tuning (e.g., power-up speed boost) | Medium |
 | HUD showing current tick interval | Low (optional enhancement) |
 
----
-
-### Implementation Order
+### 2.6 Implementation Order
 
 1. ✅ Research complete (branch `research/50`, PRD in `docs/PRD/`)
-2. 📝 **THIS PLAN** — Plan review
+2. 📝 Plan review
 3. Phase 1: Engine A speed logic (gameboy-snake-engine.js)
 4. Phase 2: Engine B game loop fix (gameboy.html)
 5. Phase 3: Tests
 6. Run test suite & verify correctness
 
-**Estimated effort:** 30-45 min implementation + 15 min testing
+---
+
+## 3. Files Changed
+
+| File | Change Description | Est. Lines | Risk |
+|------|--------------------|------------|------|
+| `public/src/gameboy-snake-engine.js` | Add constants + `calculateSpeed()` + state field + export | ~20 | 🟢 Low |
+| `public/gameboy.html` | Replace setInterval with recursive setTimeout | ~15 | 🟡 Medium |
+| `tests/gameboy-snake.test.js` | 8 new test cases for calculateSpeed | ~60 | 🟢 Low |
+| `tests/metroidvania-snake.test.js` | 2 new test cases for tick interval | ~20 | 🟢 Low |
+
+**Total:** ~115 lines across 4 files
+
+---
+
+## 4. Verification Checklist
+
+- [ ] Engine A: `calculateSpeed` exists and returns correct values for length 3 → 150, length 10 → 171, length 50 → 291
+- [ ] Engine A: `currentTickInterval` in state after tick with food > `BASE_TICK_INTERVAL`
+- [ ] Engine A: `currentTickInterval` unchanged when no food eaten
+- [ ] Engine B: Game loop reads fresh interval each tick (recursive setTimeout)
+- [ ] Engine B: `scheduleNextTick()` reads `state.currentTickInterval` each frame
+- [ ] No regression: all existing tests pass
+- [ ] `clearInterval` calls in `init()`, `start()`, and key handlers changed to `clearTimeout`
+- [ ] Manual play test: speed changes perceptibly as snake grows
