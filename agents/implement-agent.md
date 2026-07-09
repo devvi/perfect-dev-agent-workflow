@@ -62,7 +62,9 @@ bash scripts/opencode-generate.sh \
   "${PROMPT}"
 ```
 
-**Prompt structure template:**
+> **⚠️ IMPORTANT — The prompt below MUST be copied verbatim.** Do NOT reword, do NOT add format instructions, do NOT ask OpenCode to output `// FILE:` or markdown code blocks. The prompt is the only thing sent to OpenCode. Deviating from it causes OpenCode to output text instead of writing files.
+
+**Send EXACTLY this text (fill in the placeholders):**
 
 ```
 You are implementing a feature in an existing game project.
@@ -81,17 +83,29 @@ The project root is /home/pi/workspace/perfect-dev-agent-workflow.
 ## Existing Code (if any)
 <copy relevant source files>
 
-## Rules
+## RULES — CRITICAL
 1. Write production code, NOT test code (tests already exist)
 2. Make ALL tests pass
 3. Follow the design document exactly — no scope creep
-4. Write files directly using absolute paths like:
-   /home/pi/workspace/perfect-dev-agent-workflow/public/src/engine/core.js
-   (or project-relative paths like public/src/engine/core.js)
-5. Do NOT output code as text — write it to the actual files
+4. Write files directly to the project using file paths under /home/pi/workspace/perfect-dev-agent-workflow/
+5. Do NOT output code as text, markdown, or // FILE: comments — write it to actual files
 ```
 
-### Phase 2: Run Tests
+**Do NOT modify the RULES section. Do NOT add // FILE: format instructions. Do NOT ask for text output.**
+
+### Phase 2: Commit Early
+
+After each successful OpenCode call writes files, commit immediately — don't wait for all phases:
+
+```bash
+git add .
+git commit -m "wip: <phase description> (#${ISSUE_N})" --allow-empty
+git push origin implement/${ISSUE_N}-feature-name 2>/dev/null || true
+```
+
+This prevents losing work if the session times out. Each phase commit can be squashed later.
+
+### Phase 3: Run Tests
 
 ```bash
 npm test
@@ -99,7 +113,7 @@ npm test
 
 If tests fail:
 - Extract the failure output
-- Send it back to OpenCode Serve as a fix request:
+- Send it back to OpenCode Serve as a fix request (use the EXACT same template as Phase 1)
   ```
   The following tests are failing. Fix the implementation to make them pass.
   
@@ -108,11 +122,16 @@ If tests fail:
   
   Current relevant files:
   <paste current implementation files>
+  
+  ## RULES — CRITICAL
+  1. Make ALL tests pass
+  2. Do NOT change test files unless the design explicitly prescribes it
+  3. Write files directly — do NOT output code as text
   ```
 - Re-run tests
 - Repeat up to 3 times
 
-### Phase 3: Commit and PR
+### Phase 4: Final Commit and PR
 
 ```bash
 git checkout -b implement/${ISSUE_N}-feature-name
