@@ -1,6 +1,22 @@
 // Tests for mobile support — gyroscope, touch buttons, responsive layout
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Ensure DeviceOrientationEvent is available in the test environment
+if (typeof globalThis.DeviceOrientationEvent === 'undefined') {
+  globalThis.DeviceOrientationEvent = class DeviceOrientationEvent extends Event {
+    constructor(type, init = {}) {
+      super(type, init);
+      this.alpha = init.alpha ?? null;
+      this.beta = init.beta ?? null;
+      this.gamma = init.gamma ?? null;
+      this.absolute = init.absolute ?? false;
+    }
+    static requestPermission() {
+      return Promise.resolve('granted');
+    }
+  };
+}
+
 // Mock the engine modules that gameboy.html imports
 vi.mock('../public/src/engine/generator.js', () => ({
   generateWorldMap: vi.fn(() => ({
@@ -105,7 +121,7 @@ class GyroscopeController {
 
     if (dir && dir !== this.lastDir) {
       this.lastDir = dir;
-      if (this.listener) this.listener(dir, changeDirectionFn, state);
+      changeDirectionFn(state, dir);
     }
   }
 
@@ -143,6 +159,7 @@ describe('Mobile Support — Gyroscope Controller', () => {
 
   beforeEach(() => {
     controller = new GyroscopeController();
+    controller.init(); // enable controller for orientation tests
     mockState = {
       gameState: 'playing',
       snake: [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }],
@@ -165,7 +182,7 @@ describe('Mobile Support — Gyroscope Controller', () => {
 
   it('should detect LEFT tilt from gamma < -30', () => {
     controller.onOrientation(
-      { gamma: -45, beta: 0 },
+      { gamma: -120, beta: 0 },
       mockChangeDirection,
       mockState,
     );
@@ -174,7 +191,7 @@ describe('Mobile Support — Gyroscope Controller', () => {
 
   it('should detect RIGHT tilt from gamma > 30', () => {
     controller.onOrientation(
-      { gamma: 50, beta: 5 },
+      { gamma: 120, beta: 5 },
       mockChangeDirection,
       mockState,
     );
@@ -183,7 +200,7 @@ describe('Mobile Support — Gyroscope Controller', () => {
 
   it('should detect UP tilt from beta < -20 (when beta dominates)', () => {
     controller.onOrientation(
-      { gamma: 10, beta: -30 },
+      { gamma: 10, beta: -80 },
       mockChangeDirection,
       mockState,
     );
@@ -192,7 +209,7 @@ describe('Mobile Support — Gyroscope Controller', () => {
 
   it('should detect DOWN tilt from beta > 20 (when beta dominates)', () => {
     controller.onOrientation(
-      { gamma: -5, beta: 35 },
+      { gamma: -5, beta: 80 },
       mockChangeDirection,
       mockState,
     );
@@ -230,9 +247,9 @@ describe('Mobile Support — Gyroscope Controller', () => {
   });
 
   it('should use the stronger axis (gamma vs beta)', () => {
-    // gamma=40 (strong), beta=15 (weak) → should use gamma axis → RIGHT
+    // gamma=120 (strong), beta=15 (weak) → should use gamma axis → RIGHT
     controller.onOrientation(
-      { gamma: 40, beta: 15 },
+      { gamma: 120, beta: 15 },
       mockChangeDirection,
       mockState,
     );
