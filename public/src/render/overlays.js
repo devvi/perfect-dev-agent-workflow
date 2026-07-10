@@ -46,16 +46,16 @@ function renderTitleScreen(ctx, state) {
   ctx.fillStyle = PALETTE.RED;
   ctx.font = '24px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('🐍 灵蛇记', CANVAS_SIZE / 2, 130);
+  ctx.fillText('🐍 SNAKE', CANVAS_SIZE / 2, 130);
 
   ctx.fillStyle = PALETTE.GOLD;
   ctx.font = '14px monospace';
-  ctx.fillText('完美之日', CANVAS_SIZE / 2, 160);
+  ctx.fillText('METROIDVANIA', CANVAS_SIZE / 2, 160);
 
   // Subtitle
   ctx.fillStyle = '#8bac0f';
   ctx.font = '11px monospace';
-  ctx.fillText('探索. 战斗. 吞噬. 成长.', CANVAS_SIZE / 2, 200);
+  ctx.fillText('Explore. Fight. Eat. Grow.', CANVAS_SIZE / 2, 200);
 
   // Instructions
   ctx.fillStyle = '#ccc';
