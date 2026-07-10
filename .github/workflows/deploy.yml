@@ -75,21 +75,35 @@ jobs:
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
           vercel-args: '--prod'
 
-      - name: Notify Feishu
-        if: always()
-        env:
-          STATUS: ${{ job.status }}
-          PR_NUM: ${{ needs.check-implement.outputs.pr-num }}
-          RUN_NUM: ${{ github.run_number }}
-          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
-        run: |
-          EMOJI="[ok]"
-          [ "$STATUS" != "success" ] && EMOJI="[fail]"
-          MSG="${EMOJI} [Workflow] deploy #${RUN_NUM} ${STATUS} (PR #${PR_NUM})"
-          [ -n "$DEPLOY_URL" ] && MSG="${MSG}\n${DEPLOY_URL}"
-          curl -s -X POST -H "Content-Type: application/json" \
-            -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"${MSG}\"}}" \
-            https://open.feishu.cn/open-apis/bot/v2/hook/390781d4-285c-4d66-afa4-1aadfb76a7b9
+      - name: Comment Vercel URL on Issue
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNum = '${{ needs.check-implement.outputs.pr-num }}';
+            const deployUrl = '${{ steps.deploy.outputs.url }}';
+            // Find the parent issue from PR body
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: parseInt(prNum),
+            });
+            const body = pr.data.body || '';
+            const match = body.match(/(?:Closes|parent)\s*#(\d+)/i);
+            let issueNum = match ? parseInt(match[1]) : null;
+            if (!issueNum) {
+              // Try the PR title
+              const titleMatch = pr.data.title.match(/\(parent\s*#(\d+)\)/i);
+              if (titleMatch) issueNum = parseInt(titleMatch[1]);
+            }
+            if (issueNum) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNum,
+                body: `🚀 Vercel: ${deployUrl}`,
+              });
+            }
 
   # Skip notification for non-implement merges
   skip-notify:
