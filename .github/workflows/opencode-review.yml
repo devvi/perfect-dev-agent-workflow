@@ -84,16 +84,3 @@ jobs:
         run: |
           echo "E2E Play Test failed - runtime errors found."
           exit 1
-
-      - name: Notify Feishu
-        if: always()
-        env:
-          STATUS: ${{ job.status }}
-          PR_NUM: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: |
-          EMOJI="[ok]"
-          [ "$STATUS" != "success" ] && EMOJI="[fail]"
-          curl -s -X POST -H "Content-Type: application/json" \
-            -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"${EMOJI} [Workflow] review #${PR_NUM} ${STATUS} \\nPR: ${PR_TITLE}\"}}" \
-            https://open.feishu.cn/open-apis/bot/v2/hook/390781d4-285c-4d66-afa4-1aadfb76a7b9
