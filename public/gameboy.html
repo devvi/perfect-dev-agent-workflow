@@ -14,6 +14,14 @@ canvas#game{display:block;border:3px solid #16213e;image-rendering:pixelated;cur
 .controls-info{color:#666;font-size:11px;margin-top:12px;text-align:center;line-height:1.6;max-width:400px}
 .controls-info span{color:#e94560;background:#1a1a2e;padding:1px 6px;border-radius:3px;font-size:10px}
 .footer{color:#444;font-size:10px;margin-top:16px}
+/* Mobile responsive scaling */
+body.mobile .game-wrapper{max-width:100vw;max-height:calc(100dvh - 120px);aspect-ratio:1/1}
+body.mobile canvas#game{width:100%;height:100%}
+.touch-controls{display:none;gap:16px;justify-content:center;margin-top:12px;touch-action:none;user-select:none;-webkit-user-select:none}
+.touch-btn{width:72px;height:72px;border-radius:50%;border:2px solid #8bac0f;background:rgba(26,26,46,0.9);color:#e94560;font-size:14px;font-family:monospace;touch-action:none;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.touch-btn:active{background:#e94560;color:#1a1a2e}
+body.mobile .score-bar{width:100%;max-width:406px}
+body.mobile .controls-info{display:none}
 </style>
 </head>
 <body>
@@ -25,6 +33,10 @@ canvas#game{display:block;border:3px solid #16213e;image-rendering:pixelated;cur
 </div>
 <div class="game-wrapper">
   <canvas id="game" width="400" height="400"></canvas>
+</div>
+<div class="touch-controls" id="touchControls" style="display:none">
+  <button class="touch-btn btn-z" data-action="fire">⚔️ Z</button>
+  <button class="touch-btn btn-x" data-action="interact">🤝 X</button>
 </div>
 <div class="controls-info">
   <span>↑↓←→</span> 移动 &nbsp; <span>Z</span> 攻击(消耗长度) &nbsp; <span>X</span> 交互(抽奖/存档)<br>
@@ -71,6 +83,122 @@ let state = null;
 let gameLoop = null;
 let gameRunning = false;
 
+// --- Gyroscope Controller ---
+class GyroscopeController {
+  constructor() {
+    this.enabled = false;
+    this.lastDir = null;
+    this.filteredGamma = 0;
+    this.filteredBeta = 0;
+    this.alpha = 0.3;
+  }
+
+  async init() {
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      try {
+        const permission = await DeviceOrientationEvent.requestPermission();
+        if (permission !== 'granted') return false;
+      } catch { return false; }
+    }
+    if (!window.DeviceOrientationEvent) return false;
+    window.addEventListener('deviceorientation', (e) => this.onOrientation(e));
+    this.enabled = true;
+    return true;
+  }
+
+  onOrientation(e) {
+    if (!this.enabled || !state) return;
+    if (e.gamma === null || e.beta === null) return;
+
+    this.filteredGamma = this.filteredGamma * (1 - this.alpha) + e.gamma * this.alpha;
+    this.filteredBeta  = this.filteredBeta  * (1 - this.alpha) + e.beta  * this.alpha;
+
+    const gamma = this.filteredGamma;
+    const beta  = this.filteredBeta;
+
+    let dir = null;
+    if (Math.abs(gamma) > Math.abs(beta)) {
+      if (gamma < -30) dir = DIR.LEFT;
+      else if (gamma > 30) dir = DIR.RIGHT;
+    } else {
+      if (beta < -20) dir = DIR.UP;
+      else if (beta > 20) dir = DIR.DOWN;
+    }
+
+    if (dir && dir !== this.lastDir && state && state.gameState === 'playing') {
+      this.lastDir = dir;
+      state = changeDirection(state, dir);
+    }
+  }
+
+  reset() {
+    this.lastDir = null;
+    this.filteredGamma = 0;
+    this.filteredBeta = 0;
+  }
+}
+
+// --- Mobile detection and setup ---
+const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+if (isMobile) {
+  document.body.classList.add('mobile');
+  const touchControls = document.getElementById('touchControls');
+  if (touchControls) touchControls.style.display = 'flex';
+}
+
+// --- Touch swipe fallback ---
+let touchStartX = 0;
+let touchStartY = 0;
+
+canvas.addEventListener('touchstart', (e) => {
+  if (e.target.closest('.touch-btn')) return;
+  const touch = e.touches[0];
+  touchStartX = touch.clientX;
+  touchStartY = touch.clientY;
+}, { passive: true });
+
+canvas.addEventListener('touchend', (e) => {
+  if (touchStartX === 0) return;
+  const touch = e.changedTouches[0];
+  const dx = touch.clientX - touchStartX;
+  const dy = touch.clientY - touchStartY;
+  const minSwipe = 30;
+
+  if (state && state.gameState === 'playing') {
+    let dir = null;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      if (dx > minSwipe) dir = DIR.RIGHT;
+      else if (dx < -minSwipe) dir = DIR.LEFT;
+    } else {
+      if (dy > minSwipe) dir = DIR.DOWN;
+      else if (dy < -minSwipe) dir = DIR.UP;
+    }
+    if (dir) state = changeDirection(state, dir);
+  }
+
+  touchStartX = 0;
+  touchStartY = 0;
+});
+
+// --- Touch Z/X buttons ---
+document.querySelectorAll('.touch-btn').forEach(btn => {
+  const action = btn.dataset.action;
+  btn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    if (!state || state.gameState !== 'playing') return;
+    if (action === 'fire') state = fire(state);
+    else if (action === 'interact') state = interact(state);
+    updateHUD();
+  });
+});
+
+// --- Initialize gyroscope ---
+const gyro = new GyroscopeController();
+gyro.init().then(enabled => {
+  if (enabled) console.log('🔄 Gyroscope enabled');
+});
+
 // --- Initialize ---
 function init() {
   if (gameLoop) {
@@ -80,6 +208,7 @@ function init() {
 
   const world = generateWorldMap(5, 5);
   state = createInitialState(world);
+  gyro.reset();
 
   updateHUD();
   render(ctx, state);
@@ -270,6 +399,7 @@ init();
 
 console.log('🐍 Metroidvania Snake loaded!');
 console.log('Controls: Arrows=Move, Z=Fire, X=Interact, Enter=Start, Shift=Pause');
+console.log('📱 Mobile support: touch buttons, gyroscope, swipe');
 </script>
 </body>
 </html>
