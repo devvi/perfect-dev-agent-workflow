@@ -116,56 +116,72 @@ Dispatcher spawns self-correct-agent (attempt N)
 
 ---
 
-## Stage Gate System (Four Layers)
+## Stage Gate System (Code-Driven, No Prompt Dependency)
 
 > **Problem discovered (2026-07-11):** PR #117 was created without `workflow/implement` label. Three downstream systems (CI → label advancement → deploy) all skipped silently. Every layer should have caught this.
+>
+> **Fix:** All mechanical checks moved to `stage-gate.py` — a local Python script that runs deterministically. Agent prompts only need one line: "run stage-gate.py".
 
-### Layer 1: PR Creation Gate (implement-agent)
+### How it Works
+
+```
+stage-gate.py — Pure code, zero prompt dependency
+  ├── --issue <N> --stage <stage>     → Validate issue before spawning agent
+  └── --pr <N>                        → Validate PR after creation (auto-fixes labels)
+
+Checks:
+  ✓ Issue is OPEN
+  ✓ Correct workflow label exists (derived from branch name for PRs)
+  ✓ Branch name matches workflow pattern (research/|plan/|impl/)
+  ✓ PR body has Parent: #N or Closes #N reference (warn only, not blocking)
+  ✓ Auto-fix: missing label → added via gh issue edit (REST API, no read:org needed)
+```
+
+### Layer 1: PR Creation Gate
 
 **Where:** `game-implement-agent` skill, Step 8 / Direct Fallback
 
-**What it checks:** After `gh pr create --label "workflow/implement"`, immediately verify the label was actually applied.
+**What:** Bash script line `python3 ~/.hermes/scripts/stage-gate.py --pr "$PR_NUM"`
 
-**Failure → recovery:**
-1. Try `gh pr edit $PR_NUM --add-label workflow/implement`
-2. If recovery fails → post warning comment on PR, **exit with error (block merge)**
+**Why code not prompt:** This is a subprocess call in bash — the LLM never interprets the validation logic. The script is 100% deterministic Python.
 
 ### Layer 2: CI Gate (opencode-review.yml)
 
 **Where:** `.github/workflows/opencode-review.yml` line 17
 
-**What it checks:** `startsWith(github.event.pull_request.head.ref, 'impl/')`
+**Check:** `startsWith(github.event.pull_request.head.ref, 'impl/')`
 
-**Why branch-name instead of label:** Branch prefix (`impl/`) is set at `git checkout -b` time and never changes. Labels can be missed during PR creation. This gate catches ALL pushes to implement branches regardless of PR label state.
+**Why branch-name over label:** Branch prefix is set at `git checkout -b` and never changes. Labels can be missed during PR creation.
 
-### Layer 3: Post-Merge Labels (workflow-chain.yml)
+### Layer 3: Post-Merge Label Fallback (workflow-chain.yml)
 
 **Where:** `.github/workflows/workflow-chain.yml` lines 28-50
 
-**What it checks:** PR workflow label → fallback to branch name derivation
+**Check:** Two-stage: PR workflow label → fallback to branch name derivation (`impl/*` → `workflow/implement`)
 
-**Why two-stage:** Primary (label) + fallback (branch prefix) ensures label advancement happens even when the PR was created without labels. Branch name `impl/` → `workflow/implement`, `research/` → `workflow/research`, `plan/` → `workflow/plan`.
+### Layer 4: Operator Agent Pre-Spawn Gate
 
-### Layer 4: Pre-Merge Operator Verification
+**Where:** Operator agent prompt
 
-**Where:** Operator agent (when processing PR events)
+**What:** One line in prompt: "Before spawning phase agent, run `python3 ~/.hermes/scripts/stage-gate.py --issue <N> --stage <STAGE>`. If exit != 0, do NOT spawn."
 
-**What it checks:**
-1. `gh pr view $PR_NUM --json labels` — verify workflow label exists
-2. `gh pr checks $PR_NUM` — verify CI has started or passed
+**Why this is OK:** The prompt is one stable sentence. All validation logic lives in `stage-gate.py`.
 
-**Failure → block merge, fix label, or spawn self-correct.**
+### Calling Points (Three Independent Paths)
 
-### Defect Prevention Summary
+| # | Caller | When | Command |
+|---|--------|------|---------|
+| 1 | implement-agent (bash) | After `gh pr create` | `stage-gate.py --pr <N>` |
+| 2 | implement-agent (bash) | Before auto-merge | `stage-gate.py --issue <N> --stage implement --pr <N>` |
+| 3 | operator agent (prompt) | Before spawning phase agent | `stage-gate.py --issue <N> --stage <stage>` |
 
-| Layer | Where | Check | Bypass-proof |
-|-------|-------|-------|-------------|
-| 1 | implement-agent | Label verification after PR create | ✅ Code-checked |
-| 2 | opencode-review.yml | Branch-name CI gate | ✅ Branch immutable |
-| 3 | workflow-chain.yml | Branch-name label fallback | ✅ Branch immutable |
-| 4 | Operator agent | Pre-merge audit | ✅ Manual gate |
+### Why This Is Unbypassable
 
-**Cardinal rule:** If any gate blocks, PR MUST NOT be auto-merged until the blocking condition is resolved. Gates are independent — passing one does not mean passing another.
+1. **`stage-gate.py` is a Python script on disk** — agents can't modify it mid-task
+2. **Bash calls can't be skipped by the LLM** — the `&&` / `||` chain enforces execution: `python3 stage-gate.py --pr "$PR_NUM" || exit 1`
+3. **Auto-fix uses REST API** (`gh issue edit`) — works with `repo`-scope token, no `read:org` needed
+4. **operator prompt is one stable line** — not complex enough to misread
+5. **`workflow-chain.yml` and `opencode-review.yml` are GitHub Actions** — server-side, immune to local agent issues
 
 ---
 
