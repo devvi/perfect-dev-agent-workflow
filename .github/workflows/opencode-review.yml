@@ -1,6 +1,6 @@
 name: review
 # CI testing — runs ONLY on implement-stage PRs
-# Self-healing IS handled by PiBot Dispatcher (reads CI logs, fixes via OpenCode Serve)
+# Self-healing is handled by Hermes dispatcher (reads CI logs, fixes via OpenCode Serve)
 # This workflow only tests, reports, and gates the merge.
 
 on:
@@ -61,7 +61,7 @@ jobs:
             var summary = failLines.slice(-15).join('\n').substring(0, 1000);
             var baseUrl = process.env.GITHUB_SERVER_URL || 'https://github.com';
             var runUrl = baseUrl + '/' + process.env.GITHUB_REPOSITORY + '/actions/runs/' + process.env.GITHUB_RUN_ID;
-            var body = 'Tests FAILED - PiBot will auto-fix\n\n```\n' + (summary || 'See run logs') + '\n```\n\n' + runUrl;
+            var body = 'Tests FAILED - dispatcher will auto-fix\n\n```\n' + (summary || 'See run logs') + '\n```\n\n' + runUrl;
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -95,5 +95,5 @@ jobs:
           EMOJI="[ok]"
           [ "$STATUS" != "success" ] && EMOJI="[fail]"
           curl -s -X POST -H "Content-Type: application/json" \
-            -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"${EMOJI} [PDA] review #${PR_NUM} ${STATUS} \\nPR: ${PR_TITLE}\"}}" \
+            -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"${EMOJI} [Workflow] review #${PR_NUM} ${STATUS} \\nPR: ${PR_TITLE}\"}}" \
             https://open.feishu.cn/open-apis/bot/v2/hook/390781d4-285c-4d66-afa4-1aadfb76a7b9

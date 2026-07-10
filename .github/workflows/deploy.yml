@@ -85,7 +85,7 @@ jobs:
         run: |
           EMOJI="[ok]"
           [ "$STATUS" != "success" ] && EMOJI="[fail]"
-          MSG="${EMOJI} [PDA] deploy #${RUN_NUM} ${STATUS} (PR #${PR_NUM})"
+          MSG="${EMOJI} [Workflow] deploy #${RUN_NUM} ${STATUS} (PR #${PR_NUM})"
           [ -n "$DEPLOY_URL" ] && MSG="${MSG}\n${DEPLOY_URL}"
           curl -s -X POST -H "Content-Type: application/json" \
             -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"${MSG}\"}}" \

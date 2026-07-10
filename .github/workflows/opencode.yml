@@ -1,6 +1,6 @@
 name: opencode-fallback
 # Manual fallback: /opencode commands in comments
-# Primary orchestration is handled by PiBot (OpenClaw cron)
+# Primary orchestration is handled by Hermes dispatcher (webhook)
 
 on:
   issue_comment:

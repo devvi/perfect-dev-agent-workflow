@@ -1,6 +1,6 @@
 # Perfect Dev Agent Workflow — Architecture
 
-> **Orchestrator:** PiBot (OpenClaw) | **Board:** GitHub Issues | **Worker:** OpenCode Serve (:18765)
+> **Orchestrator:** Hermes Agent | **Board:** GitHub Issues | **Worker:** OpenCode Serve (:18765)
 
 ## System Architecture
 
@@ -14,22 +14,22 @@
 │                                                                   │
 │  PRs: research-PR → plan-PR → implement-PR                       │
 └────────────────────────┬──────────────────────────────────────────┘
-                         │ GitHub API (poll every 5 min)
+                         │ Webhook (issues / pull_request / check_run)
                          ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                  PiBot (OpenClaw Cron)                            │
+│                  Hermes Agent (Webhook Dispatcher)                │
 │                                                                   │
-│  1. Poll GitHub for issues with workflow/available               │
-│  2. Claim issue → add workflow/research label                    │
-│  3. Spawn sub-agent for current stage                            │
-│  4. Sub-agent completes → opens PR                               │
-│  5. PiBot reviews PR against quality gate                        │
-│  6. Pass → auto-merge → verify merge succeeded → spawn next stage│
+│  1. Webhook received → parse event + determine stage             │
+│  2. Spawn sub-agent via delegate_task for current stage          │
+│  3. Sub-agent completes → opens PR                               │
+│  4. GitHub Action (workflow-chain.yml) advances label on merge   │
+│  5. Hermes reacts to new label → spawn next stage agent          │
+│  6. Pass → advance → spawn next stage                            │
 │  7. Fail → comment on PR → agent revises → re-review             │
 │  8. All stages done → status/done                                │
 │  9. Blocked/error → status/blocked → Feishu notify K             │
 └────────────────────────┬──────────────────────────────────────────┘
-                         │ sessions_spawn (isolated)
+                         │ delegate_task (isolated)
                          ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │                     Sub-Agents                                    │
@@ -37,9 +37,8 @@
 │  research-agent    → 读 Issue → 填模板 → 写 PRD → 开 PR          │
 │  plan-agent        → 读 PRD → 写 DESIGN → 生成测试用例 → 开 PR   │
 │  implement-agent   → 读 DESIGN → TDD → 调 OpenCode → 开 PR      │
-│  test-agent        → 跑测试 → 报告结果                            │
+│  review-agent      → 审代码 → 报结果                              │
 │  self-correct-agent → 分析失败 → 修复 → 重跑                      │
-│  deploy-agent      → 触发 Vercel 部署                             │
 └────────────────────────┬──────────────────────────────────────────┘
                          │ REST API
                          ▼
@@ -51,9 +50,9 @@
 
 ---
 
-## PiBot's Gatekeeping Rules
+## Dispatcher's Gatekeeping Rules
 
-PiBot (I) review every PR before auto-merge. Here are the criteria for each stage:
+The dispatcher (Hermes agent) reviews every PR before auto-merge. Here are the criteria for each stage:
 
 ### Research PR Gate
 
@@ -96,28 +95,28 @@ PiBot (I) review every PR before auto-merge. Here are the criteria for each stag
 
 ---
 
-## Self-Correct Loop (PiBot Managed)
+## Self-Correct Loop
 
 ```
 Test failure detected
     │
     ▼
-PiBot spawns self-correct-agent (attempt N)
+Dispatcher spawns self-correct-agent (attempt N)
     │
     ├── Agent analyzes failure + applies fix
     ├── Agent re-runs tests
     │
-    ├── All pass → PiBot merges PR → proceed to deploy
+    ├── All pass → merge PR → proceed to deploy
     └── Still fail → N++ 
          ├── N ≤ 3 → retry (upgrade model: flash → pro for attempt 3)
-         └── N > 3 → PiBot marks status/blocked → Feishu notify K
+         └── N > 3 → mark status/blocked → notify K
 ```
 
 ---
 
-## Merge Conflict Resolution (PiBot Managed)
+## Merge Conflict Resolution
 
-When PiBot auto-merges a PR, conflicts can happen if multiple branches touch the same files.
+When the dispatcher auto-merges a PR, conflicts can happen if multiple branches touch the same files.
 
 ### Conflict Detection
 ```bash
@@ -131,7 +130,7 @@ gh pr view <N> --json mergeable,mergeStateStatus
 Merge conflict detected
     │
     ▼
-PiBot spawns conflict-resolver-agent
+Dispatcher spawns conflict-resolver-agent
     │
     ├── 1. git fetch origin main
     ├── 2. git rebase origin/main (or merge)
@@ -147,16 +146,16 @@ PiBot spawns conflict-resolver-agent
     ├── 6. Run tests to verify resolution didn't break anything
     ├── 7. Force-push resolved branch
     │
-    ├── Resolution successful + tests pass → PiBot retries merge ✅
+    ├── Resolution successful + tests pass → retry merge ✅
     │
     └── Cannot resolve automatically →
-        PiBot comments on PR with:
+        Comment on PR with:
         - Which files conflict
         - What changed on main vs branch
         - Why automatic resolution failed
         - Suggested manual resolution
-        → Marks PR with label `status/blocked`
-        → Notifies K via Feishu
+        → Mark PR with label `status/blocked`
+        → Notify K via Feishu
 ```
 
 ### Conflict Agent Rules
@@ -220,7 +219,7 @@ Rules: TDD mandatory. No scope creep. Pull before push.
 
 On implement PR merge to main:
 - Vercel auto-detects push → builds → deploys
-- PiBot monitors deploy status
+- `deploy.yml` GitHub Action handles the deployment
 - On success: update issue → `status/done`, post summary
 - On failure: mark `status/blocked`, notify K
 
