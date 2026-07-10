@@ -3,10 +3,11 @@
 
 import {
   ROOM_SIZE, ROOM_TYPE, BASE_TICK_INTERVAL, SPEED_SLOPE, MAX_TICK_INTERVAL, CELL, STUCK_TICKS,
+  INVULNERABILITY_DURATION,
 } from './constants.js';
 import { generateWorldMap, findRoomOfType } from './generator.js';
 import { getRoomAt } from './world.js';
-import { createSnake } from './entities.js';
+import { createSnake, createFood } from './entities.js';
 import { worldToRoomCoords, roomToWorldCoords, getCellAt } from './world.js';
 import { checkSnakeCollision, checkProjectileCollision, checkRoomTransition, checkDoorPassable, lineSweepProjectileCollision } from './collision.js';
 import { fireProjectile, updateProjectiles, applyProjectileDamage, updateCooldowns } from './combat.js';
@@ -72,6 +73,7 @@ export function createInitialState(existingWorld = null) {
     menuIndex: 0,
     menuMode: 'main',
     commitInfo: commitInfo,
+    invulnerableTicks: 0,
   };
 }
 
@@ -279,13 +281,36 @@ export function tick(state) {
     enemyDamage = checkEnemyOverlap(s);
   }
   if (enemyDamage) {
-    s.snake = s.snake.slice(0, -1); // lose one segment
-    s.screenShake = { intensity: 3, duration: 6 };
-    s.score = Math.max(0, s.score - 5);
+    if (s.invulnerableTicks > 0) {
+      // Invulnerable — skip enemy damage entirely
+      // No segment removal, no food drop, no score penalty
+    } else {
+      // 1. Record last segment position BEFORE removal
+      const lastSeg = s.snake[s.snake.length - 1];
+      const dropPos = { x: lastSeg.x, y: lastSeg.y };
 
-    if (s.snake.length === 0) {
-      s.gameState = 'gameover';
-      return s;
+      // 2. Spawn food at that position
+      const food = createFood(dropPos.x, dropPos.y);
+      if (s.world) {
+        const { rx, ry } = worldToRoomCoords(food.x, food.y);
+        const room = getRoomAt(s.world, rx, ry);
+        if (room) {
+          room.entities.food.push(food);
+        }
+      }
+
+      // 3. Set invulnerability
+      s.invulnerableTicks = INVULNERABILITY_DURATION;
+
+      // 4. Remove last segment + score penalty
+      s.snake = s.snake.slice(0, -1);
+      s.screenShake = { intensity: 3, duration: 6 };
+      s.score = Math.max(0, s.score - 5);
+
+      if (s.snake.length === 0) {
+        s.gameState = 'gameover';
+        return s;
+      }
     }
   }
 
@@ -320,6 +345,11 @@ export function tick(state) {
   if (s.snake.length === 0) {
     s.gameState = 'gameover';
     return s;
+  }
+
+  // Decay invulnerability (Issue #118)
+  if (s.invulnerableTicks > 0) {
+    s.invulnerableTicks--;
   }
 
   // Decay screen shake
