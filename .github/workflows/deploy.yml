@@ -22,7 +22,7 @@ jobs:
     permissions:
       pull-requests: read
     steps:
-      - name: Check PR labels for workflow/implement
+      - name: Check if merged PR is from implement branch
         id: check
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -43,17 +43,25 @@ jobs:
             exit 0
           fi
 
-          echo "Checking PR #$PR_NUM for workflow/implement label..."
+          echo "Checking PR #$PR_NUM head branch for implement prefix..."
 
-          HAS_LABEL=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUM}" \
-            --jq '[.labels[].name] | any(. == "workflow/implement")' 2>/dev/null)
+          FROM_BRANCH=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUM}" \
+            --jq '.head.ref' 2>/dev/null)
 
-          if [ "$HAS_LABEL" = "true" ]; then
-            echo "PR #$PR_NUM has workflow/implement label → deploy!"
+          if [ -z "$FROM_BRANCH" ]; then
+            echo "Could not determine PR head branch. Skipping deploy."
+            echo "should_deploy=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "PR head branch: $FROM_BRANCH"
+
+          if [[ "$FROM_BRANCH" == impl/* ]]; then
+            echo "PR #$PR_NUM is from implement branch ($FROM_BRANCH) → deploy!"
             echo "should_deploy=true" >> $GITHUB_OUTPUT
             echo "pr_num=$PR_NUM" >> $GITHUB_OUTPUT
           else
-            echo "PR #$PR_NUM does NOT have workflow/implement label → skip deploy."
+            echo "PR #$PR_NUM is from $FROM_BRANCH (not implement) → skip deploy."
             echo "should_deploy=false" >> $GITHUB_OUTPUT
           fi
 
