@@ -3,7 +3,10 @@
   "outputDirectory": null,
   "framework": null,
   "rewrites": [
-    { "source": "/", "destination": "/public/gameboy.html" }
+    { "source": "/", "destination": "/gameboy.html" }
   ],
-  "redirects": []
+  "redirects": [],
+  "github": {
+    "silent": true
+  }
 }
