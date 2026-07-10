@@ -86,12 +86,14 @@ The dispatcher (Hermes agent) reviews every PR before auto-merge. Here are the c
 | Check | Criterion | Action if fail |
 |-------|-----------|----------------|
 | All tests pass | CI green (verified via GitHub API) | Block — trigger self-correct |
+| Tests updated | New/changed behavior has corresponding test updates (verify via `git diff --stat`) | Block — request test updates |
+| Docs updated | DESIGN doc / PRD updated to match implementation reality (verify via `git diff docs/`) | Block — request doc updates |
 | Scope compliance | Only planned features implemented | Comment on scope creep |
 | Edge cases handled | Test coverage for boundary conditions | Request additions |
 | Closes keywords | Body has "Closes #<parent>" AND "Closes #<plan>" | Auto-fix |
 | No regressions | Existing tests still pass | Block |
 
-**Auto-merge decision:** Tests all pass + scope OK → merge → verify merge succeeded. Only on confirmed: close issue. Tests fail → self-correct loop. Scope creep → comment + request trim.
+**Auto-merge decision:** Tests all pass + tests/docs updated + scope OK → merge → verify merge succeeded. Only on confirmed: close issue. Tests fail → self-correct loop. Missing test/doc updates → block with comment. Scope creep → comment + request trim.
 
 ---
 
