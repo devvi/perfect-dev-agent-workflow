@@ -2,11 +2,6 @@
   "buildCommand": "bash scripts/inject-commit-info.sh",
   "outputDirectory": null,
   "framework": null,
-  "rewrites": [
-    { "source": "/", "destination": "/gameboy.html" }
-  ],
-  "redirects": [],
-  "github": {
-    "silent": true
-  }
+  "rewrites": [],
+  "redirects": []
 }
