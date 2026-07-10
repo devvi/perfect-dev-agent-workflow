@@ -208,7 +208,21 @@ function drawSnake(ctx, state) {
     ctx.globalAlpha = (state.stuckCounter % 2 === 0) ? 0.4 : 1.0;
   }
 
+  // Flash effect when invulnerable (Issue #118)
+  const isInvulnerable = state.invulnerableTicks > 0;
+  let skipRender = false;
+  if (isInvulnerable) {
+    // Toggle visibility every 2 ticks
+    const flashPhase = Math.floor(state.invulnerableTicks / 2) % 2;
+    if (flashPhase === 0) {
+      ctx.globalAlpha = 0.4;
+    } else {
+      skipRender = true;
+    }
+  }
+
   for (let i = state.snake.length - 1; i >= 0; i--) {
+    if (skipRender) break;
     const seg = state.snake[i];
     const { cx, cy } = worldToRoomCoords(seg.x, seg.y);
     // Only draw if in current room
@@ -242,7 +256,7 @@ function drawSnake(ctx, state) {
       ctx.fillRect(px + 2, py + 2, CELL_SIZE - 4, CELL_SIZE - 4);
     }
   }
-  if (isStuck) ctx.globalAlpha = 1.0;
+  if (isStuck || isInvulnerable) ctx.globalAlpha = 1.0;
 }
 
 /**

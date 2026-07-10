@@ -30,9 +30,16 @@ export function updateEnemies(state) {
         const snakeHead = newState.snake[0];
 
         if (snakeInRoom) {
-          // Chase mode
+          // Chase mode — priority: food in room > snake head
           enemy.aiState = 'chase';
-          const move = enemyChasePath(enemy, snakeHead, room, world);
+          let target = snakeHead;
+          if (room.entities.food && room.entities.food.length > 0) {
+            const nearest = findNearestFood(enemy, room.entities.food);
+            if (nearest) {
+              target = nearest;
+            }
+          }
+          const move = enemyChasePath(enemy, target, room, world);
           if (move) {
             // Check if the move cell is valid
             const newX = enemy.x + move.x;
@@ -81,7 +88,23 @@ export function updateEnemies(state) {
 }
 
 /**
- * Greedy pathfinding: move toward snake head, avoiding walls
+ * Find the nearest food item to an enemy by Manhattan distance
+ */
+export function findNearestFood(enemy, foodList) {
+  let nearest = null;
+  let minDist = Infinity;
+  for (const food of foodList) {
+    const dist = Math.abs(enemy.x - food.x) + Math.abs(enemy.y - food.y);
+    if (dist < minDist) {
+      minDist = dist;
+      nearest = food;
+    }
+  }
+  return nearest;
+}
+
+/**
+ * Greedy pathfinding: move toward target, avoiding walls
  */
 export function enemyChasePath(enemy, snakeHead, room, world) {
   if (!snakeHead) return null;

@@ -85,6 +85,9 @@ export const MINIMAP_MARGIN = 10;
 // Stuck+Reverse mechanic (Issue #46)
 export const STUCK_TICKS = 5;
 
+// Invulnerability after enemy hit (Issue #118)
+export const INVULNERABILITY_DURATION = 10; // ticks of invulnerability after enemy hit
+
 // localStorage key
 export const SAVE_KEY = 'snake_save';
 

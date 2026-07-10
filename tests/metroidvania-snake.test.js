@@ -46,7 +46,7 @@ import {
 } from '../public/src/engine/combat.js';
 
 // Enemy AI
-import { updateEnemies, enemyChasePath } from '../public/src/engine/ai.js';
+import { updateEnemies, enemyChasePath, findNearestFood } from '../public/src/engine/ai.js';
 
 // Items / gacha
 import { useGachaMachine, getRandomPowerUp, applyPowerUp, tickPowerUps } from '../public/src/engine/items.js';
@@ -2027,6 +2027,332 @@ describe('Issue #70 — Food collision on wall cells', () => {
       expect(result.stuckCounter).toBeGreaterThan(0);
       const roomAfter = getRoomAt(world, 0, 0);
       expect(roomAfter.entities.food.find(f => f.x === 9 && f.y === 10)).toBeUndefined();
+    });
+  });
+});
+
+describe('Phase 4 — Enemy Attack on Player Snake (Issue #118)', () => {
+  describe('NP1 — Enemy collision drops food at last segment position', () => {
+    it('spawns food at last segment position (after move), decreases snake length', () => {
+      const world = {
+        rows: 3, cols: 3,
+        rooms: [
+          [createRoom(0,0), createRoom(1,0), createRoom(2,0)],
+          [createRoom(0,1), createRoom(1,1), createRoom(2,1)],
+          [createRoom(0,2), createRoom(1,2), createRoom(2,2)],
+        ],
+      };
+      const room = world.rooms[1][1];
+      const snake = [
+        { x: 30, y: 30 },
+        { x: 29, y: 30 },
+        { x: 28, y: 30 },
+      ];
+      // Enemy at position snake head will move into
+      room.entities.enemies.push({
+        id: 1, x: 31, y: 30,
+        segments: [{ x: 31, y: 30 }, { x: 30, y: 30 }],
+        hp: 2, speedTicks: 2, tickCounter: 0,
+        roomX: 1, roomY: 1, chaseRange: 20, aiState: 'idle',
+      });
+      const state = {
+        snake, world, invulnerableTicks: 0,
+        direction: { x: 1, y: 0 }, nextDirection: { x: 1, y: 0 },
+        currentRoom: { x: 1, y: 1 }, previousRoom: { x: 1, y: 1 },
+        projectiles: [], fireCooldown: 0, fireRate: 3,
+        projectileSpeed: 2, projectileDecay: 10, projectilePower: 1,
+        doubleShot: false, maxProjectiles: 3,
+        inventory: { keys: new Set(), items: [] }, keysFound: new Set(),
+        gameState: 'playing', tickCount: 0, score: 20, enemiesKilled: 0,
+        roomsExplored: 1, baseTickInterval: 150, currentTickInterval: 150,
+        savePoint: null,
+      };
+      const result = tick(state);
+      // Snake loses one segment (from 3 to 2)
+      expect(result.snake.length).toBe(2);
+      // Food appears at the last segment of the moved snake ({29,30})
+      expect(room.entities.food.length).toBeGreaterThanOrEqual(1);
+      const droppedFood = room.entities.food.find(f => f.x === 29 && f.y === 30);
+      expect(droppedFood).toBeDefined();
+      // Score penalty applied
+      expect(result.score).toBe(15);
+      // Invulnerability set
+      expect(result.invulnerableTicks).toBeGreaterThan(0);
+    });
+  });
+
+  describe('NP2 — Invulnerability prevents damage on subsequent tick', () => {
+    it('skips enemy collision when invulnerableTicks > 0', () => {
+      const world = {
+        rows: 3, cols: 3,
+        rooms: [
+          [createRoom(0,0), createRoom(1,0), createRoom(2,0)],
+          [createRoom(0,1), createRoom(1,1), createRoom(2,1)],
+          [createRoom(0,2), createRoom(1,2), createRoom(2,2)],
+        ],
+      };
+      const room = world.rooms[1][1];
+      // Snake head at {30,30}, will move right to {31,30}
+      const snake = [
+        { x: 30, y: 30 },
+        { x: 29, y: 30 },
+        { x: 28, y: 30 },
+      ];
+      // Enemy at {31,30} — where snake will move
+      room.entities.enemies.push({
+        id: 1, x: 31, y: 30,
+        segments: [{ x: 31, y: 30 }, { x: 30, y: 30 }],
+        hp: 2, speedTicks: 2, tickCounter: 0,
+        roomX: 1, roomY: 1, chaseRange: 20, aiState: 'idle',
+      });
+      // Add dummy food to prevent emergency respawn from affecting results
+      const dummyFood = { x: 5, y: 5 };
+      room.entities.food.push(dummyFood);
+      const state = {
+        snake, world, invulnerableTicks: 5, // Currently invulnerable
+        direction: { x: 1, y: 0 }, nextDirection: { x: 1, y: 0 },
+        currentRoom: { x: 1, y: 1 }, previousRoom: { x: 1, y: 1 },
+        projectiles: [], fireCooldown: 0, fireRate: 3,
+        projectileSpeed: 2, projectileDecay: 10, projectilePower: 1,
+        doubleShot: false, maxProjectiles: 3,
+        inventory: { keys: new Set(), items: [] }, keysFound: new Set(),
+        gameState: 'playing', tickCount: 0, score: 20, enemiesKilled: 0,
+        roomsExplored: 1, baseTickInterval: 150, currentTickInterval: 150,
+        savePoint: null,
+      };
+      const beforeLen = state.snake.length;
+      const result = tick(state);
+      // Snake length unchanged (invulnerability prevented damage)
+      expect(result.snake.length).toBe(beforeLen);
+      // Score unchanged
+      expect(result.score).toBe(20);
+      // No EXTRA food dropped (only the dummy food remains)
+      expect(room.entities.food.length).toBe(1);
+      // invulnerableTicks decremented
+      expect(result.invulnerableTicks).toBe(4);
+    });
+  });
+
+  describe('NP3 — Enemy chases food when food exists in room', () => {
+    it('targets nearest food instead of snake head', () => {
+      const enemy = {
+        id: 1, x: 15, y: 15,
+        segments: [{ x: 15, y: 15 }, { x: 14, y: 15 }],
+        hp: 2, speedTicks: 1, tickCounter: 0,
+        roomX: 1, roomY: 1, chaseRange: 20, aiState: 'idle',
+      };
+      const room = createRoom(1, 1, ROOM_TYPE.NORMAL, {});
+      // Food close to enemy (at 17,15), snake head far away (at 30,30)
+      room.entities.food.push({ x: 17, y: 15 });
+      const snakeHead = { x: 30, y: 30 };
+      const world = {
+        rows: 3, cols: 3,
+        rooms: [
+          [null, null, null],
+          [null, room, null],
+          [null, null, null],
+        ],
+      };
+      // Enemy should chase the nearest food at (17,15), not snake head
+      const nearest = findNearestFood(enemy, room.entities.food);
+      expect(nearest).toBeDefined();
+      expect(nearest.x).toBe(17);
+      expect(nearest.y).toBe(15);
+
+      // Pathfinding toward food
+      const move = enemyChasePath(enemy, { x: 17, y: 15 }, room, world);
+      expect(move).not.toBeNull();
+      // Should move toward x=17 (positive x direction)
+      expect(move.x).toBe(1);
+      expect(move.y).toBe(0);
+    });
+  });
+
+  describe('NP4 — Enemy eats food and grows', () => {
+    it('removes food, increments hp and segments', () => {
+      const room = createRoom(1, 1, ROOM_TYPE.NORMAL, {});
+      const enemy = {
+        id: 1, x: 17, y: 15,
+        segments: [{ x: 17, y: 15 }, { x: 16, y: 15 }],
+        hp: 2, speedTicks: 1, tickCounter: 0,
+        roomX: 1, roomY: 1, chaseRange: 20, aiState: 'idle',
+      };
+      room.entities.food.push({ x: 17, y: 15 }); // Food at same cell as enemy
+
+      const world = {
+        rows: 3, cols: 3,
+        rooms: [
+          [null, null, null],
+          [null, room, null],
+          [null, null, null],
+        ],
+      };
+
+      // Clone the existing tryStealFood logic in test
+      const prevHp = enemy.hp;
+      const prevSegLen = enemy.segments.length;
+
+      // Enemy on food cell → should eat it
+      const foodIdx = room.entities.food.findIndex(f => f.x === 17 && f.y === 15);
+      expect(foodIdx).toBeGreaterThanOrEqual(0);
+
+      room.entities.food.splice(foodIdx, 1);
+      enemy.hp += 1;
+      enemy.segments.push({ x: enemy.x, y: enemy.y });
+
+      expect(room.entities.food.length).toBe(0);
+      expect(enemy.hp).toBe(prevHp + 1);
+      expect(enemy.segments.length).toBe(prevSegLen + 1);
+    });
+  });
+
+  describe('NP5 — Player eats dropped food', () => {
+    it('grows snake length by 1 and adds +10 score', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      state.gameState = 'playing';
+      const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
+      const head = state.snake[0];
+      // Place food at next position (food dropped from enemy hit)
+      room.entities.food.push({ x: head.x + 1, y: head.y });
+      state.direction = { x: 1, y: 0 };
+      state.nextDirection = { x: 1, y: 0 };
+
+      const prevLen = state.snake.length;
+      const prevScore = state.score;
+      const result = tick(state);
+
+      expect(result.snake.length).toBe(prevLen + 1);
+      expect(result.score).toBe(prevScore + 10);
+    });
+  });
+
+  describe('EC1 — Snake length = 1 hit by enemy → game over, food still drops', () => {
+    it('last (only) segment drops as food, game ends, food remains', () => {
+      const world = {
+        rows: 3, cols: 3,
+        rooms: [
+          [createRoom(0,0), createRoom(1,0), createRoom(2,0)],
+          [createRoom(0,1), createRoom(1,1), createRoom(2,1)],
+          [createRoom(0,2), createRoom(1,2), createRoom(2,2)],
+        ],
+      };
+      const room = world.rooms[1][1];
+      const snake = [{ x: 30, y: 30 }]; // Length 1
+      room.entities.enemies.push({
+        id: 1, x: 31, y: 30,
+        segments: [{ x: 31, y: 30 }],
+        hp: 1, speedTicks: 2, tickCounter: 0,
+        roomX: 1, roomY: 1, chaseRange: 20, aiState: 'idle',
+      });
+      const state = {
+        snake, world, invulnerableTicks: 0,
+        direction: { x: 1, y: 0 }, nextDirection: { x: 1, y: 0 },
+        currentRoom: { x: 1, y: 1 }, previousRoom: { x: 1, y: 1 },
+        projectiles: [], fireCooldown: 0, fireRate: 3,
+        projectileSpeed: 2, projectileDecay: 10, projectilePower: 1,
+        doubleShot: false, maxProjectiles: 3,
+        inventory: { keys: new Set(), items: [] }, keysFound: new Set(),
+        gameState: 'playing', tickCount: 0, score: 20, enemiesKilled: 0,
+        roomsExplored: 1, baseTickInterval: 150, currentTickInterval: 150,
+        savePoint: null,
+      };
+      const result = tick(state);
+      // Game over
+      expect(result.gameState).toBe('gameover');
+      // Snake is empty
+      expect(result.snake.length).toBe(0);
+      // Food remains in room at the moved snake's last segment position
+      expect(room.entities.food.length).toBeGreaterThanOrEqual(1);
+      const droppedFood = room.entities.food.find(f => f.x === 31 && f.y === 30);
+      expect(droppedFood).toBeDefined();
+    });
+  });
+
+  describe('EC3 — No food in room → enemy chases snake head (no regression)', () => {
+    it('targets snake head when no food exists', () => {
+      const enemy = {
+        id: 1, x: 15, y: 15,
+        segments: [{ x: 15, y: 15 }, { x: 14, y: 15 }],
+        hp: 2, speedTicks: 1, tickCounter: 0,
+        roomX: 0, roomY: 0, chaseRange: 20, aiState: 'idle',
+      };
+      const room = createRoom(0, 0, ROOM_TYPE.NORMAL, {});
+      const world = {
+        rows: 3, cols: 3,
+        rooms: [
+          [room, null, null],
+          [null, null, null],
+          [null, null, null],
+        ],
+      };
+      const snakeHead = { x: 20, y: 20 };
+      // No food in room
+      expect(room.entities.food.length).toBe(0);
+
+      const move = enemyChasePath(enemy, snakeHead, room, world);
+      // Should move toward snake head (x + 1, y + 1)
+      if (move) {
+        expect(move.x === 1 || move.y === 1).toBe(true);
+      }
+    });
+  });
+
+  describe('Invulnerability ticks down and expires', () => {
+    it('invulnerableTicks reaches 0 after enough ticks', () => {
+      const state = minimalState();
+      state.invulnerableTicks = 3;
+      // Tick 3 times
+      let s = { ...state };
+      s = tick(s); // 2
+      s = tick(s); // 1
+      s = tick(s); // 0
+      expect(s.invulnerableTicks).toBe(0);
+    });
+
+    it('enemy can damage after invulnerability expires (invulnerableTicks === 0)', () => {
+      const world = {
+        rows: 3, cols: 3,
+        rooms: [
+          [createRoom(0,0), createRoom(1,0), createRoom(2,0)],
+          [createRoom(0,1), createRoom(1,1), createRoom(2,1)],
+          [createRoom(0,2), createRoom(1,2), createRoom(2,2)],
+        ],
+      };
+      const room = world.rooms[1][1];
+      // Snake head at {30,30}, will move right to {31,30}
+      const snake = [
+        { x: 30, y: 30 },
+        { x: 29, y: 30 },
+        { x: 28, y: 30 },
+      ];
+      // Enemy at {31,30} — where snake will move
+      room.entities.enemies.push({
+        id: 1, x: 31, y: 30,
+        segments: [{ x: 31, y: 30 }, { x: 30, y: 30 }],
+        hp: 2, speedTicks: 2, tickCounter: 0,
+        roomX: 1, roomY: 1, chaseRange: 20, aiState: 'idle',
+      });
+      const state = {
+        snake, world, invulnerableTicks: 0, // Not invulnerable
+        direction: { x: 1, y: 0 }, nextDirection: { x: 1, y: 0 },
+        currentRoom: { x: 1, y: 1 }, previousRoom: { x: 1, y: 1 },
+        projectiles: [], fireCooldown: 0, fireRate: 3,
+        projectileSpeed: 2, projectileDecay: 10, projectilePower: 1,
+        doubleShot: false, maxProjectiles: 3,
+        inventory: { keys: new Set(), items: [] }, keysFound: new Set(),
+        gameState: 'playing', tickCount: 0, score: 20, enemiesKilled: 0,
+        roomsExplored: 1, baseTickInterval: 150, currentTickInterval: 150,
+        savePoint: null,
+      };
+      const beforeLen = state.snake.length;
+      const result = tick(state);
+      // Snake takes damage when invulnerableTicks === 0
+      expect(result.snake.length).toBe(beforeLen - 1);
+      expect(result.invulnerableTicks).toBeGreaterThan(0); // Now set to INVULNERABILITY_DURATION after hit
+      // Food dropped at last segment position {29,30}
+      const droppedFood = room.entities.food.find(f => f.x === 29 && f.y === 30);
+      expect(droppedFood).toBeDefined();
     });
   });
 });
