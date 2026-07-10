@@ -22,12 +22,32 @@ jobs:
             const pr = context.payload.pull_request;
             const prLabels = pr.labels.map(l => l.name);
 
-            // Only process workflow/* PRs
+            // Derive workflow label from PR labels OR branch name (fallback)
             const workflowLabels = ['workflow/research', 'workflow/plan', 'workflow/implement'];
-            const activeLabel = workflowLabels.find(l => prLabels.includes(l));
+            let activeLabel = workflowLabels.find(l => prLabels.includes(l));
             if (!activeLabel) {
-              console.log(`PR #${pr.number} has no workflow label — skipping`);
-              return;
+              // Fallback: derive from branch name (label might have been lost during PR creation)
+              const branch = pr.head.ref;
+              const branchLabelMap = {
+                'research/': 'workflow/research',
+                'plan/':     'workflow/plan',
+                'impl/':     'workflow/implement',
+              };
+              const matchedPrefix = Object.keys(branchLabelMap).find(p => branch.startsWith(p));
+              if (matchedPrefix) {
+                activeLabel = branchLabelMap[matchedPrefix];
+                console.log(`PR #${pr.number} missing workflow label — derived "${activeLabel}" from branch "${branch}"`);
+                // Fix the label on the PR so subsequent checks find it
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  labels: [activeLabel],
+                });
+              } else {
+                console.log(`PR #${pr.number} has no workflow label and branch "${branch}" doesn't match — skipping`);
+                return;
+              }
             }
 
             // Find parent issue from PR body (Closes #N or parent #N)

@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   test-and-report:
-    if: contains(github.event.pull_request.labels.*.name, 'workflow/implement')
+    if: startsWith(github.event.pull_request.head.ref, 'impl/')
     runs-on: ubuntu-latest
     permissions:
       contents: read

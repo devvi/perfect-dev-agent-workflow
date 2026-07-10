@@ -116,6 +116,59 @@ Dispatcher spawns self-correct-agent (attempt N)
 
 ---
 
+## Stage Gate System (Four Layers)
+
+> **Problem discovered (2026-07-11):** PR #117 was created without `workflow/implement` label. Three downstream systems (CI → label advancement → deploy) all skipped silently. Every layer should have caught this.
+
+### Layer 1: PR Creation Gate (implement-agent)
+
+**Where:** `game-implement-agent` skill, Step 8 / Direct Fallback
+
+**What it checks:** After `gh pr create --label "workflow/implement"`, immediately verify the label was actually applied.
+
+**Failure → recovery:**
+1. Try `gh pr edit $PR_NUM --add-label workflow/implement`
+2. If recovery fails → post warning comment on PR, **exit with error (block merge)**
+
+### Layer 2: CI Gate (opencode-review.yml)
+
+**Where:** `.github/workflows/opencode-review.yml` line 17
+
+**What it checks:** `startsWith(github.event.pull_request.head.ref, 'impl/')`
+
+**Why branch-name instead of label:** Branch prefix (`impl/`) is set at `git checkout -b` time and never changes. Labels can be missed during PR creation. This gate catches ALL pushes to implement branches regardless of PR label state.
+
+### Layer 3: Post-Merge Labels (workflow-chain.yml)
+
+**Where:** `.github/workflows/workflow-chain.yml` lines 28-50
+
+**What it checks:** PR workflow label → fallback to branch name derivation
+
+**Why two-stage:** Primary (label) + fallback (branch prefix) ensures label advancement happens even when the PR was created without labels. Branch name `impl/` → `workflow/implement`, `research/` → `workflow/research`, `plan/` → `workflow/plan`.
+
+### Layer 4: Pre-Merge Operator Verification
+
+**Where:** Operator agent (when processing PR events)
+
+**What it checks:**
+1. `gh pr view $PR_NUM --json labels` — verify workflow label exists
+2. `gh pr checks $PR_NUM` — verify CI has started or passed
+
+**Failure → block merge, fix label, or spawn self-correct.**
+
+### Defect Prevention Summary
+
+| Layer | Where | Check | Bypass-proof |
+|-------|-------|-------|-------------|
+| 1 | implement-agent | Label verification after PR create | ✅ Code-checked |
+| 2 | opencode-review.yml | Branch-name CI gate | ✅ Branch immutable |
+| 3 | workflow-chain.yml | Branch-name label fallback | ✅ Branch immutable |
+| 4 | Operator agent | Pre-merge audit | ✅ Manual gate |
+
+**Cardinal rule:** If any gate blocks, PR MUST NOT be auto-merged until the blocking condition is resolved. Gates are independent — passing one does not mean passing another.
+
+---
+
 ## Merge Conflict Resolution
 
 When the dispatcher auto-merges a PR, conflicts can happen if multiple branches touch the same files.
