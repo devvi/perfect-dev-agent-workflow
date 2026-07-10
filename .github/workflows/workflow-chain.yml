@@ -97,11 +97,6 @@ jobs:
               });
             }
 
-            // Notify Feishu
-            const feishuBody = nextLabel
-              ? { msg_type: 'text', content: { text: `[Workflow] 🔗 Issue #${parentNumber}: ${activeLabel} → ${nextLabel}\nPR #${pr.number} merged` } }
-              : { msg_type: 'text', content: { text: `[Workflow] 🎉 Issue #${parentNumber} resolved ✅\nPR #${pr.number} (implement) merged and deployed.` } };
-            await fetch(
-              'https://open.feishu.cn/open-apis/bot/v2/hook/390781d4-285c-4d66-afa4-1aadfb76a7b9',
-              { method: 'POST', body: JSON.stringify(feishuBody), headers: { 'Content-Type': 'application/json' } }
-            ).then(r => r.text()).then(t => console.log('Feishu:', t));
+            // Notification: Hermes webhook → dispatch delivers to Feishu origin
+            // No direct Feishu call needed — Dispatcher's issues.labeled handler
+            // picks up the label change and spawns next agent + delivers status.
