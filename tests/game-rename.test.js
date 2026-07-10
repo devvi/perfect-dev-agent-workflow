@@ -55,7 +55,7 @@ describe('Game name rendering on title screen', () => {
 
     // First fillText should be the main game title (positioned near center)
     const titleCall = fillTextCalls[0];
-    expect(titleCall[1]).toContain('SNAKE');
+    expect(titleCall[1]).toContain('灵蛇诀');
     expect(titleCall[2]).toBe(200); // centered X
     expect(titleCall[3]).toBe(130); // title Y position
   });
@@ -73,7 +73,7 @@ describe('Game name rendering on title screen', () => {
     const fillTextCalls = ctx.calls.filter(c => c[0] === 'fillText');
     // Second fillText should be the subtitle (METROIDVANIA)
     const subtitleCall = fillTextCalls[1];
-    expect(subtitleCall[1]).toContain('METROIDVANIA');
+    expect(subtitleCall[1]).toContain('完美之界');
     expect(subtitleCall[3]).toBe(160);
   });
 });

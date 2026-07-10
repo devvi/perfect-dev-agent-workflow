@@ -46,11 +46,11 @@ function renderTitleScreen(ctx, state) {
   ctx.fillStyle = PALETTE.RED;
   ctx.font = '24px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('🐍 SNAKE', CANVAS_SIZE / 2, 130);
+  ctx.fillText('🐍 灵蛇诀', CANVAS_SIZE / 2, 130);
 
   ctx.fillStyle = PALETTE.GOLD;
   ctx.font = '14px monospace';
-  ctx.fillText('METROIDVANIA', CANVAS_SIZE / 2, 160);
+  ctx.fillText('完美之界', CANVAS_SIZE / 2, 160);
 
   // Subtitle
   ctx.fillStyle = '#8bac0f';
