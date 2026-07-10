@@ -194,6 +194,9 @@ export function tick(state) {
       s.savePoint = createSavePoint(s);
       saveGame(s, s.world);
     }
+
+    // Ensure tile consistency after room transition (Issue #113)
+    ensureTileConsistency(newRoom);
   }
 
   // Check collision (now in correct room context after transition)
@@ -393,6 +396,50 @@ function getDoorDirFromTransition(transition) {
   if (dy === 1) return 'down';
   if (dy === -1) return 'up';
   return null;
+}
+
+/**
+ * Ensure room door tiles match door configuration (Issue #113)
+ * If a room has a door in a direction but the border tile at that
+ * position is still WALL (not DOOR), fix it to prevent invisible barriers.
+ */
+function ensureTileConsistency(room) {
+  if (!room || !room.tiles || !room.doors) return;
+  const mid = Math.floor(ROOM_SIZE / 2);
+
+  for (const dir of ['up', 'down', 'left', 'right']) {
+    if (room.doors[dir]) {
+      if (dir === 'up') {
+        for (let dx = -2; dx <= 2; dx++) {
+          const col = mid + dx;
+          if (col >= 0 && col < ROOM_SIZE && room.tiles[0][col] === CELL.WALL) {
+            room.tiles[0][col] = CELL.DOOR;
+          }
+        }
+      } else if (dir === 'down') {
+        for (let dx = -2; dx <= 2; dx++) {
+          const col = mid + dx;
+          if (col >= 0 && col < ROOM_SIZE && room.tiles[ROOM_SIZE - 1][col] === CELL.WALL) {
+            room.tiles[ROOM_SIZE - 1][col] = CELL.DOOR;
+          }
+        }
+      } else if (dir === 'left') {
+        for (let dy = -2; dy <= 2; dy++) {
+          const row = mid + dy;
+          if (row >= 0 && row < ROOM_SIZE && room.tiles[row][0] === CELL.WALL) {
+            room.tiles[row][0] = CELL.DOOR;
+          }
+        }
+      } else if (dir === 'right') {
+        for (let dy = -2; dy <= 2; dy++) {
+          const row = mid + dy;
+          if (row >= 0 && row < ROOM_SIZE && room.tiles[row][ROOM_SIZE - 1] === CELL.WALL) {
+            room.tiles[row][ROOM_SIZE - 1] = CELL.DOOR;
+          }
+        }
+      }
+    }
+  }
 }
 
 /**

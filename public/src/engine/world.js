@@ -87,8 +87,8 @@ export function roomToWorldCoords(rx, ry, cx, cy) {
 export function getCellAt(world, wx, wy) {
   const { rx, ry, cx, cy } = worldToRoomCoords(wx, wy);
   const room = getRoomAt(world, rx, ry);
-  if (!room) return CELL.WALL;
-  if (cy < 0 || cy >= ROOM_SIZE || cx < 0 || cx >= ROOM_SIZE) return CELL.WALL;
+  if (!room) return CELL.FLOOR;
+  if (cy < 0 || cy >= ROOM_SIZE || cx < 0 || cx >= ROOM_SIZE) return CELL.FLOOR;
   return room.tiles[cy][cx];
 }
 
