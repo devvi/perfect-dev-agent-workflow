@@ -237,15 +237,32 @@ describe('Room transition tile consistency (Phase 2)', () => {
 // ============================================================
 describe('Snake collision with walls vs invisible areas (Phase 3)', () => {
   it('snake head at null-room coordinate should NOT trigger damage', () => {
-    const world = createMockWorld();
+    // Create world with 2 columns but only one valid room (room at [1][0] is null)
+    const world = {
+      cols: 2,
+      rows: 2,
+      rooms: [
+        [createRoom(0, 0), null],
+        [createRoom(0, 1), createRoom(1, 1)],
+      ],
+      playerStart: { roomX: 0, roomY: 0 },
+      keyAssignments: [],
+    };
     const snake = [{ x: 5, y: 5 }, { x: 4, y: 5 }, { x: 3, y: 5 }];
     const state = {
       world,
       food: { x: 2, y: 2 },
     };
 
-    // New head at coordinate that maps to null room
-    const nullRoomHead = { x: ROOM_SIZE * 3, y: 5 };
+    // New head at coordinate that maps to null room slot (room rx=1, ry=0)
+    const nullRoomX = 1 * ROOM_SIZE + Math.floor(ROOM_SIZE / 2);
+    const nullRoomHead = { x: nullRoomX, y: Math.floor(ROOM_SIZE / 2) };
+    // Verify this maps to a null room (not out-of-bounds)
+    const { rx, ry } = worldToRoomCoords(nullRoomHead.x, nullRoomHead.y);
+    expect(rx).toBe(1);
+    expect(ry).toBe(0);
+    expect(world.rooms[ry][rx]).toBeNull();
+
     const collisions = checkSnakeCollision(nullRoomHead, snake, state);
     // After fix, should NOT include 'damage'
     expect(collisions.includes('damage')).toBe(false);
