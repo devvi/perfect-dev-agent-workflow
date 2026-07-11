@@ -38,13 +38,17 @@ jobs:
               if (matchedPrefix) {
                 activeLabel = branchLabelMap[matchedPrefix];
                 console.log(`PR #${pr.number} missing workflow label — derived "${activeLabel}" from branch "${branch}"`);
-                // Fix the label on the PR so subsequent checks find it
-                await github.rest.issues.addLabels({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: pr.number,
-                  labels: [activeLabel],
-                });
+                // Best-effort: add the label to the PR (may fail without pull-requests:write access)
+                try {
+                  await github.rest.issues.addLabels({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: pr.number,
+                    labels: [activeLabel],
+                  });
+                } catch (labelErr) {
+                  console.log(`PR #${pr.number}: could not add workflow label (${labelErr.status} ${labelErr.message}) — continuing with branch-derived label`);
+                }
               } else {
                 console.log(`PR #${pr.number} has no workflow label and branch "${branch}" doesn't match — skipping`);
                 return;
