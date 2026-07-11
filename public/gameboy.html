@@ -165,7 +165,13 @@ canvas.addEventListener('touchend', (e) => {
   const dy = touch.clientY - touchStartY;
   const minSwipe = 30;
 
-  if (state && state.gameState === 'playing') {
+  if (state && state.gameState === 'title') {
+    // Tap (not swipe) on title screen → hit-test menu items
+    if (Math.abs(dx) < minSwipe && Math.abs(dy) < minSwipe) {
+      const coords = getCanvasCoords(touch.clientX, touch.clientY, canvas, 400, 400);
+      handleTitleTap(coords.x, coords.y);
+    }
+  } else if (state && state.gameState === 'playing') {
     let dir = null;
     if (Math.abs(dx) > Math.abs(dy)) {
       if (dx > minSwipe) dir = DIR.RIGHT;
@@ -191,6 +197,52 @@ document.querySelectorAll('.touch-btn').forEach(btn => {
     else if (action === 'interact') state = interact(state);
     updateHUD();
   });
+});
+
+// --- Title screen touch/click support (Issue #138) ---
+const MENU_Y = 340;
+const LINE_HEIGHT = 22;
+const CENTER_X = 200;
+const HIT_WIDTH = 100;
+const MENU_ITEMS = 2; // START GAME, ABOUT
+
+function getCanvasCoords(clientX, clientY, canvasEl, canvasWidth, canvasHeight) {
+  const rect = canvasEl.getBoundingClientRect();
+  return {
+    x: (clientX - rect.left) * (canvasWidth / rect.width),
+    y: (clientY - rect.top) * (canvasHeight / rect.height),
+  };
+}
+
+function hitTestMenuItem(canvasX, canvasY) {
+  for (let i = 0; i < MENU_ITEMS; i++) {
+    const yCenter = MENU_Y + i * LINE_HEIGHT;
+    const inY = Math.abs(canvasY - yCenter) <= LINE_HEIGHT / 2;
+    const inX = Math.abs(canvasX - CENTER_X) <= HIT_WIDTH;
+    if (inY && inX) return i;
+  }
+  return -1;
+}
+
+function handleTitleTap(canvasX, canvasY) {
+  if (!state || state.gameState !== 'title') return;
+  if (state.menuMode === 'about') {
+    state = { ...state, menuIndex: 0, menuMode: 'main' };
+    render(ctx, state);
+    return;
+  }
+  const item = hitTestMenuItem(canvasX, canvasY);
+  if (item === 0) {
+    start(); // START GAME
+  } else if (item === 1) {
+    state = { ...state, menuMode: 'about' }; // ABOUT
+    render(ctx, state);
+  }
+}
+
+canvas.addEventListener('click', (e) => {
+  const coords = getCanvasCoords(e.clientX, e.clientY, canvas, 400, 400);
+  handleTitleTap(coords.x, coords.y);
 });
 
 // --- Initialize gyroscope ---
