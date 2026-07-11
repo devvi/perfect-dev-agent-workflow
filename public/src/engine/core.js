@@ -74,6 +74,13 @@ export function createInitialState(existingWorld = null) {
     menuMode: 'main',
     commitInfo: commitInfo,
     invulnerableTicks: 0,
+    bossDefeated: false,
+    bossFight: {
+      phase: null,
+      introTick: 0,
+      boss: null,
+    },
+    foods: [],
   };
 }
 
@@ -185,10 +192,52 @@ export function tick(state) {
       s.roomsExplored++;
     }
 
-    // Check if entering goal room -> victory
+    // Check if entering goal room -> victory (gated on bossDefeated, Issue #122)
     if (newRoom.type === ROOM_TYPE.GOAL) {
-      s.gameState = 'won';
+      const hasBossRoom = hasRoomOfType(s.world, ROOM_TYPE.BOSS);
+      if (!hasBossRoom || s.bossDefeated) {
+        s.gameState = 'won';
+        return s;
+      }
+      s.doorMessage = 'DEFEAT THE BOSS FIRST!';
       return s;
+    }
+
+    // Check if entering boss room -> start boss fight
+    if (newRoom.type === ROOM_TYPE.BOSS && !s.bossDefeated) {
+      s.bossFight.phase = 'intro';
+      s.bossFight.introTick = 0;
+      // Create boss entity at center of boss room
+      const bossCenterX = newRoom.x * ROOM_SIZE + Math.floor(ROOM_SIZE / 2);
+      const bossCenterY = newRoom.y * ROOM_SIZE + Math.floor(ROOM_SIZE / 2);
+      // Import createBoss dynamically — defer to entities.js
+      // We inline creation here for the game loop
+      s.bossFight.boss = {
+        type: 'boss',
+        name: 'Blue Hammer',
+        hp: 6,
+        colHp: 3,
+        segments1: [
+          { x: bossCenterX, y: bossCenterY },
+          { x: bossCenterX - 1, y: bossCenterY },
+          { x: bossCenterX - 2, y: bossCenterY },
+        ],
+        segments2: [
+          { x: bossCenterX, y: bossCenterY + 1 },
+          { x: bossCenterX - 1, y: bossCenterY + 1 },
+          { x: bossCenterX - 2, y: bossCenterY + 1 },
+        ],
+        direction: { x: -1, y: 0 },
+        behavior: 'CHASE',
+        behaviorTick: 0,
+        stuffedTicks: 0,
+        color: '#4488FF',
+        eyes: [
+          { segmentIdx: 0, column: 'segments1' },
+          { segmentIdx: 0, column: 'segments2' },
+        ],
+        activeHead: 'head1',
+      };
     }
 
     // Check if entering save room -> auto-save
@@ -426,6 +475,19 @@ function getDoorDirFromTransition(transition) {
   if (dy === 1) return 'down';
   if (dy === -1) return 'up';
   return null;
+}
+
+/**
+ * Check if any room in the world has the given type
+ */
+function hasRoomOfType(world, type) {
+  if (!world || !world.rooms) return false;
+  for (let y = 0; y < world.rows; y++) {
+    for (let x = 0; x < world.cols; x++) {
+      if (world.rooms[y]?.[x]?.type === type) return true;
+    }
+  }
+  return false;
 }
 
 /**

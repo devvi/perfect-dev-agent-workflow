@@ -64,6 +64,38 @@ export function createFood(x, y) {
 }
 
 /**
+ * Create a boss entity (Blue Hammer — dual-column snake)
+ */
+export function createBoss(startX, startY) {
+  return {
+    type: 'boss',
+    name: 'Blue Hammer',
+    hp: 6,
+    colHp: 3,
+    segments1: [
+      { x: startX, y: startY },
+      { x: startX - 1, y: startY },
+      { x: startX - 2, y: startY },
+    ],
+    segments2: [
+      { x: startX, y: startY + 1 },
+      { x: startX - 1, y: startY + 1 },
+      { x: startX - 2, y: startY + 1 },
+    ],
+    direction: { x: -1, y: 0 },
+    behavior: 'CHASE',
+    behaviorTick: 0,
+    stuffedTicks: 0,
+    color: '#4488FF',
+    eyes: [
+      { segmentIdx: 0, column: 'segments1' },
+      { segmentIdx: 0, column: 'segments2' },
+    ],
+    activeHead: 'head1',
+  };
+}
+
+/**
  * Check if a world position is within bounds
  */
 export function isInWorld(wx, wy, world) {

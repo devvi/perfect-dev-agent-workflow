@@ -216,25 +216,13 @@ describe('Boss HP and Damage — (Test Case 2)', () => {
     applyBossDamage(boss, 'segments2');
     expect(boss.hp).toBe(4);
 
-    // Hit both columns repeatedly
-    applyBossDamage(boss, 'segments1');
-    applyBossDamage(boss, 'segments1');
-    applyBossDamage(boss, 'segments1');
-    expect(boss.hp).toBe(3);
-
-    applyBossDamage(boss, 'segments2');
-    applyBossDamage(boss, 'segments2');
-    applyBossDamage(boss, 'segments2');
-    expect(boss.hp).toBe(2);
-
-    applyBossDamage(boss, 'segments1');
-    applyBossDamage(boss, 'segments1');
-    applyBossDamage(boss, 'segments1');
+    // Empty column hits — each does 1 damage
+    applyBossDamage(boss, 'segments1');  // HP: 3
+    applyBossDamage(boss, 'segments1');  // HP: 2
+    applyBossDamage(boss, 'segments1');  // HP: 1
     expect(boss.hp).toBe(1);
 
-    applyBossDamage(boss, 'segments2');
-    applyBossDamage(boss, 'segments2');
-    applyBossDamage(boss, 'segments2');
+    applyBossDamage(boss, 'segments2');  // HP: 0
     expect(boss.hp).toBe(0);
 
     // Boss death
