@@ -209,6 +209,9 @@ export function assignRoomTypes(world, rng = Math.random) {
     : { x: cols - 1, y: rows - 1 };
   rooms[goal.y][goal.x].type = ROOM_TYPE.GOAL;
 
+  // Place BOSS room adjacent to GOAL on path from start
+  const bossPlaced = placeBossRoom(world, goal, rng);
+
   // Place save rooms (2-3)
   const saveCount = 2 + Math.floor(rng() * 2);
   let placed = 0;
@@ -248,6 +251,32 @@ export function assignRoomTypes(world, rng = Math.random) {
       placed++;
     }
   }
+}
+
+/**
+ * Place a BOSS room adjacent to the GOAL room on the path from start
+ */
+function placeBossRoom(world, goal, rng = Math.random) {
+  const { rooms } = world;
+  // Find a neighbor of the GOAL room that is on the path from start
+  const candidates = [];
+  const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+  for (const [dx, dy] of dirs) {
+    const nx = goal.x + dx;
+    const ny = goal.y + dy;
+    if (nx >= 0 && nx < world.cols && ny >= 0 && ny < world.rows) {
+      const room = rooms[ny][nx];
+      if (room && room.type === ROOM_TYPE.NORMAL) {
+        candidates.push({ x: nx, y: ny });
+      }
+    }
+  }
+  if (candidates.length > 0) {
+    const chosen = candidates[Math.floor(rng() * candidates.length)];
+    rooms[chosen.y][chosen.x].type = ROOM_TYPE.BOSS;
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -572,6 +601,21 @@ export function generateRoomTiles(room, rng = Math.random) {
     }
   }
 
+  // For boss room, place 4 pillars at fixed positions
+  if (room.type === ROOM_TYPE.BOSS) {
+    const PILLAR_POSITIONS = [
+      { cx: 3, cy: 3 },
+      { cx: 15, cy: 3 },
+      { cx: 3, cy: 15 },
+      { cx: 15, cy: 15 },
+    ];
+    for (const pos of PILLAR_POSITIONS) {
+      if (tiles[pos.cy] && tiles[pos.cy][pos.cx] !== undefined) {
+        tiles[pos.cy][pos.cx] = CELL.BOSS_PILLAR;
+      }
+    }
+  }
+
   return tiles;
 }
 
@@ -592,7 +636,7 @@ export function placeEnemiesAndItems(world, difficulty = 1, rng = Math.random) {
       }
 
       // Don't place enemies in start or save rooms
-      if (room.type === ROOM_TYPE.SAVE || room.type === ROOM_TYPE.GOAL) {
+      if (room.type === ROOM_TYPE.SAVE || room.type === ROOM_TYPE.GOAL || room.type === ROOM_TYPE.BOSS) {
         placeFoodInRoom(room, 2, world, rng);
         continue;
       }
