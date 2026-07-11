@@ -61,7 +61,6 @@ export function checkSnakeCollision(head, snake, state) {
 
   // Check door (room transition)
   if (cellType === CELL.DOOR) results.push('door');
-  if (cellType === CELL.BOSS_DOOR) results.push('boss_door');
   if (cellType === CELL.CRACKED_WALL) results.push('cracked_wall');
 
   // Check self collision (skip first segment which is head)
@@ -258,11 +257,6 @@ export function checkDoorPassable(state, doorDir) {
 
   const door = room.doors[doorDir];
   if (!door) return { passable: true };
-
-  // BOSS door locked from inside until boss defeated
-  if (room.bossRoom && !state.bossDefeated) {
-    return { passable: false, reason: 'boss_door' };
-  }
 
   if (door.locked && door.keyId) {
     if (!state.inventory || !state.inventory.keys || !state.inventory.keys.has(door.keyId)) {

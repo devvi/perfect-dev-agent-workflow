@@ -12,7 +12,6 @@ import { worldToRoomCoords, roomToWorldCoords, getCellAt } from './world.js';
 import { checkSnakeCollision, checkProjectileCollision, checkRoomTransition, checkDoorPassable, lineSweepProjectileCollision } from './collision.js';
 import { fireProjectile, updateProjectiles, applyProjectileDamage, updateCooldowns } from './combat.js';
 import { updateEnemies, emergencyFoodRespawn } from './ai.js';
-import { updateBoss, checkBossPlayerCollision, checkBossPillarCollision, updateFoodBlinkDespawn, trySpawnPeriodicFood, bossEatFood, bossTakeDamage } from './ai.js';
 import { useGachaMachine, tickPowerUps } from './items.js';
 import { saveGame } from './save.js';
 
@@ -75,8 +74,6 @@ export function createInitialState(existingWorld = null) {
     menuMode: 'main',
     commitInfo: commitInfo,
     invulnerableTicks: 0,
-    bossDefeated: false,
-    bossIntroData: null,
   };
 }
 
@@ -103,11 +100,6 @@ export function tick(state) {
       s.gameState = 'won';
       return s;
     }
-  }
-
-  // Handle boss intro state (boss room entry — waiting for key press)
-  if (state.gameState === 'bossIntro') {
-    return state;
   }
 
   if (state.gameState !== 'playing') return state;
@@ -196,14 +188,6 @@ export function tick(state) {
     // Check if entering goal room -> victory
     if (newRoom.type === ROOM_TYPE.GOAL) {
       s.gameState = 'won';
-      return s;
-    }
-
-    // Check if entering boss room → boss intro
-    if (newRoom.type === ROOM_TYPE.BOSS) {
-      s.gameState = 'bossIntro';
-      s.bossIntroData = { bossName: 'Blue Hammer', dialog: 'Snake tasts GOOD !' };
-      s.bossDefeated = false;
       return s;
     }
 
@@ -346,27 +330,6 @@ export function tick(state) {
     s = updateEnemies(s);
   }
 
-  // Boss battle updates (if in boss room)
-  if (s.world) {
-    const room = getRoomAt(s.world, s.currentRoom.x, s.currentRoom.y);
-    if (room && room.type === ROOM_TYPE.BOSS && room.bossRoom) {
-      s = updateBoss(s);
-      s = checkBossPlayerCollision(s);
-      s = checkBossPillarCollision(s);
-      s = updateFoodBlinkDespawn(s);
-      trySpawnPeriodicFood(s, room);
-      bossEatFood(room.entities.enemies.find(e => e.boss), room, s);
-
-      // Check boss death
-      const boss = room.entities.enemies.find(e => e.boss);
-      if (boss && boss.hp <= 0) {
-        s.gameState = 'won';
-        s.bossDefeated = true;
-        return s;
-      }
-    }
-  }
-
   // Emergency food respawn (requires world)
   if (s.world) {
     s = emergencyFoodRespawn(s);
@@ -406,17 +369,8 @@ export function tick(state) {
 
 /**
  * Change the snake's direction (with reverse guard)
- * Also handles boss intro dismissal
  */
 export function changeDirection(state, dir) {
-  // Boss intro dismissal: any direction key dismisses the intro
-  if (state.gameState === 'bossIntro') {
-    return {
-      ...state,
-      gameState: 'playing',
-    };
-  }
-
   if (state.gameState !== 'playing') return state;
 
   // Check reverse
@@ -553,19 +507,10 @@ function handleProjectileCollisions(state) {
     const result = lineSweepProjectileCollision(proj, s);
     if (result) {
       if (result.collisionType === 'enemy' && result.target) {
-        if (result.target.boss) {
-          // Boss takes damage via bossTakeDamage
-          const status = bossTakeDamage(result.target, s.projectilePower || 1);
-          s.score += 5;
-          if (status === 'dead') {
-            s.gameState = 'won';
-            s.bossDefeated = true;
-          }
-        } else {
-          s = applyProjectileDamage(s, proj.id, result.target);
-          if (result.target.hp <= 0) {
-            s = removeEnemy(s, result.target);
-          }
+        s = applyProjectileDamage(s, proj.id, result.target);
+        if (result.target.hp <= 0) {
+          // Remove dead enemy
+          s = removeEnemy(s, result.target);
         }
         projectilesToRemove.push(proj.id);
       } else if (result.collisionType === 'cracked_wall') {

@@ -1,7 +1,7 @@
 // FILE: public/src/engine/entities.js
-// Entity factories (Snake, Enemy, Projectile, Food, Boss)
+// Entity factories (Snake, Enemy, Projectile, Food)
 
-import { ROOM_SIZE, FOOD_DESPAWN_TOTAL } from './constants.js';
+import { ROOM_SIZE } from './constants.js';
 
 /**
  * Create snake starting state
@@ -40,48 +40,6 @@ export function createEnemy(id, x, y, hp = 2, speedTicks = 2) {
 }
 
 /**
- * Create a boss enemy (Blue Hammer — double-row blue snake)
- */
-export function createBossEnemy(type, x, y) {
-  if (type !== 'blue_hammer') throw new Error(`Unknown boss type: ${type}`);
-  return {
-    id: 999,
-    type: 'blue_hammer',
-    boss: true,
-    x, y,
-    hp: 6,
-    maxHp: 6,
-    segments: buildBossSegments(x, y),
-    rows: 2,
-    segmentsPerRow: 3,
-    speedTicks: 1,
-    tickCounter: 0,
-    chaseRange: 200,
-    phase: 1,
-    chargeCooldown: 0,
-    stuffedTicks: 0,
-    aiState: 'chase',
-    headIndex: 0,
-    color: '#3060e0',
-    headColor: '#5090ff',
-  };
-}
-
-/**
- * Build boss segment array — double row (2 rows × 3 segments)
- */
-export function buildBossSegments(x, y) {
-  return [
-    { x, y },
-    { x: x - 1, y },
-    { x: x - 2, y },
-    { x, y: y + 1 },
-    { x: x - 1, y: y + 1 },
-    { x: x - 2, y: y + 1 },
-  ];
-}
-
-/**
  * Create a projectile
  */
 export function createProjectile(id, x, y, dir, speed, remainingRange, power) {
@@ -103,23 +61,6 @@ export function createProjectile(id, x, y, dir, speed, remainingRange, power) {
  */
 export function createFood(x, y) {
   return { x, y };
-}
-
-/**
- * Create a bouncing food item (with physics bounce + despawn timer)
- */
-export function createBounceFood(x, y, source) {
-  const angle = Math.random() * Math.PI * 2;
-  const dist = 1 + Math.floor(Math.random() * 3);
-  return {
-    x, y,
-    vx: Math.round(Math.cos(angle) * dist),
-    vy: Math.round(Math.sin(angle) * dist),
-    isBouncing: true,
-    bounceTicks: 3,
-    despawnTicks: FOOD_DESPAWN_TOTAL,
-    blinkPhase: 0,
-  };
 }
 
 /**

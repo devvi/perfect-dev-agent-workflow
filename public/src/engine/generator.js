@@ -1,9 +1,8 @@
 // FILE: public/src/engine/generator.js
 // Procedural map generation + connectivity + key/lock placement
 
-import { ROOM_SIZE, MAP_COLS, MAP_ROWS, ROOM_TYPE, CELL, BOSS_ROOM_SIZE, BOSS_CELL_SIZE } from './constants.js';
+import { ROOM_SIZE, MAP_COLS, MAP_ROWS, ROOM_TYPE, CELL } from './constants.js';
 import { createRoom, getRoomAt, oppositeDir, generateDefaultTiles } from './world.js';
-import { createBossEnemy } from './entities.js';
 
 /**
  * Generate a solvable world map
@@ -76,11 +75,7 @@ function generateMapInternal(cols, rows, seed) {
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
       const room = rooms[y][x];
-      if (room.type === ROOM_TYPE.BOSS) {
-        room.tiles = generateBossRoomTiles(room);
-      } else {
-        room.tiles = generateRoomTiles(room, rng);
-      }
+      room.tiles = generateRoomTiles(room, rng);
     }
   }
 
@@ -212,7 +207,7 @@ export function assignRoomTypes(world, rng = Math.random) {
   const goal = goalOptions.length > 0
     ? goalOptions[Math.floor(rng() * goalOptions.length)]
     : { x: cols - 1, y: rows - 1 };
-  rooms[goal.y][goal.x].type = ROOM_TYPE.BOSS;
+  rooms[goal.y][goal.x].type = ROOM_TYPE.GOAL;
 
   // Place save rooms (2-3)
   const saveCount = 2 + Math.floor(rng() * 2);
@@ -266,7 +261,7 @@ export function placeKeysAndLocks(world, rng = Math.random) {
 
   // Find key shrine rooms
   const keyShrines = [];
-  const goalPos = findRoomOfType(world, ROOM_TYPE.BOSS);
+  const goalPos = findRoomOfType(world, ROOM_TYPE.GOAL);
 
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
@@ -365,7 +360,7 @@ function bfsWithKeys(world) {
 
   // Find start and goal
   const start = findRoomOfType(world, ROOM_TYPE.START);
-  const goal = findRoomOfType(world, ROOM_TYPE.BOSS);
+  const goal = findRoomOfType(world, ROOM_TYPE.GOAL);
 
   // State: (roomX, roomY, keysFound[])
   const visited = new Set();
@@ -417,43 +412,6 @@ function isNearDoor(cx, cy, room) {
   if (room.doors['left'] && cx <= 3 && Math.abs(cy - mid) <= 3) return true;
   if (room.doors['right'] && cx >= ROOM_SIZE - 4 && Math.abs(cy - mid) <= 3) return true;
   return false;
-}
-
-/**
- * Generate boss room tiles (80×80 grid with 4 pillars + BOSS door)
- */
-export function generateBossRoomTiles(room) {
-  const tiles = Array.from({ length: BOSS_ROOM_SIZE }, () =>
-    Array(BOSS_ROOM_SIZE).fill(CELL.FLOOR)
-  );
-  // Border walls
-  for (let i = 0; i < BOSS_ROOM_SIZE; i++) {
-    tiles[0][i] = tiles[BOSS_ROOM_SIZE - 1][i] = CELL.WALL;
-    tiles[i][0] = tiles[i][BOSS_ROOM_SIZE - 1] = CELL.WALL;
-  }
-  // 4 pillars at room corners (offset from walls)
-  const p = 5;
-  const pillarPositions = [
-    { x: p, y: p },
-    { x: BOSS_ROOM_SIZE - p - 1, y: p },
-    { x: p, y: BOSS_ROOM_SIZE - p - 1 },
-    { x: BOSS_ROOM_SIZE - p - 1, y: BOSS_ROOM_SIZE - p - 1 },
-  ];
-  pillarPositions.forEach(pos => {
-    tiles[pos.y][pos.x] = CELL.STONE_WALL;
-  });
-  room.pillars = pillarPositions.map(pos => ({ ...pos, hp: 1 }));
-  // BOSS door on top wall
-  const doorPos = Math.floor(BOSS_ROOM_SIZE / 2);
-  tiles[0][doorPos] = CELL.BOSS_DOOR;
-  room.bossRoom = true;
-  room.bossConfig = { bossType: 'blue_hammer', pillars: pillarPositions };
-  // Place the boss entity in the boss room
-  const bossEntity = createBossEnemy('blue_hammer', Math.floor(BOSS_ROOM_SIZE / 2), Math.floor(BOSS_ROOM_SIZE / 2) - 2);
-  bossEntity.roomX = room.x;
-  bossEntity.roomY = room.y;
-  room.entities.enemies.push(bossEntity);
-  return tiles;
 }
 
 /**
@@ -634,7 +592,7 @@ export function placeEnemiesAndItems(world, difficulty = 1, rng = Math.random) {
       }
 
       // Don't place enemies in start or save rooms
-      if (room.type === ROOM_TYPE.SAVE || room.type === ROOM_TYPE.GOAL || room.type === ROOM_TYPE.BOSS) {
+      if (room.type === ROOM_TYPE.SAVE || room.type === ROOM_TYPE.GOAL) {
         placeFoodInRoom(room, 2, world, rng);
         continue;
       }
@@ -750,7 +708,7 @@ function buildSafeMap(cols, rows) {
 
   const world = { cols, rows, rooms, playerStart: { roomX: 0, roomY: 0 }, keyAssignments: [] };
   rooms[0][0].type = ROOM_TYPE.START;
-  rooms[rows - 1][cols - 1].type = ROOM_TYPE.BOSS;
+  rooms[rows - 1][cols - 1].type = ROOM_TYPE.GOAL;
   world.playerStart = { roomX: 0, roomY: 0 };
 
   // Add some save, gacha, key rooms
@@ -763,12 +721,7 @@ function buildSafeMap(cols, rows) {
   // Generate tiles for all rooms
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
-      const room = rooms[y][x];
-      if (room.type === ROOM_TYPE.BOSS) {
-        room.tiles = generateBossRoomTiles(room);
-      } else {
-        rooms[y][x].tiles = generateRoomTiles(rooms[y][x], () => 0.5);
-      }
+      rooms[y][x].tiles = generateRoomTiles(rooms[y][x], () => 0.5);
     }
   }
 
