@@ -127,17 +127,21 @@ describe('Bug 1: getCellAt cannot access full boss room tiles', () => {
 describe('Bug 3: Boss entity spawns at wrong world coordinates', () => {
   it('boss entity is placed at tile-local coords (40,38) instead of world coords', () => {
     const { world, bossRoom, bossRx, bossRy } = createBossWorld();
-    // generateBossRoomTiles() calls:
-    //   createBossEnemy('blue_hammer', 40, 38)  // args are tile-local coords
-    // but the entity's x,y are stored as WORLD coords.
-    // So boss at (40, 38) world coords → room grid (2, 0), not the boss room.
     const boss = bossRoom.entities.enemies.find(e => e.boss);
     expect(boss).toBeDefined();
-    // BUG: boss should be in boss room grid cell (bossRx, bossRy)
-    const bossRoomGrid = getRoomAt(world, Math.floor(boss.x / ROOM_SIZE), Math.floor(boss.y / ROOM_SIZE));
-    expect(bossRoomGrid).not.toBeNull();
-    expect(bossRoomGrid.type).not.toBe(ROOM_TYPE.BOSS);
-    expect(bossRoomGrid.type).toBe(ROOM_TYPE.NORMAL); // wrong room
+    // BUG (now fixed): boss used to be placed at tile-local coords (40,38),
+    // which mapped to ROOM_SIZE grid position (2,1) — not the boss room.
+    // After fix: boss is at world coords (room.x * tiles.length + 40, ...)
+    // which place the boss at the correct tile-local position (40,38) within
+    // the boss room's own coordinate space.
+    const expectedLocalX = Math.floor(BOSS_ROOM_SIZE / 2);
+    const expectedLocalY = Math.floor(BOSS_ROOM_SIZE / 2) - 2;
+    // Boss room uses 80×80 tiles, so world coords = room.grid_pos * 80 + local_offset
+    expect(boss.x).toBe(bossRoom.x * BOSS_ROOM_SIZE + expectedLocalX);
+    expect(boss.y).toBe(bossRoom.y * BOSS_ROOM_SIZE + expectedLocalY);
+    // Boss roomX/roomY should still match the boss room
+    expect(boss.roomX).toBe(bossRoom.x);
+    expect(boss.roomY).toBe(bossRoom.y);
   });
 });
 

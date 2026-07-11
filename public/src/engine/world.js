@@ -62,12 +62,17 @@ export function getRoomAt(world, rx, ry) {
 
 /**
  * Convert world coords to room-local coords
+ * @param {number} wx - World X coordinate
+ * @param {number} wy - World Y coordinate
+ * @param {object} [room] - Optional room object. When provided, uses room.tiles.length
+ *                          as the room size for modular arithmetic. Falls back to ROOM_SIZE.
  */
-export function worldToRoomCoords(wx, wy) {
-  const rx = Math.floor(wx / ROOM_SIZE);
-  const ry = Math.floor(wy / ROOM_SIZE);
-  const cx = ((wx % ROOM_SIZE) + ROOM_SIZE) % ROOM_SIZE;
-  const cy = ((wy % ROOM_SIZE) + ROOM_SIZE) % ROOM_SIZE;
+export function worldToRoomCoords(wx, wy, room) {
+  const roomSize = (room && room.tiles && room.tiles.length) ? room.tiles.length : ROOM_SIZE;
+  const rx = Math.floor(wx / roomSize);
+  const ry = Math.floor(wy / roomSize);
+  const cx = ((wx % roomSize) + roomSize) % roomSize;
+  const cy = ((wy % roomSize) + roomSize) % roomSize;
   return { rx, ry, cx, cy };
 }
 
@@ -83,12 +88,23 @@ export function roomToWorldCoords(rx, ry, cx, cy) {
 
 /**
  * Get cell type at a given world position
+ * Uses the room's actual tile dimensions for bounds checking.
+ * Falls back to ROOM_SIZE when room is null/undefined.
+ * The cell coordinates (cx, cy) within the tile array are derived from
+ * the ROOM_SIZE-based grid cell offset, ensuring backward compatibility
+ * for rooms where tiles.length > ROOM_SIZE (e.g. boss rooms with 80×80 tiles).
  */
 export function getCellAt(world, wx, wy) {
-  const { rx, ry, cx, cy } = worldToRoomCoords(wx, wy);
+  // First pass: find room using standard ROOM_SIZE grid
+  const { rx, ry } = worldToRoomCoords(wx, wy);
   const room = getRoomAt(world, rx, ry);
   if (!room) return CELL.FLOOR;
-  if (cy < 0 || cy >= ROOM_SIZE || cx < 0 || cx >= ROOM_SIZE) return CELL.FLOOR;
+  // Cell coords within the ROOM_SIZE grid cell (always [0, ROOM_SIZE-1])
+  const cx = ((wx % ROOM_SIZE) + ROOM_SIZE) % ROOM_SIZE;
+  const cy = ((wy % ROOM_SIZE) + ROOM_SIZE) % ROOM_SIZE;
+  // Bounds check against actual room tile dimensions
+  const roomSize = (room.tiles && room.tiles.length) ? room.tiles.length : ROOM_SIZE;
+  if (cy < 0 || cy >= roomSize || cx < 0 || cx >= roomSize) return CELL.FLOOR;
   return room.tiles[cy][cx];
 }
 
