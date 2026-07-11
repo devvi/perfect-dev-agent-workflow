@@ -23,7 +23,7 @@ jobs:
             const prLabels = pr.labels.map(l => l.name);
 
             // Derive workflow label from PR labels OR branch name (fallback)
-            const workflowLabels = ['workflow/research', 'workflow/plan', 'workflow/implement'];
+            const workflowLabels = ['workflow/research', 'workflow/plan', 'workflow/implement', 'workflow/test'];
             let activeLabel = workflowLabels.find(l => prLabels.includes(l));
             if (!activeLabel) {
               // Fallback: derive from branch name (label might have been lost during PR creation)
@@ -32,6 +32,7 @@ jobs:
                 'research/': 'workflow/research',
                 'plan/':     'workflow/plan',
                 'impl/':     'workflow/implement',
+                'review/':   'workflow/test',
               };
               const matchedPrefix = Object.keys(branchLabelMap).find(p => branch.startsWith(p));
               if (matchedPrefix) {
@@ -63,7 +64,8 @@ jobs:
             const nextStage = {
               'workflow/research':  'workflow/plan',
               'workflow/plan':      'workflow/implement',
-              'workflow/implement': null,  // implement → done (close issue)
+              'workflow/implement': 'workflow/test',
+              'workflow/test':      null,  // test → done (close issue)
             };
 
             const nextLabel = nextStage[activeLabel];
