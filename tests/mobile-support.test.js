@@ -396,3 +396,135 @@ describe('Mobile Support — Swipe Direction', () => {
     expect(dir).toBeNull();
   });
 });
+
+// ==================== Title Screen Touch Handler ====================
+
+/**
+ * Coordinate mapping helper (same logic as will be added to gameboy.html)
+ */
+function getCanvasCoords(clientX, clientY, canvasRect, canvasWidth, canvasHeight) {
+  return {
+    x: (clientX - canvasRect.left) * (canvasWidth / canvasRect.width),
+    y: (clientY - canvasRect.top) * (canvasHeight / canvasRect.height),
+  };
+}
+
+/**
+ * Hit-test logic (same as will be added to gameboy.html)
+ */
+function hitTestMenuItem(canvasX, canvasY, menuY, lineHeight, centerX, hitWidth, itemCount) {
+  for (let i = 0; i < itemCount; i++) {
+    const yCenter = menuY + i * lineHeight;
+    const inY = Math.abs(canvasY - yCenter) <= lineHeight / 2;
+    const inX = Math.abs(canvasX - centerX) <= hitWidth;
+    if (inY && inX) return i;
+  }
+  return -1;
+}
+
+describe('Mobile Support — Title Screen Touch', () => {
+  const CANVAS_SIZE = 400;
+  const menuY = 340;
+  const lineHeight = 22;
+  const centerX = 200;
+  const hitWidth = 100;
+  const itemCount = 2; // START GAME, ABOUT
+
+  describe('getCanvasCoords — coordinate mapping', () => {
+    it('should map client coords to canvas coords for unscaled canvas', () => {
+      const rect = { left: 0, top: 0, width: 400, height: 400 };
+      const result = getCanvasCoords(200, 340, rect, 400, 400);
+      expect(result.x).toBe(200);
+      expect(result.y).toBe(340);
+    });
+
+    it('should map client coords when canvas is CSS-scaled (e.g., mobile viewport)', () => {
+      // Canvas 400×400 displayed in a 375×375 CSS box
+      const rect = { left: 0, top: 0, width: 375, height: 375 };
+      // Tap at (187, 317) in CSS → (200, 340) in canvas
+      const result = getCanvasCoords(187, 317, rect, 400, 400);
+      expect(Math.round(result.x)).toBe(199); // ~199.5
+      expect(Math.round(result.y)).toBe(338); // ~338.1
+    });
+
+    it('should account for canvas offset from page top-left', () => {
+      const rect = { left: 50, top: 30, width: 400, height: 400 };
+      const result = getCanvasCoords(250, 370, rect, 400, 400);
+      expect(result.x).toBe(200);
+      expect(result.y).toBe(340);
+    });
+  });
+
+  describe('hitTestMenuItem — menu item detection', () => {
+    it('should detect START GAME (item 0) hit at its center (200, 340)', () => {
+      const result = hitTestMenuItem(200, 340, menuY, lineHeight, centerX, hitWidth, itemCount);
+      expect(result).toBe(0);
+    });
+
+    it('should detect ABOUT (item 1) hit at its center (200, 362)', () => {
+      const result = hitTestMenuItem(200, 362, menuY, lineHeight, centerX, hitWidth, itemCount);
+      expect(result).toBe(1);
+    });
+
+    it('should detect START GAME at top boundary of hit zone (200, 329)', () => {
+      const result = hitTestMenuItem(200, 329, menuY, lineHeight, centerX, hitWidth, itemCount);
+      expect(result).toBe(0);
+    });
+
+    it('should detect START GAME at bottom boundary of hit zone (200, 350)', () => {
+      const result = hitTestMenuItem(200, 350, menuY, lineHeight, centerX, hitWidth, itemCount);
+      expect(result).toBe(0);
+    });
+
+    it('should detect ABOUT at top boundary of hit zone (200, 352)', () => {
+      const result = hitTestMenuItem(200, 352, menuY, lineHeight, centerX, hitWidth, itemCount);
+      expect(result).toBe(1);
+    });
+
+    it('should detect ABOUT at bottom boundary of hit zone (200, 373)', () => {
+      const result = hitTestMenuItem(200, 373, menuY, lineHeight, centerX, hitWidth, itemCount);
+      expect(result).toBe(1);
+    });
+
+    it('should detect hit at left boundary (100, 340)', () => {
+      const result = hitTestMenuItem(100, 340, menuY, lineHeight, centerX, hitWidth, itemCount);
+      expect(result).toBe(0);
+    });
+
+    it('should detect hit at right boundary (300, 340)', () => {
+      const result = hitTestMenuItem(300, 340, menuY, lineHeight, centerX, hitWidth, itemCount);
+      expect(result).toBe(0);
+    });
+
+    it('should NOT detect a hit outside left boundary (99, 340)', () => {
+      const result = hitTestMenuItem(99, 340, menuY, lineHeight, centerX, hitWidth, itemCount);
+      expect(result).toBe(-1);
+    });
+
+    it('should NOT detect a hit outside right boundary (301, 340)', () => {
+      const result = hitTestMenuItem(301, 340, menuY, lineHeight, centerX, hitWidth, itemCount);
+      expect(result).toBe(-1);
+    });
+
+    it('should NOT detect a hit far from menu area (50, 50)', () => {
+      const result = hitTestMenuItem(50, 50, menuY, lineHeight, centerX, hitWidth, itemCount);
+      expect(result).toBe(-1);
+    });
+
+    it('should NOT detect a hit between items (200, 352)', () => {
+      // Gap between START GAME bottom (351) and ABOUT top (351) → 352 is just past ABOUT
+      const result = hitTestMenuItem(200, 352, menuY, lineHeight, centerX, hitWidth, itemCount);
+      expect(result).toBe(1); // closest bound: 352 falls in ABOUT's range [351, 373]
+    });
+
+    it('should NOT detect a hit at (200, 328) — just above START GAME', () => {
+      const result = hitTestMenuItem(200, 328, menuY, lineHeight, centerX, hitWidth, itemCount);
+      expect(result).toBe(-1);
+    });
+
+    it('should NOT detect a hit at (200, 374) — just below ABOUT', () => {
+      const result = hitTestMenuItem(200, 374, menuY, lineHeight, centerX, hitWidth, itemCount);
+      expect(result).toBe(-1);
+    });
+  });
+});
