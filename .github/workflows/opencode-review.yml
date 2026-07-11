@@ -39,8 +39,14 @@ jobs:
           echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
         continue-on-error: true
 
-      - name: Upload test output artifact
+      - name: Test gate — block merge on failure
         if: steps.test.outputs.exit_code != '0'
+        run: |
+          echo "❌ Tests FAILED (exit code ${{ steps.test.outputs.exit_code }}). Blocking merge."
+          exit 1
+
+      - name: Upload test output artifact
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: test-output-${{ github.event.pull_request.number }}

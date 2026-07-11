@@ -213,6 +213,16 @@ export function assignRoomTypes(world, rng = Math.random) {
     ? goalOptions[Math.floor(rng() * goalOptions.length)]
     : { x: cols - 1, y: rows - 1 };
   rooms[goal.y][goal.x].type = ROOM_TYPE.BOSS;
+  rooms[goal.y][goal.x].bossRoom = true;
+  rooms[goal.y][goal.x].bossConfig = {
+    bossType: 'blue_hammer',
+    pillars: [
+      { x: 5, y: 5 },
+      { x: 74, y: 5 },
+      { x: 5, y: 74 },
+      { x: 74, y: 74 },
+    ],
+  };
 
   // Place save rooms (2-3)
   const saveCount = 2 + Math.floor(rng() * 2);
