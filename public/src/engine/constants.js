@@ -16,7 +16,6 @@ export const ROOM_TYPE = {
   HIDDEN:     'hidden',
   GACHA:      'gacha',
   KEY_SHRINE: 'key_shrine',
-  BOSS:       'boss',
 };
 
 // Direction
@@ -38,13 +37,6 @@ export const CELL = {
   STONE_WALL:  4,
   DEATH_WALL:  5,
   SPIKE:       6,
-  BOSS_PILLAR: 'B',
-};
-
-// Door types
-export const DOOR_TYPE = {
-  NORMAL: 'normal',
-  BOSS:   'boss',
 };
 
 // Game states
@@ -96,27 +88,6 @@ export const STUCK_TICKS = 5;
 // Invulnerability after enemy hit (Issue #118)
 export const INVULNERABILITY_DURATION = 10; // ticks of invulnerability after enemy hit
 
-// Boss constants (Issue #122)
-export const BOSS = {
-  NAME: 'Blue Hammer',
-  MAX_HP: 6,
-  COL_HP: 3,
-  MAX_LENGTH_PER_COL: 3,
-  CHARGE_WINDUP_TICKS: 5,
-  CHARGE_DASH_TICKS: 5,
-  CHARGE_RECOVERY_TICKS: 3,
-  STUFFED_TICKS: 10,
-  FOOD_DECAY_TICKS: 120,
-  FOOD_FLASH_START: 80,
-};
-
-export const PILLAR_POSITIONS = [
-  { cx: 3, cy: 3 },    // NW
-  { cx: 15, cy: 3 },   // NE
-  { cx: 3, cy: 15 },   // SW
-  { cx: 15, cy: 15 },  // SE
-];
-
 // localStorage key
 export const SAVE_KEY = 'snake_save';
 
@@ -144,10 +115,4 @@ export const PALETTE = {
   HUD_BG:     '#1a1a2e',
   HUD_TEXT:   '#e94560',
   LOCKED:     '#aa3333',
-  BOSS_BLUE:  '#4488FF',
-  BOSS_EYE:   '#FF4444',
-  BOSS_PILLAR: '#888888',
-  BOSS_DOOR:  '#FF0000',
-  BOSS_HP_BAR: '#4488FF',
-  BOSS_HP_BG: '#333333',
 };

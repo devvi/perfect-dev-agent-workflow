@@ -1156,7 +1156,7 @@ describe('Phase 8 — Integration', () => {
           for (let ty = 0; ty < ROOM_SIZE; ty++) {
             expect(room.tiles[ty].length).toBe(ROOM_SIZE);
             for (let tx = 0; tx < ROOM_SIZE; tx++) {
-              expect([0, 1, 2, 3, 4, 5, 6, 'B']).toContain(room.tiles[ty][tx]);
+              expect([0, 1, 2, 3, 4, 5, 6]).toContain(room.tiles[ty][tx]);
             }
           }
         }
