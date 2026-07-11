@@ -6,12 +6,15 @@ export const ROOM_SIZE = 20;
 export const MAP_COLS = 5;
 export const MAP_ROWS = 5;
 export const CELL_SIZE = 20;
+export const BOSS_ROOM_SIZE = 80;
+export const BOSS_CELL_SIZE = 5;
 
 // Room types
 export const ROOM_TYPE = {
   NORMAL:     'normal',
   START:      'start',
   GOAL:       'goal',
+  BOSS:       'boss',
   SAVE:       'save',
   HIDDEN:     'hidden',
   GACHA:      'gacha',
@@ -37,6 +40,7 @@ export const CELL = {
   STONE_WALL:  4,
   DEATH_WALL:  5,
   SPIKE:       6,
+  BOSS_DOOR:   7,
 };
 
 // Game states
@@ -87,6 +91,14 @@ export const STUCK_TICKS = 5;
 
 // Invulnerability after enemy hit (Issue #118)
 export const INVULNERABILITY_DURATION = 10; // ticks of invulnerability after enemy hit
+
+// Boss battle constants (Issue #127)
+export const BOSS_HP_SEGMENTS = 6;
+export const BOSS_CHARGE_WINDUP = 5;       // ticks of windup before charge
+export const BOSS_STUFFED_TICKS = 3;       // ticks boss pauses when overfed
+export const BOSS_CHARGE_COOLDOWN = 8;     // ticks between charges
+export const FOOD_BLINK_START = 10;        // remaining despawnTicks when blink starts
+export const FOOD_DESPAWN_TOTAL = 30;      // total despawn timer for bounce food
 
 // localStorage key
 export const SAVE_KEY = 'snake_save';
