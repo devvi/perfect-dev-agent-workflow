@@ -85,38 +85,16 @@ jobs:
           echo "deploy_url=$DEPLOY_URL" >> $GITHUB_OUTPUT
           echo "✅ Deployed to: $DEPLOY_URL"
 
-      - name: Comment Vercel URL on Issue
+      - name: Notify Feishu on Deploy Success
         if: success()
         env:
           BASE_URL: ${{ steps.deploy.outputs.deploy_url }}
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const prNum = '${{ needs.check-implement.outputs.pr-num }}';
-            const baseUrl = process.env.BASE_URL || 'https://perfect-dev-agent-workflow.vercel.app';
-            const gameUrl = baseUrl + '/gameboy.html';
-            // Find the parent issue from PR body or title
-            const pr = await github.rest.pulls.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: parseInt(prNum),
-            });
-            const body = pr.data.body || '';
-            let issueNum = null;
-            const match = body.match(/(?:Closes|parent)\s*#(\d+)/i);
-            if (match) issueNum = parseInt(match[1]);
-            if (!issueNum) {
-              const titleMatch = pr.data.title.match(/\(parent\s*#(\d+)\)/i);
-              if (titleMatch) issueNum = parseInt(titleMatch[1]);
-            }
-            if (issueNum) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNum,
-                body: `🚀 Vercel: ${gameUrl}`,
-              });
-            }
+        run: |
+          DEPLOY_URL="${BASE_URL:-https://perfect-dev-agent-workflow.vercel.app}/gameboy.html"
+          MSG="{\"msg_type\":\"text\",\"content\":{\"text\":\"✅ #${{ needs.check-implement.outputs.pr-num }} → 🚀 ${DEPLOY_URL}\"}}"
+          curl -s -X POST -H "Content-Type: application/json" \
+            -d "$MSG" \
+            https://open.feishu.cn/open-apis/bot/v2/hook/7bd125b1-172a-41ad-a0da-ccd54e63a982
 
   # Skip notification for non-implement merges
   skip-notify:
