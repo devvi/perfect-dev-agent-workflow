@@ -184,10 +184,11 @@ export function emergencyFoodRespawn(state) {
     // Respawn food in current room
     const room = getRoomAt(state.world, state.currentRoom.x, state.currentRoom.y);
     if (room) {
+      const roomSize = (room.tiles && room.tiles.length) ? room.tiles.length : ROOM_SIZE;
       // Find clear spot
       for (let tries = 0; tries < 50; tries++) {
-        const cx = 1 + Math.floor(Math.random() * (ROOM_SIZE - 2));
-        const cy = 1 + Math.floor(Math.random() * (ROOM_SIZE - 2));
+        const cx = 1 + Math.floor(Math.random() * (roomSize - 2));
+        const cy = 1 + Math.floor(Math.random() * (roomSize - 2));
         if (room.tiles[cy][cx] === 0) {
           const wx = state.currentRoom.x * ROOM_SIZE + cx;
           const wy = state.currentRoom.y * ROOM_SIZE + cy;

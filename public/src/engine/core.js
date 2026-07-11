@@ -410,7 +410,24 @@ export function tick(state) {
  */
 export function changeDirection(state, dir) {
   // Boss intro dismissal: any direction key dismisses the intro
+  // After dismiss, place snake head on a FLOOR cell within the boss room
+  // to prevent freeze on the entry wall. The head enters the boss room at
+  // grid position (currentRoom.x*20+10, currentRoom.y*20+0) which maps to
+  // tiles[0][10] = CELL.WALL. We reposition to tiles[1][10] = CELL.FLOOR.
   if (state.gameState === 'bossIntro') {
+    const room = state.world ? getRoomAt(state.world, state.currentRoom.x, state.currentRoom.y) : null;
+    if (room && room.type === ROOM_TYPE.BOSS) {
+      // Place snake head one cell below the top border of the boss room,
+      // at the center of the 20×20 world grid cell (tiles[1][10] = FLOOR)
+      const spawnX = state.currentRoom.x * ROOM_SIZE + Math.floor(ROOM_SIZE / 2);
+      const spawnY = state.currentRoom.y * ROOM_SIZE + 1;
+      const head = { x: spawnX, y: spawnY };
+      return {
+        ...state,
+        gameState: 'playing',
+        snake: [head, ...state.snake.slice(1)],
+      };
+    }
     return {
       ...state,
       gameState: 'playing',

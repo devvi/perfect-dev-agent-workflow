@@ -458,8 +458,12 @@ export function generateBossRoomTiles(room) {
   tiles[0][doorPos] = CELL.BOSS_DOOR;
   room.bossRoom = true;
   room.bossConfig = { bossType: 'blue_hammer', pillars: pillarPositions };
-  // Place the boss entity in the boss room
-  const bossEntity = createBossEnemy('blue_hammer', Math.floor(BOSS_ROOM_SIZE / 2), Math.floor(BOSS_ROOM_SIZE / 2) - 2);
+  // Place the boss entity in the boss room — use world coordinates
+  // (room origin offset + tile-local offset within the 80×80 boss room)
+  // Note: room.tiles is still 20×20 default at this point; use local `tiles` (80×80)
+  const bossWorldX = room.x * tiles.length + Math.floor(BOSS_ROOM_SIZE / 2);
+  const bossWorldY = room.y * tiles.length + Math.floor(BOSS_ROOM_SIZE / 2) - 2;
+  const bossEntity = createBossEnemy('blue_hammer', bossWorldX, bossWorldY);
   bossEntity.roomX = room.x;
   bossEntity.roomY = room.y;
   room.entities.enemies.push(bossEntity);

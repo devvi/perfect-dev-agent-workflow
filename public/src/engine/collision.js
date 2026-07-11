@@ -10,17 +10,18 @@ import { getRoomAt, getCellAt, worldToRoomCoords } from './world.js';
  */
 function isDoorCell(room, cx, cy) {
   if (!room || !room.doors) return false;
-  const mid = Math.floor(ROOM_SIZE / 2);
+  const roomSize = (room.tiles && room.tiles.length) ? room.tiles.length : ROOM_SIZE;
+  const mid = Math.floor(roomSize / 2);
   if (cy === 0 && room.doors.up) {
     return cx >= mid - 2 && cx <= mid + 2;
   }
-  if (cy === ROOM_SIZE - 1 && room.doors.down) {
+  if (cy === roomSize - 1 && room.doors.down) {
     return cx >= mid - 2 && cx <= mid + 2;
   }
   if (cx === 0 && room.doors.left) {
     return cy >= mid - 2 && cy <= mid + 2;
   }
-  if (cx === ROOM_SIZE - 1 && room.doors.right) {
+  if (cx === roomSize - 1 && room.doors.right) {
     return cy >= mid - 2 && cy <= mid + 2;
   }
   return false;

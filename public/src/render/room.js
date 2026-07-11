@@ -14,8 +14,9 @@ export function renderRoom(ctx, state, world) {
   if (!room) return;
 
   // Draw tiles
-  for (let cy = 0; cy < ROOM_SIZE; cy++) {
-    for (let cx = 0; cx < ROOM_SIZE; cx++) {
+  const roomSize = (room.tiles && room.tiles.length) ? room.tiles.length : ROOM_SIZE;
+  for (let cy = 0; cy < roomSize; cy++) {
+    for (let cx = 0; cx < roomSize; cx++) {
       const cell = room.tiles[cy][cx];
       const px = cx * CELL_SIZE;
       const py = cy * CELL_SIZE;
