@@ -238,7 +238,12 @@ function tickFn() {
   updateHUD();
   render(ctx, state);
 
-  // Handle game over or win
+  // Test hooks for Playwright E2E
+  if (typeof window !== 'undefined') {
+    window.__GAME_STATE__ = () => state;
+  }
+
+  // Handle game over or won
   if (state.gameState === 'gameover' || state.gameState === 'won') {
     if (gameLoop) {
       clearTimeout(gameLoop);

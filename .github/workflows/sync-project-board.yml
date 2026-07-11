@@ -27,6 +27,9 @@ jobs:
               'workflow/research':  'Research',
               'workflow/plan':      'Plan',
               'workflow/implement': 'Implement',
+              'workflow/test':      'Test',
+              'workflow/deploy':    'Deploy',
+              'workflow/self-correct': 'Fixing',
             };
 
             // Determine stage
