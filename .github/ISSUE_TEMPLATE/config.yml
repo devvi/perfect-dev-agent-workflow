@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 直接提空白 Issue
+    url: https://github.com/devvi/perfect-dev-agent-workflow/issues/new
+    about: 不选择模板，直接创建空白 Issue
