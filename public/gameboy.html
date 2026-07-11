@@ -241,6 +241,41 @@ function tickFn() {
   // Test hooks for Playwright E2E
   if (typeof window !== 'undefined') {
     window.__GAME_STATE__ = () => state;
+    window.__GAME_API__ = {
+      getState: () => state,
+      teleport: (rx, ry) => {
+        if (!state || !state.world) return null;
+        const room = state.world.rooms[ry] && state.world.rooms[ry][rx];
+        if (!room) return null;
+        state = { ...state, currentRoom: { x: rx, y: ry }, gameState: 'playing', bossIntroData: null };
+        return state.gameState;
+      },
+      getBossRoom: () => {
+        if (!state || !state.world) return null;
+        for (let y = 0; y < state.world.rows; y++)
+          for (let x = 0; x < state.world.cols; x++)
+            if (state.world.rooms[y][x].type === 'boss' || state.world.rooms[y][x].bossRoom)
+              return { x, y };
+        return null;
+      },
+      simulateKey: (code) => {
+        if (!state) return;
+        if (code === 'Space' || code === 'Enter') {
+          if (state.gameState === 'bossIntro') {
+            state = { ...state, gameState: 'playing' };
+          } else if (state.gameState === 'title') {
+            const event = new KeyboardEvent('keydown', { code: 'Space' });
+            document.dispatchEvent(event);
+          }
+        }
+      },
+      tick: (n = 1) => {
+        for (let i = 0; i < n; i++) {
+          if (state) state = tick(state);
+        }
+        return state ? state.gameState : null;
+      },
+    };
   }
 
   // Handle game over or won
