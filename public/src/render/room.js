@@ -2,7 +2,7 @@
 // Room rendering (tiles, entities)
 
 import {
-  ROOM_SIZE, CELL_SIZE, CELL, ROOM_TYPE, PALETTE,
+  ROOM_SIZE, CELL_SIZE, CELL, ROOM_TYPE, PALETTE, BOSS_ROOM_SIZE, BOSS_CELL_SIZE,
 } from '../engine/constants.js';
 import { getRoomAt, worldToRoomCoords } from '../engine/world.js';
 
@@ -13,37 +13,45 @@ export function renderRoom(ctx, state, world) {
   const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
   if (!room) return;
 
+  // Determine cell size (zoom-out for boss room)
+  const cellSize = room.bossRoom ? BOSS_CELL_SIZE : CELL_SIZE;
+  const roomSize = room.bossRoom ? BOSS_ROOM_SIZE : ROOM_SIZE;
+
   // Draw tiles
-  const roomSize = (room.tiles && room.tiles.length) ? room.tiles.length : ROOM_SIZE;
   for (let cy = 0; cy < roomSize; cy++) {
     for (let cx = 0; cx < roomSize; cx++) {
       const cell = room.tiles[cy][cx];
-      const px = cx * CELL_SIZE;
-      const py = cy * CELL_SIZE;
+      const px = cx * cellSize;
+      const py = cy * cellSize;
 
       switch (cell) {
         case CELL.FLOOR:
         case CELL.DOOR:
           // Checkerboard pattern for floor
           if ((cx + cy) % 2 === 0) {
-            ctx.fillStyle = '#8bac0f';
-            ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+            ctx.fillStyle = room.bossRoom ? '#1a1a2e' : '#8bac0f';
+            ctx.fillRect(px, py, cellSize, cellSize);
           }
           break;
 
         case CELL.WALL:
-          ctx.fillStyle = PALETTE.DARK_GREEN;
-          ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+          ctx.fillStyle = room.bossRoom ? '#0f0f23' : PALETTE.DARK_GREEN;
+          ctx.fillRect(px, py, cellSize, cellSize);
           break;
 
         case CELL.STONE_WALL:
-          ctx.fillStyle = '#1a3a1a';
-          ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+          ctx.fillStyle = room.bossRoom ? '#555555' : '#1a3a1a';
+          ctx.fillRect(px, py, cellSize, cellSize);
+          // In boss room, mark pillar
+          if (room.bossRoom) {
+            ctx.fillStyle = '#777777';
+            ctx.fillRect(px + 1, py + 1, cellSize - 2, cellSize - 2);
+          }
           break;
 
         case CELL.CRACKED_WALL:
           ctx.fillStyle = PALETTE.DARK_GREEN;
-          ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+          ctx.fillRect(px, py, cellSize, cellSize);
           // Draw crack lines
           ctx.strokeStyle = PALETTE.CRACK;
           ctx.lineWidth = 1;
@@ -61,11 +69,11 @@ export function renderRoom(ctx, state, world) {
         case CELL.DEATH_WALL:
           // Red/lava glow
           ctx.fillStyle = '#cc3300';
-          ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+          ctx.fillRect(px, py, cellSize, cellSize);
           // Inner highlight
           ctx.fillStyle = '#ff6633';
           ctx.beginPath();
-          ctx.arc(px + CELL_SIZE / 2, py + CELL_SIZE / 2, 6, 0, Math.PI * 2);
+          ctx.arc(px + cellSize / 2, py + cellSize / 2, 6, 0, Math.PI * 2);
           ctx.fill();
           // Spiky edges
           ctx.strokeStyle = '#ff4400';
@@ -82,25 +90,37 @@ export function renderRoom(ctx, state, world) {
         case CELL.SPIKE:
           // Dark base with red triangles
           ctx.fillStyle = '#555';
-          ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+          ctx.fillRect(px, py, cellSize, cellSize);
           ctx.fillStyle = '#aa3333';
           for (let s = 0; s < 3; s++) {
             const spx = px + 2 + s * 6;
             ctx.beginPath();
-            ctx.moveTo(spx, py + CELL_SIZE - 2);
+            ctx.moveTo(spx, py + cellSize - 2);
             ctx.lineTo(spx + 3, py + 2);
-            ctx.lineTo(spx + 6, py + CELL_SIZE - 2);
+            ctx.lineTo(spx + 6, py + cellSize - 2);
             ctx.fill();
           }
+          break;
+
+        case CELL.BOSS_DOOR:
+          ctx.fillStyle = '#aa2222';
+          ctx.fillRect(px, py, cellSize, cellSize);
+          // Red glow
+          ctx.fillStyle = '#ff4444';
+          ctx.font = 'bold 8px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText('💀', px + cellSize / 2, py + cellSize - 2);
           break;
       }
     }
   }
 
-  // Draw door indicators (arrows)
-  for (const dir of ['up', 'down', 'left', 'right']) {
-    if (room.doors[dir]) {
-      drawDoorIndicator(ctx, room, dir);
+  // Draw door indicators (arrows) — skip for boss room (BOSS door has special rendering)
+  if (!room.bossRoom) {
+    for (const dir of ['up', 'down', 'left', 'right']) {
+      if (room.doors[dir]) {
+        drawDoorIndicator(ctx, room, dir);
+      }
     }
   }
 
@@ -110,17 +130,31 @@ export function renderRoom(ctx, state, world) {
   // Draw food
   for (const food of room.entities.food) {
     const { cx, cy } = worldToRoomCoords(food.x, food.y);
-    const px = cx * CELL_SIZE;
-    const py = cy * CELL_SIZE;
+    const px = cx * cellSize;
+    const py = cy * cellSize;
+
+    // Blink animation for food about to despawn
+    if (food.despawnTicks !== undefined && food.despawnTicks <= 10) {
+      const blinkFreq = food.despawnTicks <= 5 ? 1 : 2;
+      if (Math.floor(food.blinkPhase / blinkFreq) % 2 === 0) {
+        ctx.globalAlpha = 0.3;
+      }
+    }
+
     ctx.fillStyle = PALETTE.FOOD;
     ctx.beginPath();
-    ctx.arc(px + CELL_SIZE / 2, py + CELL_SIZE / 2, 4, 0, Math.PI * 2);
+    ctx.arc(px + cellSize / 2, py + cellSize / 2, Math.max(2, cellSize / 5), 0, Math.PI * 2);
     ctx.fill();
+    ctx.globalAlpha = 1.0;
   }
 
-  // Draw enemies
+  // Draw enemies (including boss)
   for (const enemy of room.entities.enemies) {
-    drawEnemy(ctx, enemy, world);
+    if (enemy.boss) {
+      drawBossEnemy(ctx, enemy, cellSize);
+    } else {
+      drawEnemy(ctx, enemy, cellSize);
+    }
   }
 
   // Draw snake
@@ -203,6 +237,9 @@ export function renderRoom(ctx, state, world) {
  * Draw snake
  */
 function drawSnake(ctx, state) {
+  const room = state.world ? getRoomAt(state.world, state.currentRoom.x, state.currentRoom.y) : null;
+  const cellSize = room && room.bossRoom ? BOSS_CELL_SIZE : CELL_SIZE;
+
   // Flash effect when stuck (Issue #46)
   const isStuck = state.stuckCounter > 0;
   if (isStuck) {
@@ -230,31 +267,31 @@ function drawSnake(ctx, state) {
     const { rx, ry } = worldToRoomCoords(seg.x, seg.y);
     if (rx !== state.currentRoom.x || ry !== state.currentRoom.y) continue;
 
-    const px = cx * CELL_SIZE;
-    const py = cy * CELL_SIZE;
+    const px = cx * cellSize;
+    const py = cy * cellSize;
 
     if (i === 0) {
       ctx.fillStyle = isStuck ? '#ff4444' : PALETTE.SNAKE_HEAD;
-      ctx.fillRect(px + 1, py + 1, CELL_SIZE - 2, CELL_SIZE - 2);
+      ctx.fillRect(px + 1, py + 1, cellSize - 2, cellSize - 2);
       // Eyes
       ctx.fillStyle = '#ffffff';
-      const eyeSize = 3;
+      const eyeSize = Math.max(2, cellSize / 7);
       if (state.direction.y === -1) { // up
-        ctx.fillRect(px + 5, py + 4, eyeSize, eyeSize);
-        ctx.fillRect(px + 12, py + 4, eyeSize, eyeSize);
+        ctx.fillRect(px + cellSize / 4, py + cellSize / 5, eyeSize, eyeSize);
+        ctx.fillRect(px + cellSize * 3 / 4 - eyeSize, py + cellSize / 5, eyeSize, eyeSize);
       } else if (state.direction.y === 1) { // down
-        ctx.fillRect(px + 5, py + 13, eyeSize, eyeSize);
-        ctx.fillRect(px + 12, py + 13, eyeSize, eyeSize);
+        ctx.fillRect(px + cellSize / 4, py + cellSize * 3 / 4 - eyeSize, eyeSize, eyeSize);
+        ctx.fillRect(px + cellSize * 3 / 4 - eyeSize, py + cellSize * 3 / 4 - eyeSize, eyeSize, eyeSize);
       } else if (state.direction.x === -1) { // left
-        ctx.fillRect(px + 4, py + 5, eyeSize, eyeSize);
-        ctx.fillRect(px + 4, py + 12, eyeSize, eyeSize);
+        ctx.fillRect(px + cellSize / 5, py + cellSize / 4, eyeSize, eyeSize);
+        ctx.fillRect(px + cellSize / 5, py + cellSize * 3 / 4 - eyeSize, eyeSize, eyeSize);
       } else { // right
-        ctx.fillRect(px + 13, py + 5, eyeSize, eyeSize);
-        ctx.fillRect(px + 13, py + 12, eyeSize, eyeSize);
+        ctx.fillRect(px + cellSize * 3 / 4 - eyeSize, py + cellSize / 4, eyeSize, eyeSize);
+        ctx.fillRect(px + cellSize * 3 / 4 - eyeSize, py + cellSize * 3 / 4 - eyeSize, eyeSize, eyeSize);
       }
     } else {
       ctx.fillStyle = PALETTE.SNAKE_BODY;
-      ctx.fillRect(px + 2, py + 2, CELL_SIZE - 4, CELL_SIZE - 4);
+      ctx.fillRect(px + 2, py + 2, cellSize - 4, cellSize - 4);
     }
   }
   if (isStuck || isInvulnerable) ctx.globalAlpha = 1.0;
@@ -263,31 +300,61 @@ function drawSnake(ctx, state) {
 /**
  * Draw an enemy
  */
-function drawEnemy(ctx, enemy, world) {
-  const { cx, cy } = worldToRoomCoords(enemy.x, enemy.y);
-  const px = cx * CELL_SIZE;
-  const py = cy * CELL_SIZE;
-
-  // Draw body segments
+function drawEnemy(ctx, enemy, cellSize) {
   for (let i = enemy.segments.length - 1; i >= 0; i--) {
     const seg = enemy.segments[i];
     const { cx: scx, cy: scy } = worldToRoomCoords(seg.x, seg.y);
-    const spx = scx * CELL_SIZE;
-    const spy = scy * CELL_SIZE;
+    const spx = scx * cellSize;
+    const spy = scy * cellSize;
 
     if (i === 0) {
       ctx.fillStyle = PALETTE.ENEMY_HEAD;
     } else {
       ctx.fillStyle = PALETTE.ENEMY;
     }
-    ctx.fillRect(spx + 2, spy + 2, CELL_SIZE - 4, CELL_SIZE - 4);
+    ctx.fillRect(spx + 2, spy + 2, cellSize - 4, cellSize - 4);
   }
 
   // Draw HP indicator
   ctx.fillStyle = '#ffffff';
-  ctx.font = '8px monospace';
+  ctx.font = `${Math.max(8, cellSize - 4)}px monospace`;
   ctx.textAlign = 'center';
-  ctx.fillText('❤' + enemy.hp, px + CELL_SIZE / 2, py - 2);
+  const { cx, cy } = worldToRoomCoords(enemy.x, enemy.y);
+  ctx.fillText('❤' + enemy.hp, cx * cellSize + cellSize / 2, cy * cellSize - 2);
+}
+
+/**
+ * Draw a boss enemy (Blue Hammer — double-row blue snake)
+ */
+function drawBossEnemy(ctx, boss, cellSize) {
+  for (let i = boss.segments.length - 1; i >= 0; i--) {
+    const seg = boss.segments[i];
+    const { cx: scx, cy: scy } = worldToRoomCoords(seg.x, seg.y);
+    const spx = scx * cellSize;
+    const spy = scy * cellSize;
+
+    // Determine if this segment is a head (front of each row)
+    const isHead = (i === 0 || i === 3);
+    ctx.fillStyle = isHead ? boss.headColor : boss.color;
+    ctx.fillRect(spx + 1, spy + 1, cellSize - 2, cellSize - 2);
+
+    // Draw eyes on head segments
+    if (isHead) {
+      ctx.fillStyle = '#ffffff';
+      const eyeSize = Math.max(1, cellSize / 5);
+      ctx.fillRect(spx + cellSize / 3, spy + cellSize / 4, eyeSize, eyeSize);
+      ctx.fillRect(spx + cellSize / 3, spy + cellSize * 2 / 3, eyeSize, eyeSize);
+    }
+  }
+
+  // Show phase indicator above boss
+  if (boss.phase === 2 && boss.aiState === 'windup') {
+    ctx.fillStyle = '#ffff00';
+    ctx.font = `${Math.max(6, cellSize)}px monospace`;
+    ctx.textAlign = 'center';
+    const { cx, cy } = worldToRoomCoords(boss.x, boss.y);
+    ctx.fillText('⚡', cx * cellSize + cellSize / 2, cy * cellSize - cellSize);
+  }
 }
 
 /**

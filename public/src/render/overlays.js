@@ -1,7 +1,8 @@
 // FILE: public/src/render/overlays.js
 // Start/game-over/victory screens
 
-import { PALETTE, CANVAS_SIZE, GAME_STATE } from '../engine/constants.js';
+import { PALETTE, CANVAS_SIZE, GAME_STATE, ROOM_TYPE } from '../engine/constants.js';
+import { getRoomAt } from '../engine/world.js';
 
 const MENU_ITEMS = ['START GAME', 'ABOUT'];
 
@@ -31,6 +32,8 @@ export function renderOverlay(ctx, state) {
     renderVictoryScreen(ctx, state);
   } else if (state.gameState === 'paused') {
     renderPauseScreen(ctx);
+  } else if (state.gameState === 'bossIntro') {
+    renderBossIntroOverlay(ctx, state);
   }
 }
 
