@@ -319,6 +319,16 @@ document.addEventListener('keydown', (e) => {
     }
   }
 
+  // Boss intro: space/enter to start the fight
+  if (state.gameState === 'bossIntro') {
+    if (e.code === 'Space' || e.code === 'Enter') {
+      e.preventDefault();
+      state = { ...state, gameState: 'playing' };
+      render(ctx, state);
+      return;
+    }
+  }
+
   // Game over / Won: space or enter to restart
   if (state.gameState === 'gameover' || state.gameState === 'won') {
     if (e.code === 'Space' || e.code === 'Enter') {
