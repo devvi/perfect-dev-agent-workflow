@@ -108,51 +108,46 @@ async function testPage(browser, pageName) {
       errors.push({ type: 'dom_error_text', text: `Error text in page body: "${bodyText.slice(0, 200)}"` });
     }
 
-    // ── REGRESSION SCENARIOS ──
+    // ── REGRESSION SCENARIOS (teleport-based) ──
     if (pageName === 'gameboy.html') {
       try {
-        // Regression 1: Boss room entry (Issue #127)
-        // Use the game engine to simulate boss room entry via test hook
-        const gameState = await page.evaluate(() => {
-          const gs = window.__GAME_STATE__ && window.__GAME_STATE__();
-          if (!gs) return null;
-          return { gameState: gs.gameState, snakeLen: gs.snake ? gs.snake.length : 0 };
+        await page.keyboard.press('Space');
+        await page.waitForTimeout(500);
+
+        const scenarioResults = await page.evaluate(() => {
+          const api = window.__GAME_API__;
+          if (!api) return { error: '__GAME_API__ not available', logs: [{scenario:'api_check',status:'SKIP',detail:'API not found'}] };
+          const logs = [];
+
+          const boss = api.getBossRoom();
+          if (!boss) {
+            logs.push({ scenario: 'boss_teleport', status: 'SKIP', detail: 'No boss room' });
+          } else {
+            api.teleport(boss.x, boss.y);
+            logs.push({ scenario: 'boss_teleport', status: 'OK', detail: `teleported to (${boss.x},${boss.y})` });
+          }
+
+          const state1 = api.getState();
+          logs.push({ scenario: 'boss_entry', status: state1.gameState === 'bossIntro' || state1.currentRoom ? 'OK' : 'FAIL', detail: `state=${state1.gameState}` });
+
+          api.simulateKey('Space');
+          const state2 = api.getState();
+          logs.push({ scenario: 'boss_dismiss', status: state2.gameState === 'playing' ? 'OK' : 'FAIL', detail: `Space → ${state2.gameState}` });
+
+          api.tick(10);
+          const state3 = api.getState();
+          logs.push({ scenario: 'boss_stability', status: state3 && (state3.gameState === 'playing' || state3.gameState === 'won') ? 'OK' : 'FAIL', detail: `10 ticks → ${state3 ? state3.gameState : 'null'}` });
+
+          return { logs };
         });
 
-        if (gameState) {
-          // Teleport to boss room via test window
-          await page.evaluate(() => {
-            const gs = window.__GAME_STATE__ && window.__GAME_STATE__();
-            if (!gs || !gs.world) return false;
-
-            // Find the boss room
-            for (let y = 0; y < gs.world.rows; y++) {
-              for (let x = 0; x < gs.world.cols; x++) {
-                const room = gs.world.rooms[y][x];
-                if (room && (room.type === 'boss' || room.bossRoom)) {
-                  // Manually set current room to boss room
-                  // This triggers the boss intro
-                  break;
-                }
-              }
-            }
-            return true;
-          });
-        }
-
-        // Navigate through several rooms to ensure no crash
-        for (let i = 0; i < 5; i++) {
-          await page.keyboard.press('ArrowDown');
-          await page.waitForTimeout(300);
-          await page.keyboard.press('ArrowRight');
-          await page.waitForTimeout(300);
-          await page.keyboard.press('ArrowUp');
-          await page.waitForTimeout(200);
-          await page.keyboard.press('ArrowLeft');
-          await page.waitForTimeout(200);
+        for (const r of scenarioResults.logs || []) {
+          if (r.status === 'FAIL') errors.push({ type: `regression_${r.scenario}`, text: r.detail });
+          else if (r.status === 'SKIP') console.log(`      ⏭️  ${r.scenario}: ${r.detail}`);
+          else console.log(`      ✅ ${r.scenario}: ${r.detail}`);
         }
       } catch (regressionErr) {
-        errors.push({ type: 'regression_crash', text: `Regression test crashed: ${regressionErr.message}` });
+        errors.push({ type: 'regression_crash', text: `Scenarios crashed: ${regressionErr.message}` });
       }
     }
     try {
