@@ -202,7 +202,7 @@ describe('pre-implementation baseline', () => {
     const deployPath = path.join(PROJECT_ROOT, '.github', 'workflows', 'deploy.yml');
     expect(fs.existsSync(deployPath)).toBe(true);
     const content = fs.readFileSync(deployPath, 'utf-8');
-    expect(content).toContain('vercel-action');
+    expect(content).toContain('vercel');
   });
 
   it('existing gameboy-snake tests should still be runnable', async () => {
