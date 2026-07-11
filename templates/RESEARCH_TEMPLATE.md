@@ -6,6 +6,11 @@
 
 ---
 
+### Research Options
+- [ ] 搜索 Obsidian 知识库（勾选后强制搜索，不受 depth 限制。如不勾选，仅 standard/deep 深度会自动搜索。）
+
+---
+
 ## 1. Problem Definition
 
 ### Current Behavior
