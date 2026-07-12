@@ -119,27 +119,54 @@ async function testPage(browser, pageName) {
           if (!api) return { error: '__GAME_API__ not available', logs: [{scenario:'api_check',status:'SKIP',detail:'API not found'}] };
           const logs = [];
 
-          const boss = api.getBossRoom();
-          if (!boss) {
-            logs.push({ scenario: 'boss_teleport', status: 'SKIP', detail: 'No boss room' });
+          // ── Scenario: Walk through door into boss room (REAL room transition) ──
+          const entrance = api.findBossEntrance();
+          if (!entrance) {
+            logs.push({ scenario: 'walk_into_boss', status: 'SKIP', detail: 'No entrance to boss room found' });
           } else {
-            // First teleport to boss room
-            api.teleport(boss.x, boss.y);
-            // Then simulate walking in (triggers bossIntro)
-            const entryResult = api.enterBossRoom();
-            logs.push({ scenario: 'boss_teleport', status: entryResult === 'bossIntro' ? 'OK' : 'FAIL', detail: `enterBossRoom → ${entryResult}` });
+            // Teleport to the neighbor room
+            api.teleport(entrance.neighbor.roomX, entrance.neighbor.roomY);
+
+            // Place snake at the edge of neighbor room facing boss room
+            const doorCol = 10; // mid of 20×20 room
+            let hx, hy;
+            if (entrance.dir === 'right') { hx = entrance.neighbor.roomX * 20 + 19; hy = entrance.neighbor.roomY * 20 + doorCol; }
+            else if (entrance.dir === 'left') { hx = entrance.neighbor.roomX * 20; hy = entrance.neighbor.roomY * 20 + doorCol; }
+            else if (entrance.dir === 'down') { hx = entrance.neighbor.roomX * 20 + doorCol; hy = entrance.neighbor.roomY * 20 + 19; }
+            else if (entrance.dir === 'up') { hx = entrance.neighbor.roomX * 20 + doorCol; hy = entrance.neighbor.roomY * 20; }
+            api.placeSnakeHead(hx, hy);
+            api.setDirection(entrance.dir);
+
+            // Tick to step toward boss room
+            api.tick(1);
+            // Tick again to cross into boss room → room transition fires
+            const gs = api.tick(1);
+
+            const success = gs === 'bossIntro';
+            logs.push({
+              scenario: 'walk_into_boss',
+              status: success ? 'OK' : 'FAIL',
+              detail: success
+                ? `entered boss room from (${entrance.neighbor.roomX},${entrance.neighbor.roomY}) via ${entrance.dir}`
+                : `state=${gs} head=${JSON.stringify(api.getState().snake[0])} ent=${JSON.stringify(entrance)}`,
+            });
           }
 
+          // ── Scenario: Dismiss boss intro with Space ──
           const state1 = api.getState();
-          logs.push({ scenario: 'boss_entry', status: state1.gameState === 'bossIntro' ? 'OK' : 'FAIL', detail: `state=${state1.gameState} (expected bossIntro)` });
+          if (state1.gameState === 'bossIntro') {
+            api.simulateKey('Space');
+            const state2 = api.getState();
+            logs.push({ scenario: 'boss_dismiss', status: state2.gameState === 'playing' ? 'OK' : 'FAIL', detail: `Space → ${state2.gameState}` });
 
-          api.simulateKey('Space');
-          const state2 = api.getState();
-          logs.push({ scenario: 'boss_dismiss', status: state2.gameState === 'playing' ? 'OK' : 'FAIL', detail: `Space → ${state2.gameState}` });
-
-          api.tick(10);
-          const state3 = api.getState();
-          logs.push({ scenario: 'boss_stability', status: state3 && (state3.gameState === 'playing' || state3.gameState === 'won') ? 'OK' : 'FAIL', detail: `10 ticks → ${state3 ? state3.gameState : 'null'}` });
+            // ── Scenario: Snake stays alive after dismiss ──
+            api.tick(30);
+            const state3 = api.getState();
+            logs.push({ scenario: 'boss_stability', status: state3 && (state3.gameState === 'playing' || state3.gameState === 'won') ? 'OK' : 'FAIL', detail: `30 ticks → ${state3 ? state3.gameState : 'null'}` });
+          } else {
+            logs.push({ scenario: 'boss_dismiss', status: 'SKIP', detail: 'Not in bossIntro state' });
+            logs.push({ scenario: 'boss_stability', status: 'SKIP', detail: 'Not in bossIntro state' });
+          }
 
           return { logs };
         });
