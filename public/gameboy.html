@@ -322,6 +322,7 @@ function tickFn() {
         if (!state) return;
         if (code === 'Space' || code === 'Enter') {
           if (state.gameState === 'bossIntro') {
+            // Dismiss boss intro: reposition head to safe floor via changeDirection.
             state = changeDirection(state, { x: 0, y: 1 });
           } else if (state.gameState === 'title') {
             const event = new KeyboardEvent('keydown', { code: 'Space' });

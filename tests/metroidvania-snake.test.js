@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 
 // Engine constants
 import {
-  ROOM_SIZE, MAP_COLS, MAP_ROWS, CELL_SIZE,
+  ROOM_SIZE, MAP_COLS, MAP_ROWS, CELL_SIZE, BOSS_ROOM_SIZE,
   ROOM_TYPE, DIR, CELL, DOOR_DIR,
   BASE_TICK_INTERVAL,
 } from '../public/src/engine/constants.js';
@@ -1152,11 +1152,21 @@ describe('Phase 8 — Integration', () => {
       for (let y = 0; y < world.rows; y++) {
         for (let x = 0; x < world.cols; x++) {
           const room = world.rooms[y][x];
-          expect(room.tiles.length).toBe(ROOM_SIZE);
-          for (let ty = 0; ty < ROOM_SIZE; ty++) {
-            expect(room.tiles[ty].length).toBe(ROOM_SIZE);
-            for (let tx = 0; tx < ROOM_SIZE; tx++) {
-              expect([0, 1, 2, 3, 4, 5, 6]).toContain(room.tiles[ty][tx]);
+          if (room.type === ROOM_TYPE.BOSS) {
+            expect(room.tiles.length).toBe(BOSS_ROOM_SIZE);
+            for (let ty = 0; ty < BOSS_ROOM_SIZE; ty++) {
+              expect(room.tiles[ty].length).toBe(BOSS_ROOM_SIZE);
+              for (let tx = 0; tx < BOSS_ROOM_SIZE; tx++) {
+                expect([0, 1, 2, 3, 4, 5, 6, 7]).toContain(room.tiles[ty][tx]);
+              }
+            }
+          } else {
+            expect(room.tiles.length).toBe(ROOM_SIZE);
+            for (let ty = 0; ty < ROOM_SIZE; ty++) {
+              expect(room.tiles[ty].length).toBe(ROOM_SIZE);
+              for (let tx = 0; tx < ROOM_SIZE; tx++) {
+                expect([0, 1, 2, 3, 4, 5, 6]).toContain(room.tiles[ty][tx]);
+              }
             }
           }
         }
@@ -2378,11 +2388,11 @@ describe('Phase 6 — Boss Battle (Issue #127)', () => {
       const world = generateWorldMap(5, 5);
       // Find the boss room (should replace the former GOAL room at far corner)
       // The GOAL/ BOSS room is typically at (MAP_COLS-1, MAP_ROWS-1) or farthest from start
-      const assigned = assignRoomTypes(world);
+      assignRoomTypes(world);
       let bossRoom = null;
-      for (let y = 0; y < assigned.rows; y++) {
-        for (let x = 0; x < assigned.cols; x++) {
-          const r = assigned.rooms[y][x];
+      for (let y = 0; y < world.rows; y++) {
+        for (let x = 0; x < world.cols; x++) {
+          const r = world.rooms[y][x];
           if (r && r.type === ROOM_TYPE.BOSS) {
             bossRoom = r;
             break;
@@ -2396,11 +2406,11 @@ describe('Phase 6 — Boss Battle (Issue #127)', () => {
 
     it('BOSS room has bossConfig with bossType "blue_hammer"', () => {
       const world = generateWorldMap(5, 5);
-      const assigned = assignRoomTypes(world);
+      assignRoomTypes(world);
       let bossRoom = null;
-      for (let y = 0; y < assigned.rows; y++) {
-        for (let x = 0; x < assigned.cols; x++) {
-          const r = assigned.rooms[y][x];
+      for (let y = 0; y < world.rows; y++) {
+        for (let x = 0; x < world.cols; x++) {
+          const r = world.rooms[y][x];
           if (r && r.type === ROOM_TYPE.BOSS) {
             bossRoom = r;
             break;
@@ -2415,11 +2425,11 @@ describe('Phase 6 — Boss Battle (Issue #127)', () => {
 
     it('BOSS room has 4 pillars at expected positions', () => {
       const world = generateWorldMap(5, 5);
-      const assigned = assignRoomTypes(world);
+      assignRoomTypes(world);
       let bossRoom = null;
-      for (let y = 0; y < assigned.rows; y++) {
-        for (let x = 0; x < assigned.cols; x++) {
-          const r = assigned.rooms[y][x];
+      for (let y = 0; y < world.rows; y++) {
+        for (let x = 0; x < world.cols; x++) {
+          const r = world.rooms[y][x];
           if (r && r.type === ROOM_TYPE.BOSS) {
             bossRoom = r;
             break;
