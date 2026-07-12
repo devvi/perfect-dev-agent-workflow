@@ -322,7 +322,9 @@ function tickFn() {
         if (!state) return;
         if (code === 'Space' || code === 'Enter') {
           if (state.gameState === 'bossIntro') {
-            state = changeDirection(state, { x: 0, y: 1 });
+            // Dismiss boss intro: don't move the head (it's at the entry door).
+            // Just set playing + zero direction so the snake waits for player input.
+            state = { ...state, gameState: 'playing', nextDirection: { x: 0, y: 0 } };
           } else if (state.gameState === 'title') {
             const event = new KeyboardEvent('keydown', { code: 'Space' });
             document.dispatchEvent(event);
@@ -423,7 +425,7 @@ document.addEventListener('keydown', (e) => {
   if (state.gameState === 'bossIntro') {
     if (e.code === 'Space' || e.code === 'Enter') {
       e.preventDefault();
-      state = changeDirection(state, { x: 0, y: 1 });
+      state = { ...state, gameState: 'playing', nextDirection: { x: 0, y: 0 } };
       render(ctx, state);
       return;
     }
