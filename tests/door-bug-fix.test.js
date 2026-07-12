@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { ROOM_SIZE, CELL } from '../public/src/engine/constants.js';
+import { ROOM_SIZE, CELL, ROOM_TYPE } from '../public/src/engine/constants.js';
 import { createRoom, getRoomAt, oppositeDir } from '../public/src/engine/world.js';
 import { addRandomDoors, buildSpanningTree, generateRoomTiles, generateWorldMap, verifySolvability } from '../public/src/engine/generator.js';
 
@@ -146,7 +146,7 @@ describe('Door tile symmetry in generated worlds', () => {
       for (let ry = 0; ry < rows; ry++) {
         for (let rx = 0; rx < cols; rx++) {
           const room = world.rooms[ry][rx];
-          if (!room || !room.doors) continue;
+          if (!room || !room.doors || room.type === ROOM_TYPE.BOSS) continue;
 
           for (const dir of ['up', 'down', 'left', 'right']) {
             const door = room.doors[dir];

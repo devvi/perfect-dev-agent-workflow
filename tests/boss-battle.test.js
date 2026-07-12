@@ -10,11 +10,11 @@ import { createBossEnemy, buildBossSegments } from '../public/src/engine/entitie
 describe('Boss Room Generation', () => {
   it('assignRoomTypes creates a BOSS room (replaces former GOAL)', () => {
     const world = generateWorldMap(5, 5);
-    const assigned = assignRoomTypes(world);
+    assignRoomTypes(world);
     let bossRoom = null;
-    for (let y = 0; y < assigned.rows; y++) {
-      for (let x = 0; x < assigned.cols; x++) {
-        if (assigned.rooms[y][x].type === ROOM_TYPE.BOSS) bossRoom = assigned.rooms[y][x];
+    for (let y = 0; y < world.rows; y++) {
+      for (let x = 0; x < world.cols; x++) {
+        if (world.rooms[y][x].type === ROOM_TYPE.BOSS) bossRoom = world.rooms[y][x];
       }
     }
     expect(bossRoom).not.toBeNull();
@@ -22,11 +22,11 @@ describe('Boss Room Generation', () => {
 
   it('boss room has bossConfig', () => {
     const world = generateWorldMap(5, 5);
-    const assigned = assignRoomTypes(world);
+    assignRoomTypes(world);
     let bossRoom = null;
-    for (let y = 0; y < assigned.rows; y++) {
-      for (let x = 0; x < assigned.cols; x++) {
-        if (assigned.rooms[y][x].type === ROOM_TYPE.BOSS) bossRoom = assigned.rooms[y][x];
+    for (let y = 0; y < world.rows; y++) {
+      for (let x = 0; x < world.cols; x++) {
+        if (world.rooms[y][x].type === ROOM_TYPE.BOSS) bossRoom = world.rooms[y][x];
       }
     }
     expect(bossRoom.bossConfig).toBeDefined();

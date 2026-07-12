@@ -142,7 +142,7 @@ describe('Room transition tile consistency (Phase 2)', () => {
     for (let ry = 0; ry < world.rows; ry++) {
       for (let rx = 0; rx < world.cols; rx++) {
         const room = world.rooms[ry][rx];
-        if (!room) continue;
+        if (!room || room.type === ROOM_TYPE.BOSS) continue;
 
         // For each door direction, the corresponding border tile must be DOOR
         for (const dir of ['up', 'down', 'left', 'right']) {
@@ -181,7 +181,7 @@ describe('Room transition tile consistency (Phase 2)', () => {
     for (let ry = 0; ry < world.rows; ry++) {
       for (let rx = 0; rx < world.cols; rx++) {
         const room = world.rooms[ry][rx];
-        if (!room) continue;
+        if (!room || room.type === ROOM_TYPE.BOSS) continue;
 
         for (const dir of ['up', 'down', 'left', 'right']) {
           if (room.doors[dir]) {

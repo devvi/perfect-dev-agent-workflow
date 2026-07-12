@@ -453,9 +453,36 @@ export function generateBossRoomTiles(room) {
     tiles[pos.y][pos.x] = CELL.STONE_WALL;
   });
   room.pillars = pillarPositions.map(pos => ({ ...pos, hp: 1 }));
-  // BOSS door on top wall
-  const doorPos = Math.floor(BOSS_ROOM_SIZE / 2);
-  tiles[0][doorPos] = CELL.BOSS_DOOR;
+  // BOSS door on top wall (cinematic entrance from world map)
+  const bossDoorPos = Math.floor(BOSS_ROOM_SIZE / 2);
+  tiles[0][bossDoorPos] = CELL.BOSS_DOOR;
+
+  // Standard door passages matching room.doors connections
+  // Use ROOM_SIZE-based positions (mid=10) within the 80×80 grid
+  // so they align with adjacent standard rooms' door passages
+  const mid = Math.floor(ROOM_SIZE / 2);
+  for (const dir of ['up', 'down', 'left', 'right']) {
+    if (room.doors[dir]) {
+      if (dir === 'up') {
+        for (let dx = -2; dx <= 2; dx++) {
+          tiles[0][mid + dx] = CELL.DOOR;
+        }
+      } else if (dir === 'down') {
+        for (let dx = -2; dx <= 2; dx++) {
+          tiles[BOSS_ROOM_SIZE - 1][mid + dx] = CELL.DOOR;
+        }
+      } else if (dir === 'left') {
+        for (let dy = -2; dy <= 2; dy++) {
+          tiles[mid + dy][0] = CELL.DOOR;
+        }
+      } else if (dir === 'right') {
+        for (let dy = -2; dy <= 2; dy++) {
+          tiles[mid + dy][BOSS_ROOM_SIZE - 1] = CELL.DOOR;
+        }
+      }
+    }
+  }
+
   room.bossRoom = true;
   room.bossConfig = { bossType: 'blue_hammer', pillars: pillarPositions };
   // Place the boss entity in the boss room — use world coordinates
