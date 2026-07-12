@@ -318,12 +318,53 @@ function tickFn() {
               return { x, y };
         return null;
       },
+      placeSnakeHead: (x, y) => {
+        if (!state || !state.snake) return null;
+        const newSnake = state.snake.map((seg, i) => i === 0 ? { x, y } : seg);
+        state = { ...state, snake: newSnake };
+        return { x, y };
+      },
+      setDirection: (dir) => {
+        if (!state) return;
+        const dirMap = { up: {x:0,y:-1}, down: {x:0,y:1}, left: {x:-1,y:0}, right: {x:1,y:0} };
+        const d = typeof dir === 'string' ? dirMap[dir] : dir;
+        if (!d) return;
+        state = { ...state, direction: d, nextDirection: d };
+      },
+      findBossEntrance: () => {
+        // Find a room adjacent to the boss room with a door to it
+        if (!state || !state.world) return null;
+        // Direct room search (don't use getBossRoom — this-reference breaks in evaluate)
+        let boss = null;
+        for (let y = 0; y < state.world.rows; y++)
+          for (let x = 0; x < state.world.cols; x++)
+            if (state.world.rooms[y][x].type === 'boss' || state.world.rooms[y][x].bossRoom) {
+              boss = { x, y };
+              break;
+            }
+        if (!boss) return null;
+        const bossRoom = state.world.rooms[boss.y][boss.x];
+        const dirRev = { up:'down', down:'up', left:'right', right:'left' };
+        for (const [dir, rev] of Object.entries(dirRev)) {
+          if (bossRoom.doors[dir]) {
+            const neighbor = bossRoom.doors[dir].connectedTo;
+            const neighborRoom = state.world.rooms[neighbor.roomY]?.[neighbor.roomX];
+            if (neighborRoom) {
+              return { neighbor, dir: rev, boss };
+            }
+          }
+        }
+        // Fallback: try left neighbor
+        if (boss.x > 0) return { neighbor: { roomX: boss.x-1, roomY: boss.y }, dir: 'right', boss };
+        if (boss.y > 0) return { neighbor: { roomX: boss.x, roomY: boss.y-1 }, dir: 'down', boss };
+        return null;
+      },
       simulateKey: (code) => {
         if (!state) return;
         if (code === 'Space' || code === 'Enter') {
           if (state.gameState === 'bossIntro') {
-            // Dismiss boss intro: reposition head to safe floor via changeDirection.
-            state = changeDirection(state, { x: 0, y: 1 });
+            // Dismiss boss intro: keep head at entry, zero direction, wait for player
+            state = { ...state, gameState: 'playing', nextDirection: { x: 0, y: 0 } };
           } else if (state.gameState === 'title') {
             const event = new KeyboardEvent('keydown', { code: 'Space' });
             document.dispatchEvent(event);
