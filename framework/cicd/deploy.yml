@@ -1,0 +1,105 @@
+name: deploy
+# Auto-deploy to Vercel ONLY when an implement PR is merged to master.
+# Research/plan PR merges do NOT trigger deployment.
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      pr_num:
+        description: 'Merged PR number (passed by PiBot webhook)'
+        required: false
+        type: string
+
+jobs:
+  # Check if this push came from merging an implement PR
+  check-implement:
+    runs-on: ubuntu-latest
+    outputs:
+      should-deploy: ${{ steps.check.outputs.should_deploy }}
+      pr-num: ${{ steps.check.outputs.pr_num }}
+    permissions:
+      pull-requests: read
+    steps:
+      - name: Check if merged PR is from implement branch
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_PR_NUM: ${{ inputs.pr_num || '' }}
+        run: |
+          PR_NUM="$INPUT_PR_NUM"
+
+          if [ -z "$PR_NUM" ]; then
+            COMMIT_SHA="${{ github.sha }}"
+            echo "No input PR. Checking commit $COMMIT_SHA..."
+            PR_NUM=$(gh api "repos/${{ github.repository }}/commits/${COMMIT_SHA}/pulls" \
+              --jq '.[] | select(.state == "closed" and .merged_at != null) | .number' 2>/dev/null | head -1)
+          fi
+
+          if [ -z "$PR_NUM" ]; then
+            echo "No merged PR found. Skipping deploy."
+            echo "should_deploy=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "Checking PR #$PR_NUM head branch for implement prefix..."
+
+          FROM_BRANCH=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUM}" \
+            --jq '.head.ref' 2>/dev/null)
+
+          if [ -z "$FROM_BRANCH" ]; then
+            echo "Could not determine PR head branch. Skipping deploy."
+            echo "should_deploy=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "PR head branch: $FROM_BRANCH"
+
+          if [[ "$FROM_BRANCH" == impl/* ]]; then
+            echo "PR #$PR_NUM is from implement branch ($FROM_BRANCH) → deploy!"
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+            echo "pr_num=$PR_NUM" >> $GITHUB_OUTPUT
+          else
+            echo "PR #$PR_NUM is from $FROM_BRANCH (not implement) → skip deploy."
+            echo "should_deploy=false" >> $GITHUB_OUTPUT
+          fi
+
+  deploy:
+    needs: check-implement
+    if: needs.check-implement.outputs.should-deploy == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Deploy to Vercel
+        id: deploy
+        run: |
+          npx vercel --prod --token "${{ secrets.VERCEL_TOKEN }}" \
+            --scope "${{ secrets.VERCEL_ORG_ID }}" \
+            --yes 2>&1 | tee /tmp/vercel-output.log
+          DEPLOY_URL=$(grep -oE 'https://[^ ]+\.vercel\.app' /tmp/vercel-output.log | head -1)
+          echo "deploy_url=$DEPLOY_URL" >> $GITHUB_OUTPUT
+          echo "✅ Deployed to: $DEPLOY_URL"
+
+      - name: Notify Feishu on Deploy Success
+        if: success()
+        env:
+          BASE_URL: ${{ steps.deploy.outputs.deploy_url }}
+        run: |
+          DEPLOY_URL="${BASE_URL:-https://perfect-dev-agent-workflow.vercel.app}/gameboy.html"
+          MSG="{\"msg_type\":\"text\",\"content\":{\"text\":\"✅ #${{ needs.check-implement.outputs.pr-num }} → 🚀 ${DEPLOY_URL}\"}}"
+          curl -s -X POST -H "Content-Type: application/json" \
+            -d "$MSG" \
+            https://open.feishu.cn/open-apis/bot/v2/hook/7bd125b1-172a-41ad-a0da-ccd54e63a982
+
+  # Skip notification for non-implement merges
+  skip-notify:
+    needs: check-implement
+    if: needs.check-implement.outputs.should-deploy != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Non-implement merge — deployment skipped."

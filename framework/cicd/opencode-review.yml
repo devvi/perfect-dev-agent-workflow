@@ -1,0 +1,92 @@
+name: review
+# CI testing — runs ONLY on implement-stage PRs
+# Self-healing is handled by Hermes dispatcher (reads CI logs, fixes via OpenCode Serve)
+# This workflow only tests, reports, and gates the merge.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-report:
+    if: startsWith(github.event.pull_request.head.ref, 'impl/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci 2>/dev/null || npm install
+
+      - name: Run tests
+        id: test
+        run: |
+          npm test 2>&1 | tee test-output.log
+          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Test gate — block merge on failure
+        if: steps.test.outputs.exit_code != '0'
+        run: |
+          echo "❌ Tests FAILED (exit code ${{ steps.test.outputs.exit_code }}). Blocking merge."
+          exit 1
+
+      - name: Upload test output artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output-${{ github.event.pull_request.number }}
+          path: test-output.log
+          retention-days: 3
+
+      - name: Comment failure summary on PR
+        if: steps.test.outputs.exit_code != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            var fs = require('fs');
+            var output = fs.readFileSync('test-output.log', 'utf8');
+            var lines = output.split('\n');
+            var failLines = lines.filter(function(l) {
+              return l.includes('FAIL') || l.includes('AssertionError') || l.includes('failed');
+            });
+            var summary = failLines.slice(-15).join('\n').substring(0, 1000);
+            var baseUrl = process.env.GITHUB_SERVER_URL || 'https://github.com';
+            var runUrl = baseUrl + '/' + process.env.GITHUB_REPOSITORY + '/actions/runs/' + process.env.GITHUB_RUN_ID;
+            var body = 'Tests FAILED - dispatcher will auto-fix\n\n```\n' + (summary || 'See run logs') + '\n```\n\n' + runUrl;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });
+
+      - name: Install Playwright browsers
+        if: success() || failure()
+        run: npx playwright install chromium 2>&1
+
+      - name: E2E Play Test
+        id: playtest
+        if: success() || failure()
+        run: npm run test:e2e
+        continue-on-error: true
+
+      - name: Play Test gate
+        if: steps.playtest.outcome != 'success'
+        run: |
+          echo "E2E Play Test failed - runtime errors found."
+          exit 1

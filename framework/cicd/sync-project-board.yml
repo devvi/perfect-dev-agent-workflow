@@ -1,0 +1,160 @@
+name: sync-project-board
+# Sync issue labels to GitHub Project Board "Stage" field
+
+on:
+  issues:
+    types: [opened, labeled, unlabeled, closed, reopened]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Map label to Stage field value
+        id: map
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GH_PROJECT_TOKEN }}
+          script: |
+            const issue = context.payload.issue;
+            const labels = issue.labels.map(l => l.name);
+            const projectNumber = 4;  // Perfect Dev Agent Workflow
+
+            // Label → Stage mapping
+            const labelMap = {
+              'workflow/available': 'Available',
+              'workflow/research':  'Research',
+              'workflow/plan':      'Plan',
+              'workflow/implement': 'Implement',
+              'workflow/test':      'Test',
+              'workflow/deploy':    'Deploy',
+              'workflow/self-correct': 'Fixing',
+            };
+
+            // Determine stage
+            let stage = null;
+            if (issue.state === 'closed') {
+              stage = 'Done';
+            } else {
+              for (const [label, value] of Object.entries(labelMap)) {
+                if (labels.includes(label)) {
+                  stage = value;
+                  break;
+                }
+              }
+              if (!stage) stage = 'Available';  // default
+            }
+
+            // Find project and item
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            // Query project + find matching item for this issue
+            const query = `query($owner: String!, $number: Int!, $issueId: ID!) {
+              user(login: $owner) {
+                projectV2(number: $number) {
+                  id
+                  fields(first: 20) {
+                    nodes {
+                      ... on ProjectV2SingleSelectField {
+                        id
+                        name
+                        options { id name }
+                      }
+                    }
+                  }
+                  items(first: 100) {
+                    nodes {
+                      id
+                      content {
+                        ... on Issue { id }
+                      }
+                    }
+                  }
+                }
+              }
+              node(id: $issueId) {
+                ... on Issue { id }
+              }
+            }`;
+
+            const result = await github.graphql(query, {
+              owner,
+              number: projectNumber,
+              issueId: context.payload.issue.node_id
+            });
+            const project = result.user.projectV2;
+
+            // Find the Stage field
+            const stageField = project.fields.nodes.find(f => f.name === 'Stage');
+            if (!stageField) {
+              core.setFailed('Stage field not found in project');
+              return;
+            }
+
+            // Find the option
+            const option = stageField.options.find(o => o.name === stage);
+            if (!option) {
+              core.setFailed(`Stage option "${stage}" not found`);
+              return;
+            }
+
+            // Find existing project item for this issue
+            const issueNodeId = context.payload.issue.node_id;
+            let itemId = null;
+            for (const item of project.items.nodes) {
+              if (item.content && item.content.id === issueNodeId) {
+                itemId = item.id;
+                break;
+              }
+            }
+
+            // Add item if not already in this project
+            if (!itemId) {
+              const addResult = await github.graphql(
+                `mutation($projectId: ID!, $contentId: ID!) {
+                  addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
+                    item { id }
+                  }
+                }`,
+                { projectId: project.id, contentId: issueNodeId }
+              );
+              itemId = addResult.addProjectV2ItemById.item.id;
+            }
+
+            // Stage → Agent Status mapping
+            const agentStatusMap = {
+              'Available':  '4691b96e',  // ⏳ Waiting
+              'Research':   '69efa5d7',  // 🔄 Working
+              'Plan':       '69efa5d7',  // 🔄 Working
+              'Implement':  '69efa5d7',  // 🔄 Working
+              'Done':       'fcaea879',  // ✅ Ready
+            };
+
+            const agentStatusField = project.fields.nodes.find(f => f.name === 'Agent Status');
+
+            // Update the Stage field
+            const updateMutation = `mutation($projectId: ID!, $itemId: ID!, $stageFieldId: ID!, $stageOptionId: String!, $agentFieldId: ID!, $agentOptionId: String!) {
+              stage: updateProjectV2ItemFieldValue(
+                input: {projectId: $projectId, itemId: $itemId, fieldId: $stageFieldId, value: { singleSelectOptionId: $stageOptionId }}
+              ) { projectV2Item { id } }
+              agent: updateProjectV2ItemFieldValue(
+                input: {projectId: $projectId, itemId: $itemId, fieldId: $agentFieldId, value: { singleSelectOptionId: $agentOptionId }}
+              ) { projectV2Item { id } }
+            }`;
+
+            const stageOptionId = option.id;
+            const agentOptionId = agentStatusMap[stage] || '4691b96e';
+            const agentFieldId = agentStatusField ? agentStatusField.id : stageField.id;
+
+            await github.graphql(updateMutation, {
+              projectId: project.id,
+              itemId: itemId,
+              stageFieldId: stageField.id,
+              stageOptionId: stageOptionId,
+              agentFieldId: agentFieldId,
+              agentOptionId: agentOptionId,
+            });
+
+            console.log(`✅ Issue #${issue.number} → Stage: ${stage}, Agent: ${stage === 'Available' ? '⏳ Waiting' : stage === 'Done' ? '✅ Ready' : '🔄 Working'}`);

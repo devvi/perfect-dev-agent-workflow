@@ -1,0 +1,128 @@
+name: workflow-chain
+# Webhook: instantly advance workflow stage when a PR is merged
+# No more waiting for the next poll cycle.
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  advance:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: read
+    steps:
+      - name: Advance issue workflow label on PR merge
+        uses: actions/github-script@v7
+        with:
+          # Uses GITHUB_TOKEN (needs issues: write only)
+          script: |
+            const pr = context.payload.pull_request;
+            const prLabels = pr.labels.map(l => l.name);
+
+            // Derive workflow label from PR labels OR branch name (fallback)
+            const workflowLabels = ['workflow/research', 'workflow/plan', 'workflow/implement', 'workflow/test'];
+            let activeLabel = workflowLabels.find(l => prLabels.includes(l));
+            if (!activeLabel) {
+              // Fallback: derive from branch name (label might have been lost during PR creation)
+              const branch = pr.head.ref;
+              const branchLabelMap = {
+                'research/': 'workflow/research',
+                'plan/':     'workflow/plan',
+                'impl/':     'workflow/implement',
+                'review/':   'workflow/test',
+              };
+              const matchedPrefix = Object.keys(branchLabelMap).find(p => branch.startsWith(p));
+              if (matchedPrefix) {
+                activeLabel = branchLabelMap[matchedPrefix];
+                console.log(`PR #${pr.number} missing workflow label — derived "${activeLabel}" from branch "${branch}"`);
+                // Best-effort: add the label to the PR (may fail without pull-requests:write access)
+                try {
+                  await github.rest.issues.addLabels({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: pr.number,
+                    labels: [activeLabel],
+                  });
+                } catch (labelErr) {
+                  console.log(`PR #${pr.number}: could not add workflow label (${labelErr.status} ${labelErr.message}) — continuing with branch-derived label`);
+                }
+              } else {
+                console.log(`PR #${pr.number} has no workflow label and branch "${branch}" doesn't match — skipping`);
+                return;
+              }
+            }
+
+            // Find parent issue from PR body (Closes #N or parent #N)
+            const body = pr.body || '';
+            const parentMatch = body.match(/(?:Closes|parent)\s*#(\d+)/i);
+            if (!parentMatch) {
+              console.log(`PR #${pr.number}: no parent issue reference in body — can't advance`);
+              return;
+            }
+            const parentNumber = parseInt(parentMatch[1]);
+
+            // Label → next stage mapping
+            const nextStage = {
+              'workflow/research':  'workflow/plan',
+              'workflow/plan':      'workflow/implement',
+              'workflow/implement': 'workflow/test',
+              'workflow/test':      null,  // test → done (close issue)
+            };
+
+            const nextLabel = nextStage[activeLabel];
+
+            if (nextLabel) {
+              // Advance to next stage
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: parentNumber,
+                labels: [nextLabel],
+              });
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: parentNumber,
+                name: activeLabel,
+              }).catch(() => {});  // label might not exist anymore
+
+              console.log(`PR #${pr.number} merged → Issue #${parentNumber}: ${activeLabel} → ${nextLabel}`);
+
+              // Add workflow comment to trigger attention
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: parentNumber,
+                body: `\u23E9 PR #${pr.number} (${activeLabel}) merged \u2192 advancing to **${nextLabel}**`,
+              });
+            } else {
+              // Implement → Done: close the issue
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: parentNumber,
+                state: 'closed',
+              });
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: parentNumber,
+                name: activeLabel,
+              }).catch(() => {});
+
+              console.log(`PR #${pr.number} merged → Issue #${parentNumber} closed (implement → done)`);
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: parentNumber,
+                body: `🎉 Issue resolved — PR #${pr.number} (implement) merged and deployed.`,
+              });
+            }
+
+            // Notification: Hermes webhook → dispatch delivers to Feishu origin
+            // No direct Feishu call needed — Dispatcher's issues.labeled handler
+            // picks up the label change and spawns next agent + delivers status.

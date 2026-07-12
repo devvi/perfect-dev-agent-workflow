@@ -1,0 +1,62 @@
+name: Bug Report
+description: 提交一个 Bug
+title: "[Bug] "
+labels: ["bug", "workflow/available"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢提交 Bug 报告！工作流会自动处理。
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: 描述你遇到的问题。
+      placeholder: |
+        进入某个房间后，蛇会卡在墙上无法移动。
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: 如何复现这个 Bug？
+      placeholder: |
+        1. 进入第 3 个房间
+        2. 向上移动
+        3. 蛇卡在墙边
+    validations:
+      required: true
+
+  - type: dropdown
+    id: depth
+    attributes:
+      label: 工作深度
+      description: 你希望这个 Issue 的研究/修复深度？
+      options:
+        - auto（由系统自动判断）
+        - light（简单修复，快速完成）
+        - standard（正常 Bug，标准流程）
+        - deep（复杂 Bug，需要深入排查）
+      default: 0
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: research-options
+    attributes:
+      label: 研究选项
+      description: 控制 research 阶段的行为
+      options:
+        - label: 搜索 Obsidian 知识库（勾选后强制搜索我的设计笔记，不受 depth 限制）
+          required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: 其他补充信息、截图、日志等。
+    validations:
+      required: false
