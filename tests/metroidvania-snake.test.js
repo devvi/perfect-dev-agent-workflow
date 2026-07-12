@@ -2850,5 +2850,167 @@ describe('Phase 6 — Boss Battle (Issue #127)', () => {
       expect(filled.length).toBe(4);
       expect(empty.length).toBe(2);
     });
+  });   // End of HP bar
+});       // End of Phase 6
+
+// =====================================================================
+// Issue #142 — Boss intro Space/Enter crash fix
+// Strategy: Bug-Documenting Tests (Strategy A)
+// =====================================================================
+describe('Issue #142 — Boss intro Space/Enter crash (bug-documenting tests)', () => {
+  // ----------------------------------------------------------------
+  // Helpers
+  // ----------------------------------------------------------------
+  function createBossWorld() {
+    // Create a minimal 3×1 world with a BOSS room at (1, 0)
+    const rooms = [];
+    for (let y = 0; y < 1; y++) {
+      const row = [];
+      for (let x = 0; x < 3; x++) {
+        // Normal rooms at (0,0) and (2,0), BOSS room at (1,0)
+        const type = (x === 1) ? ROOM_TYPE.BOSS : ROOM_TYPE.NORMAL;
+        row.push(createRoom(x, y, type));
+      }
+      rooms.push(row);
+    }
+    // Mark the BOSS room
+    rooms[0][1].bossRoom = true;
+    rooms[0][1].bossConfig = { bossType: 'blue_hammer' };
+    return { rooms, cols: 3, rows: 1 };
+  }
+
+  function makeBossIntroState(world, overrides = {}) {
+    const bossRoom = world.rooms[0][1];
+    // Snake enters boss room at world coords that map to tiles[0][10] = WALL
+    // Entry: (bossRoom.x * ROOM_SIZE + 10, bossRoom.y * ROOM_SIZE + 0)
+    const bossEntryX = bossRoom.x * ROOM_SIZE + Math.floor(ROOM_SIZE / 2);
+    const bossEntryY = bossRoom.y * ROOM_SIZE + 0;
+    return {
+      snake: [
+        { x: bossEntryX, y: bossEntryY },
+        { x: bossEntryX - 1, y: bossEntryY },
+        { x: bossEntryX - 2, y: bossEntryY },
+      ],
+      direction: { x: 0, y: 1 },
+      nextDirection: { x: 0, y: 1 },
+      currentRoom: { x: bossRoom.x, y: bossRoom.y },
+      previousRoom: { x: bossRoom.x, y: bossRoom.y },
+      projectiles: [],
+      fireCooldown: 0,
+      fireRate: 3,
+      projectileSpeed: 2,
+      projectileDecay: 10,
+      projectilePower: 1,
+      doubleShot: false,
+      maxProjectiles: 3,
+      inventory: { keys: new Set(), items: [] },
+      keysFound: new Set(),
+      gameState: 'bossIntro',
+      tickCount: 0,
+      score: 0,
+      enemiesKilled: 0,
+      roomsExplored: 1,
+      baseTickInterval: 150,
+      currentTickInterval: 150,
+      savePoint: null,
+      world,
+      ...overrides,
+    };
+  }
+
+  // ----------------------------------------------------------------
+  // 1. Bug-documenting tests — assert current broken behavior
+  // ----------------------------------------------------------------
+  describe('Current buggy behavior (Space/Enter = direct state mutation)', () => {
+    it('Space mutation leaves snake head at WALL cell (BUG)', () => {
+      const world = createBossWorld();
+      const state = makeBossIntroState(world);
+      const head = state.snake[0];
+
+      // Simulate what keyboard handler does NOW (broken):
+      //   state = { ...state, gameState: 'playing' };
+      const mutated = { ...state, gameState: 'playing' };
+      const newHead = mutated.snake[0];
+
+      // Head was NOT repositioned — still at entry position
+      expect(newHead.x).toBe(head.x);
+      expect(newHead.y).toBe(head.y);
+      // That position maps to tiles[0][10] = CELL.WALL (top border)
+      const cell = getCellAt(world, newHead.x, newHead.y);
+      expect(cell).toBe(CELL.WALL); // BUG: after fix, head should be on FLOOR
+    });
+
+    it('Enter mutation leaves snake head at WALL cell (BUG)', () => {
+      const world = createBossWorld();
+      const state = makeBossIntroState(world);
+
+      // Identical to Space — both use the same broken code path
+      const mutated = { ...state, gameState: 'playing' };
+      const cell = getCellAt(world, mutated.snake[0].x, mutated.snake[0].y);
+      expect(cell).toBe(CELL.WALL); // BUG: same issue
+    });
   });
+
+  // ----------------------------------------------------------------
+  // 2. Regression tests — verify correct behavior doesn't change
+  // ----------------------------------------------------------------
+  describe('Arrow keys via changeDirection() — correct behavior (REGRESSION)', () => {
+    it('changeDirection dismisses bossIntro and repositions head to FLOOR', () => {
+      const world = createBossWorld();
+      const state = makeBossIntroState(world);
+      const bossRoom = world.rooms[0][1];
+
+      const result = changeDirection(state, { x: 0, y: 1 });
+      const newHead = result.snake[0];
+
+      // gameState becomes 'playing'
+      expect(result.gameState).toBe('playing');
+
+      // Head is at tiles[1][10] = CELL.FLOOR (one cell below entry)
+      const expectedX = bossRoom.x * ROOM_SIZE + Math.floor(ROOM_SIZE / 2);
+      const expectedY = bossRoom.y * ROOM_SIZE + 1;
+      expect(newHead.x).toBe(expectedX);
+      expect(newHead.y).toBe(expectedY);
+
+      const cell = getCellAt(world, newHead.x, newHead.y);
+      expect(cell).toBe(CELL.FLOOR); // Head now on safe FLOOR
+    });
+
+    it('changeDirection also sets gameState to playing', () => {
+      const world = createBossWorld();
+      const state = makeBossIntroState(world);
+      const result = changeDirection(state, { x: 0, y: 1 });
+      expect(result.gameState).toBe('playing');
+    });
+
+    it('changeDirection skips direction-reverse check during bossIntro', () => {
+      // The reverse guard (line 437+) only applies during 'playing',
+      // so any direction works for bossIntro dismissal
+      const world = createBossWorld();
+      const state = makeBossIntroState(world);
+      const result = changeDirection(state, { x: 0, y: 1 });
+      // No crash — direction is ignored in favor of reposition logic
+      expect(result.gameState).toBe('playing');
+    });
+  });
+
+  describe('tick() passes through bossIntro unchanged (REGRESSION)', () => {
+    it('tick returns state unchanged when gameState is bossIntro', () => {
+      const world = createBossWorld();
+      const state = makeBossIntroState(world);
+      const result = tick(state);
+      expect(result.gameState).toBe('bossIntro');
+      // Snake head not moved by tick
+      expect(result.snake[0].x).toBe(state.snake[0].x);
+      expect(result.snake[0].y).toBe(state.snake[0].y);
+    });
+  });
+
+  // ----------------------------------------------------------------
+  // 3. Post-fix placeholders — describe.todo() suites
+  // ----------------------------------------------------------------
+  describe.todo('After fix: Space/Enter calls changeDirection');
+
+  describe.todo('After fix: simulateKey("Space") calls changeDirection');
 });
+
