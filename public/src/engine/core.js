@@ -414,6 +414,9 @@ export function changeDirection(state, dir) {
   // to prevent freeze on the entry wall. The head enters the boss room at
   // grid position (currentRoom.x*20+10, currentRoom.y*20+0) which maps to
   // tiles[0][10] = CELL.WALL. We reposition to tiles[1][10] = CELL.FLOOR.
+  // Also reset direction/nextDirection to {0,0} so the snake does NOT
+  // immediately move back into the wall/door on the next tick — it waits
+  // for the player's first direction input instead.
   if (state.gameState === 'bossIntro') {
     const room = state.world ? getRoomAt(state.world, state.currentRoom.x, state.currentRoom.y) : null;
     if (room && room.type === ROOM_TYPE.BOSS) {
@@ -426,11 +429,15 @@ export function changeDirection(state, dir) {
         ...state,
         gameState: 'playing',
         snake: [head, ...state.snake.slice(1)],
+        direction: { x: 0, y: 0 },
+        nextDirection: { x: 0, y: 0 },
       };
     }
     return {
       ...state,
       gameState: 'playing',
+      direction: { x: 0, y: 0 },
+      nextDirection: { x: 0, y: 0 },
     };
   }
 
