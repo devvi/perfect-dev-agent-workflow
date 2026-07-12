@@ -299,8 +299,16 @@ function tickFn() {
         if (!state || !state.world) return null;
         const room = state.world.rooms[ry] && state.world.rooms[ry][rx];
         if (!room) return null;
-        state = { ...state, currentRoom: { x: rx, y: ry }, gameState: 'playing', bossIntroData: null };
+        state = { ...state, currentRoom: { x: rx, y: ry }, bossIntroData: null };
         return state.gameState;
+      },
+      enterBossRoom: () => {
+        // Simulate walking into boss room — triggers bossIntro via room transition
+        if (!state || !state.world) return null;
+        const room = getRoomAt(state.world, state.currentRoom.x, state.currentRoom.y);
+        if (!room || (room.type !== 'boss' && !room.bossRoom)) return 'not_boss_room';
+        state = { ...state, gameState: 'bossIntro', bossIntroData: { bossName: 'Blue Hammer', dialog: 'GO!' }, bossDefeated: false };
+        return 'bossIntro';
       },
       getBossRoom: () => {
         if (!state || !state.world) return null;

@@ -123,12 +123,15 @@ async function testPage(browser, pageName) {
           if (!boss) {
             logs.push({ scenario: 'boss_teleport', status: 'SKIP', detail: 'No boss room' });
           } else {
+            // First teleport to boss room
             api.teleport(boss.x, boss.y);
-            logs.push({ scenario: 'boss_teleport', status: 'OK', detail: `teleported to (${boss.x},${boss.y})` });
+            // Then simulate walking in (triggers bossIntro)
+            const entryResult = api.enterBossRoom();
+            logs.push({ scenario: 'boss_teleport', status: entryResult === 'bossIntro' ? 'OK' : 'FAIL', detail: `enterBossRoom → ${entryResult}` });
           }
 
           const state1 = api.getState();
-          logs.push({ scenario: 'boss_entry', status: state1.gameState === 'bossIntro' || state1.currentRoom ? 'OK' : 'FAIL', detail: `state=${state1.gameState}` });
+          logs.push({ scenario: 'boss_entry', status: state1.gameState === 'bossIntro' ? 'OK' : 'FAIL', detail: `state=${state1.gameState} (expected bossIntro)` });
 
           api.simulateKey('Space');
           const state2 = api.getState();
