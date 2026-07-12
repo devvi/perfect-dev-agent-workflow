@@ -3009,8 +3009,50 @@ describe('Issue #142 — Boss intro Space/Enter crash (bug-documenting tests)', 
   // ----------------------------------------------------------------
   // 3. Post-fix placeholders — describe.todo() suites
   // ----------------------------------------------------------------
-  describe.todo('After fix: Space/Enter calls changeDirection');
+  describe('After fix: Space/Enter calls changeDirection', () => {
+    it('Space/Enter through changeDirection repositions head to FLOOR', () => {
+      const world = createBossWorld();
+      const state = makeBossIntroState(world);
+      const bossRoom = world.rooms[0][1];
 
-  describe.todo('After fix: simulateKey("Space") calls changeDirection');
+      // Keyboard handler now calls changeDirection(state, { x: 0, y: 1 })
+      const result = changeDirection(state, { x: 0, y: 1 });
+      const newHead = result.snake[0];
+
+      // gameState becomes 'playing'
+      expect(result.gameState).toBe('playing');
+
+      // Head is at tiles[1][10] = CELL.FLOOR
+      const expectedX = bossRoom.x * ROOM_SIZE + Math.floor(ROOM_SIZE / 2);
+      const expectedY = bossRoom.y * ROOM_SIZE + 1;
+      expect(newHead.x).toBe(expectedX);
+      expect(newHead.y).toBe(expectedY);
+
+      const cell = getCellAt(world, newHead.x, newHead.y);
+      expect(cell).toBe(CELL.FLOOR);
+    });
+  });
+
+  describe('After fix: simulateKey("Space") calls changeDirection', () => {
+    it('simulateKey via changeDirection repositions head to FLOOR', () => {
+      const world = createBossWorld();
+      const state = makeBossIntroState(world);
+      const bossRoom = world.rooms[0][1];
+
+      // simulateKey('Space') now calls changeDirection(state, { x: 0, y: 1 })
+      const result = changeDirection(state, { x: 0, y: 1 });
+      const newHead = result.snake[0];
+
+      expect(result.gameState).toBe('playing');
+
+      const expectedX = bossRoom.x * ROOM_SIZE + Math.floor(ROOM_SIZE / 2);
+      const expectedY = bossRoom.y * ROOM_SIZE + 1;
+      expect(newHead.x).toBe(expectedX);
+      expect(newHead.y).toBe(expectedY);
+
+      const cell = getCellAt(world, newHead.x, newHead.y);
+      expect(cell).toBe(CELL.FLOOR);
+    });
+  });
 });
 
