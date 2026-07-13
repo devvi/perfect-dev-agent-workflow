@@ -7,7 +7,7 @@ import {
 } from './constants.js';
 import { generateWorldMap, findRoomOfType } from './generator.js';
 import { getRoomAt } from './world.js';
-import { createSnake, createFood, createBounceFood } from './entities.js';
+import { createSnake, createFood } from './entities.js';
 import { worldToRoomCoords, roomToWorldCoords, getCellAt } from './world.js';
 import { checkSnakeCollision, checkProjectileCollision, checkRoomTransition, checkDoorPassable, lineSweepProjectileCollision } from './collision.js';
 import { fireProjectile, updateProjectiles, applyProjectileDamage, updateCooldowns } from './combat.js';
@@ -240,7 +240,7 @@ export function tick(state) {
     return s;
   }
 
-  // Wall/Stone_Wall damage — tail pop + food drop at collision point
+  // Wall/Stone_Wall damage — stuck+reverse instead of tail removal
   if (collisions.includes('damage')) {
     // Single-segment snake hitting wall → game over (Issue #150)
     if (s.snake.length <= 1) {
@@ -264,23 +264,11 @@ export function tick(state) {
       }
     }
 
-    // Drop bounce food at wall collision position (newHead)
-    if (s.world) {
-      const { rx, ry } = worldToRoomCoords(newHead.x, newHead.y);
-      const room = getRoomAt(s.world, rx, ry);
-      if (room) {
-        const food = createBounceFood(newHead.x, newHead.y, null);
-        room.entities.food.push(food);
-      }
-    }
-
-    // Remove last tail segment (health loss)
-    s.snake = s.snake.slice(0, -1);
-
     s.stuckCounter = STUCK_TICKS;
     s.pendingReverse = true;
     s.screenShake = { intensity: 4, duration: 8 };
     s.score = Math.max(0, s.score - 5);
+    // Don't move head, don't remove tail — return early
     return s;
   }
 
