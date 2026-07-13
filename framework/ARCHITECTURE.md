@@ -137,5 +137,5 @@ project-root/
 |-------|--------|------------|
 | Phase agents occasionally skip PR labels | Stage-gate auto-fixes via REST API | Check stage-gate logs after PR creation |
 | Self-heal (CI failure auto-fix) not battle-tested | Configured, waiting for first real trigger | Manually re-run failed CI via `gh run rerun` |
-| Review phase (workflow/test) not triggered yet | Chain is in place, first review will activate it | Review agent is ready — it will work on the next implement |
+| Review phase (pre-merge via check_run) | Not battle-tested | CI success → spawn review agent → merge |
 | 50-turn limit on complex features | Layer splitting + checkpoint pattern | For 8+ file changes, manually trigger next session |

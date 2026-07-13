@@ -23,7 +23,7 @@ jobs:
             const prLabels = pr.labels.map(l => l.name);
 
             // Derive workflow label from PR labels OR branch name (fallback)
-            const workflowLabels = ['workflow/research', 'workflow/plan', 'workflow/implement', 'workflow/test'];
+            const workflowLabels = ['workflow/research', 'workflow/plan', 'workflow/implement'];
             let activeLabel = workflowLabels.find(l => prLabels.includes(l));
             if (!activeLabel) {
               // Fallback: derive from branch name (label might have been lost during PR creation)
@@ -65,10 +65,12 @@ jobs:
             const parentNumber = parseInt(parentMatch[1]);
 
             // Label → next stage mapping
+            // Before: implement → test → done (review was post-merge, wrong)
+            // After:  implement → done (review is pre-merge via check_run.completed)
             const nextStage = {
               'workflow/research':  'workflow/plan',
               'workflow/plan':      'workflow/implement',
-              'workflow/implement': 'workflow/test',
+              'workflow/implement': null,  // implement → done (close issue)
               'workflow/test':      null,  // test → done (close issue)
             };
 

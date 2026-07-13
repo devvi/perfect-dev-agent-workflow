@@ -39,11 +39,10 @@
 | `workflow/research` | Research | research agent 进行中 |
 | `workflow/plan` | Plan | plan agent 进行中 |
 | `workflow/implement` | Implement | implement agent 进行中 |
-| `workflow/test` | Test | review agent 审查中 |
-| `workflow/deploy` | Deploy | 部署进行中 |
 | `workflow/self-correct` | Fixing | CI 失败，自愈中 |
-| `status/blocked` | Blocked | 需要人工介入 |
 | `status/done` | Done | Issue 关闭 |
+
+**Review 不在 label 链中。** Review agent 在 `check_run.completed` (CI 成功) 后、merge 前被调用。审核通过则 agent 直接 merge PR。详见 `game-review-agent` skill。
 
 
 ## Tech Stack
