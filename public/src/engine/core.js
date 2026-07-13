@@ -242,6 +242,12 @@ export function tick(state) {
 
   // Wall/Stone_Wall damage — stuck+reverse instead of tail removal
   if (collisions.includes('damage')) {
+    // Single-segment snake hitting wall → game over (Issue #150)
+    if (s.snake.length <= 1) {
+      s.gameState = 'gameover';
+      return s;
+    }
+
     // If food also at this cell, remove it and award points
     // before applying the damage penalties
     if (collisions.includes('food') && s.world) {

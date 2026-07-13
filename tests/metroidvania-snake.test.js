@@ -1283,7 +1283,7 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
       expect(result.screenShake).not.toBeNull();
     });
 
-    it('snake length 1 hitting wall → stuck not gameover (Issue #46)', () => {
+    it('snake length 1 hitting wall → gameover (Issue #150)', () => {
       // With world: place WALL in front of snake
       const world = generateWorldMap(3, 3);
       const state = minimalState({
@@ -1298,10 +1298,9 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
       const room00 = getRoomAt(world, 0, 0);
       room00.tiles[5][6] = CELL.WALL;
       const result = tick(state);
-      // Wall collision now triggers stuck+reverse instead of gameover
-      expect(result.gameState).toBe('playing');
+      // Single-segment snake hitting wall → gameover
+      expect(result.gameState).toBe('gameover');
       expect(result.snake.length).toBe(1);
-      expect(result.stuckCounter).toBeGreaterThan(0);
     });
   });
 
