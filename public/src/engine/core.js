@@ -435,15 +435,15 @@ export function changeDirection(state, dir) {
         ...state,
         gameState: 'playing',
         snake: [head, ...state.snake.slice(1)],
-        direction: { x: 0, y: 0 },
-        nextDirection: { x: 0, y: 0 },
+        direction: { x: 0, y: 1 },
+        nextDirection: { x: 0, y: 1 },
       };
     }
     return {
       ...state,
       gameState: 'playing',
-      direction: { x: 0, y: 0 },
-      nextDirection: { x: 0, y: 0 },
+      direction: { x: 0, y: 1 },
+      nextDirection: { x: 0, y: 1 },
     };
   }
 
