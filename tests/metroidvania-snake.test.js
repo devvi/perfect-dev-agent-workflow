@@ -1276,9 +1276,9 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
       state.nextDirection = { x: -1, y: 0 };
       room.tiles[10][0] = CELL.WALL;
       const result = tick(state);
-      // Now wall collision → stuck+reverse: length preserved, no gameover
+      // Now wall collision → stuck+reverse: tail popped (length -1), no gameover
       expect(result.gameState).toBe('playing');
-      expect(result.snake.length).toBe(state.snake.length);
+      expect(result.snake.length).toBe(state.snake.length - 1);
       expect(result.stuckCounter).toBeGreaterThan(0);
       expect(result.screenShake).not.toBeNull();
     });
@@ -1305,7 +1305,7 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
   });
 
   describe('Bug #154: Wall damage — health loss & food drop (bug-documenting tests)', () => {
-    it('TC1: Wall collision currently does NOT reduce snake length (broken behavior)', () => {
+    it('TC1: Wall collision reduces snake length by 1', () => {
       // Bug-documenting test: currently length is preserved; after fix,
       // should decrease by 1. Update to expect(state.snake.length - 1).
       const world = generateWorldMap(3, 3);
@@ -1322,7 +1322,7 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
       const result = tick(state);
       // BUG: length is preserved instead of being reduced
       expect(result.gameState).toBe('playing');
-      expect(result.snake.length).toBe(state.snake.length); // ← should be -1 after fix
+      expect(result.snake.length).toBe(state.snake.length - 1); // ← should be -1 after fix
     });
 
     it('TC2: Wall collision does NOT spawn food at newHead (broken behavior)', () => {
@@ -1379,11 +1379,12 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
       expect(result.snake.length).toBe(1);
     });
 
-    it('TC5: Food at collision cell is eaten before damage (+10 pts) (preserved behavior)', () => {
-      // If food is at the same cell as the wall collision, it should be eaten first
+    it('TC5: Wall collision drops bounce food at newHead, preserves other food in room', () => {
+      // Verify that bounce food is dropped at the collision cell (newHead)
+      // while food already in the room is preserved
       const world = generateWorldMap(3, 3);
       const state = minimalState({ world, score: 10 });
-      const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
+      const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y); // room (1,1)
       state.snake = [
         { x: 1, y: 10 },
         { x: 2, y: 10 },
@@ -1391,16 +1392,23 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
       ];
       state.direction = { x: -1, y: 0 };
       state.nextDirection = { x: -1, y: 0 };
-      room.tiles[10][0] = CELL.WALL;
-      // Place food at the collision cell (1,10) which is newHead
+      // Snake head at (1,10) → room (0,0). newHead at (0,10) → room (0,0) border WALL
+      // Add food to room (1,1) at snake's starting world position
       room.entities.food.push({ x: 1, y: 10 });
       const foodCountBefore = room.entities.food.length;
+
       const result = tick(state);
-      // Food at collision cell is removed (eaten)
-      expect(room.entities.food.length).toBeLessThan(foodCountBefore);
-      expect(result.score).toBe(20); // 10 + 10 (food eaten) - 5 (wall penalty) = 15? No: score += 10, then score - 5
-      // Actually: score starts at 10, +10 for eating = 20, then max(0, 20-5) = 15
-      expect(result.score).toBe(15);
+
+      // Food in room (1,1) is preserved (not at collision cell)
+      expect(room.entities.food.length).toBe(foodCountBefore);
+
+      // Bounce food should be dropped in room (0,0) at newHead (0,10)
+      const collisionRoom = getRoomAt(world, 0, 0);
+      const bounceFood = collisionRoom.entities.food.find(f => f.x === 0 && f.y === 10);
+      expect(bounceFood).toBeDefined();
+      expect(bounceFood.isBouncing).toBe(true);
+      // Score: 10 (start) - 5 (wall penalty) = 5
+      expect(result.score).toBe(5);
     });
   });
 
@@ -1551,9 +1559,9 @@ describe('Phase 4 — Stuck+Reverse on obstacle collision (Issue #46)', () => {
       state.nextDirection = { x: 1, y: 0 };
       const result = tick(state);
 
-      // Snake should not have moved (no length loss)
+      // Snake should have tail popped (length -1) and not moved head
       expect(result.stuckCounter).toBeGreaterThan(0);
-      expect(result.snake.length).toBe(state.snake.length);
+      expect(result.snake.length).toBe(state.snake.length - 1);
       // Snake head should not have advanced into the wall
       expect(result.snake[0]).toEqual(state.snake[0]);
     });
@@ -1907,9 +1915,11 @@ describe('Issue #70 — Food collision on wall cells', () => {
 
       const result = tick(state);
       expect(result.gameState).toBe('playing');
-      // Food removed: check room
+      // Food removed: check room — original food eaten, bounce food dropped
       const roomAfter = getRoomAt(world, 0, 0);
-      expect(roomAfter.entities.food.find(f => f.x === 9 && f.y === 10)).toBeUndefined();
+      const foodAtCell = roomAfter.entities.food.filter(f => f.x === 9 && f.y === 10);
+      expect(foodAtCell).toHaveLength(1);
+      expect(foodAtCell[0].isBouncing).toBe(true); // bounce food replaced the eaten one
       // Score: 0 + 10 (food) - 5 (wall penalty) = 5
       expect(result.score).toBe(5);
       expect(result.stuckCounter).toBeGreaterThan(0);
@@ -1933,8 +1943,11 @@ describe('Issue #70 — Food collision on wall cells', () => {
 
       const result = tick(state);
       expect(result.gameState).toBe('playing');
+      // Food removed: check room — original food eaten, bounce food dropped
       const roomAfter = getRoomAt(world, 0, 0);
-      expect(roomAfter.entities.food.find(f => f.x === 9 && f.y === 10)).toBeUndefined();
+      const foodAtCell = roomAfter.entities.food.filter(f => f.x === 9 && f.y === 10);
+      expect(foodAtCell).toHaveLength(1);
+      expect(foodAtCell[0].isBouncing).toBe(true); // bounce food replaced the eaten one
       expect(result.score).toBe(5);
       expect(result.stuckCounter).toBeGreaterThan(0);
     });
@@ -1979,9 +1992,10 @@ describe('Issue #70 — Food collision on wall cells', () => {
 
       tick(state);
       const roomAfter = getRoomAt(world, 0, 0);
-      // Food at (9,10) should be removed
-      const foodStillThere = roomAfter.entities.food.some(f => f.x === 9 && f.y === 10);
-      expect(foodStillThere).toBe(false);
+      // Food at (9,10) should be replaced by bounce food
+      const bounceFood = roomAfter.entities.food.filter(f => f.x === 9 && f.y === 10);
+      expect(bounceFood).toHaveLength(1);
+      expect(bounceFood[0].isBouncing).toBe(true);
     });
 
     it('B5: tick with wall but no food — score -5, no food affected (regression)', () => {
@@ -2035,7 +2049,7 @@ describe('Issue #70 — Food collision on wall cells', () => {
   // ── Group C: Edge cases ──
 
   describe('Group C — Edge cases', () => {
-    it('C1: Two food items at same WALL cell — first eaten, second remains', () => {
+    it('C1: Two food items at same WALL cell — first eaten, second remains + bounce food dropped', () => {
       const world = generateWorldMap(3, 3);
       const state = createInitialState(world);
       const room = getRoomAt(world, 0, 0);
@@ -2055,11 +2069,12 @@ describe('Issue #70 — Food collision on wall cells', () => {
 
       tick(state);
       const roomAfter = getRoomAt(world, 0, 0);
-      // One should remain (splice removes first match)
-      expect(roomAfter.entities.food.filter(f => f.x === 9 && f.y === 10)).toHaveLength(1);
+      // First food eaten (splice removes first match), second original remains,
+      // plus bounce food dropped at same position → total 2
+      expect(roomAfter.entities.food.filter(f => f.x === 9 && f.y === 10)).toHaveLength(2);
     });
 
-    it('C2: Food + enemy at same WALL cell — food removed, damage handler returns early (enemy not processed)', () => {
+    it('C2: Food + enemy at same WALL cell — food eaten, bounce food dropped, damage handler returns early (enemy not processed)', () => {
       const world = generateWorldMap(3, 3);
       const state = createInitialState(world);
       const room = getRoomAt(world, 0, 0);
@@ -2079,13 +2094,14 @@ describe('Issue #70 — Food collision on wall cells', () => {
       room.entities.enemies.push({ x: 9, y: 10, segments: [], hp: 1 });
 
       const result = tick(state);
-      // Food should be consumed
+      // Original food consumed, bounce food dropped at same position
       const roomAfter = getRoomAt(world, 0, 0);
-      const foodStillThere = roomAfter.entities.food.some(f => f.x === 9 && f.y === 10);
-      expect(foodStillThere).toBe(false);
+      const foodAtCell = roomAfter.entities.food.filter(f => f.x === 9 && f.y === 10);
+      expect(foodAtCell).toHaveLength(1);  // Bounce food replaces the eaten food
+      expect(foodAtCell[0].isBouncing).toBe(true);  // It's a bounce food
       // Damage handler returns early (stuck+reverse), enemy not processed
-      // Snake length preserved (no tail pop or growth)
-      expect(result.snake.length).toBe(state.snake.length);
+      // Snake length reduced by 1 (tail pop from wall damage)
+      expect(result.snake.length).toBe(state.snake.length - 1);
       // StuckCounter set because wall damage wins
       expect(result.stuckCounter).toBeGreaterThan(0);
     });
