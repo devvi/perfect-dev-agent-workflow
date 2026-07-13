@@ -1304,6 +1304,106 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
     });
   });
 
+  describe('Bug #154: Wall damage — health loss & food drop (bug-documenting tests)', () => {
+    it('TC1: Wall collision currently does NOT reduce snake length (broken behavior)', () => {
+      // Bug-documenting test: currently length is preserved; after fix,
+      // should decrease by 1. Update to expect(state.snake.length - 1).
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
+      state.snake = [
+        { x: 1, y: 10 },
+        { x: 2, y: 10 },
+        { x: 3, y: 10 },
+      ];
+      state.direction = { x: -1, y: 0 };
+      state.nextDirection = { x: -1, y: 0 };
+      room.tiles[10][0] = CELL.WALL;
+      const result = tick(state);
+      // BUG: length is preserved instead of being reduced
+      expect(result.gameState).toBe('playing');
+      expect(result.snake.length).toBe(state.snake.length); // ← should be -1 after fix
+    });
+
+    it('TC2: Wall collision does NOT spawn food at newHead (broken behavior)', () => {
+      // Bug-documenting test: currently no food is dropped; after fix,
+      // bounce food should appear at newHead position.
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
+      state.snake = [
+        { x: 1, y: 10 },
+        { x: 2, y: 10 },
+        { x: 3, y: 10 },
+      ];
+      state.direction = { x: -1, y: 0 };
+      state.nextDirection = { x: -1, y: 0 };
+      room.tiles[10][0] = CELL.WALL;
+      const foodCountBefore = room.entities.food.length;
+      const result = tick(state);
+      // BUG: no food is spawned at the collision site
+      expect(room.entities.food.length).toBe(foodCountBefore); // ← should be +1 after fix
+    });
+
+    it('TC3: Wall collision sets stuckCounter, pendingReverse, screenShake, score penalty (preserved behavior)', () => {
+      // Validate that existing stuck+reverse + penalty mechanics still apply
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world, score: 20 });
+      const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
+      state.snake = [
+        { x: 1, y: 10 },
+        { x: 2, y: 10 },
+        { x: 3, y: 10 },
+      ];
+      state.direction = { x: -1, y: 0 };
+      state.nextDirection = { x: -1, y: 0 };
+      room.tiles[10][0] = CELL.WALL;
+      const result = tick(state);
+      expect(result.stuckCounter).toBeGreaterThan(0);
+      expect(result.pendingReverse).toBe(true);
+      expect(result.screenShake).not.toBeNull();
+      expect(result.score).toBe(15); // 20 - 5
+    });
+
+    it('TC4: Single-segment snake hitting wall → gameover (preserved behavior)', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      state.snake = [{ x: 5, y: 5 }];
+      state.currentRoom = { x: 0, y: 0 };
+      state.direction = { x: 1, y: 0 };
+      state.nextDirection = { x: 1, y: 0 };
+      const room00 = getRoomAt(world, 0, 0);
+      room00.tiles[5][6] = CELL.WALL;
+      const result = tick(state);
+      expect(result.gameState).toBe('gameover');
+      expect(result.snake.length).toBe(1);
+    });
+
+    it('TC5: Food at collision cell is eaten before damage (+10 pts) (preserved behavior)', () => {
+      // If food is at the same cell as the wall collision, it should be eaten first
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world, score: 10 });
+      const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
+      state.snake = [
+        { x: 1, y: 10 },
+        { x: 2, y: 10 },
+        { x: 3, y: 10 },
+      ];
+      state.direction = { x: -1, y: 0 };
+      state.nextDirection = { x: -1, y: 0 };
+      room.tiles[10][0] = CELL.WALL;
+      // Place food at the collision cell (1,10) which is newHead
+      room.entities.food.push({ x: 1, y: 10 });
+      const foodCountBefore = room.entities.food.length;
+      const result = tick(state);
+      // Food at collision cell is removed (eaten)
+      expect(room.entities.food.length).toBeLessThan(foodCountBefore);
+      expect(result.score).toBe(20); // 10 + 10 (food eaten) - 5 (wall penalty) = 15? No: score += 10, then score - 5
+      // Actually: score starts at 10, +10 for eating = 20, then max(0, 20-5) = 15
+      expect(result.score).toBe(15);
+    });
+  });
+
   describe('Death wall → instant gameover', () => {
     it('checkSnakeCollision returns death for CELL.DEATH_WALL', () => {
       const world = generateWorldMap(3, 3);
