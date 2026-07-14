@@ -1407,40 +1407,45 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
 
   describe('Bug #163: Wall bounce food position fix', () => {
     it('TC1: Bounce food drops at tail last segment (not wall position)', () => {
-      // KEY test: food should spawn at tail position (3,10), NOT at wall or newHead
+      // KEY test: food should spawn at tail position, NOT at wall or newHead
+      // Use interior room (1,1) with explicitly placed wall tile
       const world = generateWorldMap(3, 3);
       const state = minimalState({ world });
-      const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
+      const room = getRoomAt(world, 1, 1);
       state.snake = [
-        { x: 1, y: 10 },  // head → moves left into WALL at (0,10)
-        { x: 2, y: 10 },
-        { x: 3, y: 10 },  // tail — food should drop here
+        { x: 25, y: 25 },  // head → moves left into WALL at (24,25)
+        { x: 26, y: 25 },
+        { x: 27, y: 25 },  // tail — food should drop here
       ];
+      state.currentRoom = { x: 1, y: 1 };
       state.direction = { x: -1, y: 0 };
       state.nextDirection = { x: -1, y: 0 };
-      room.tiles[10][0] = CELL.WALL;
+      // Place wall at interior tile[5][4] = world (24,25) — one step left of head
+      expect(room.tiles[5][5]).not.toBe(CELL.WALL); // head position is traversable
+      room.tiles[5][4] = CELL.WALL; // newHead position
       const foodBefore = room.entities.food.length;
       const result = tick(state);
-      // One bounce food should be dropped at tail position (3,10)
+      // One bounce food should be dropped at tail position (27,25)
       expect(room.entities.food.length).toBe(foodBefore + 1);
       const newFood = room.entities.food[room.entities.food.length - 1];
-      expect(newFood.x).toBe(3);  // tail's x, NOT wall (0) or newHead (1)
-      expect(newFood.y).toBe(10); // tail's y
+      expect(newFood.x).toBe(27); // tail's x, NOT wall (24) or newHead (25)
+      expect(newFood.y).toBe(25); // tail's y
       expect(newFood.isBouncing).toBe(true);
     });
 
     it('TC2: Wall collision reduces snake length by 1 (tail pop)', () => {
       const world = generateWorldMap(3, 3);
       const state = minimalState({ world });
-      const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
+      const room = getRoomAt(world, 1, 1);
       state.snake = [
-        { x: 1, y: 10 },
-        { x: 2, y: 10 },
-        { x: 3, y: 10 },
+        { x: 25, y: 25 },
+        { x: 26, y: 25 },
+        { x: 27, y: 25 },
       ];
+      state.currentRoom = { x: 1, y: 1 };
       state.direction = { x: -1, y: 0 };
       state.nextDirection = { x: -1, y: 0 };
-      room.tiles[10][0] = CELL.WALL;
+      room.tiles[5][4] = CELL.WALL;
       const result = tick(state);
       expect(result.gameState).toBe('playing');
       expect(result.snake.length).toBe(2); // 3 → 2
@@ -1450,15 +1455,16 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
       // stuckCounter, pendingReverse, screenShake, score penalty unchanged
       const world = generateWorldMap(3, 3);
       const state = minimalState({ world, score: 20 });
-      const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
+      const room = getRoomAt(world, 1, 1);
       state.snake = [
-        { x: 1, y: 10 },
-        { x: 2, y: 10 },
-        { x: 3, y: 10 },
+        { x: 25, y: 25 },
+        { x: 26, y: 25 },
+        { x: 27, y: 25 },
       ];
+      state.currentRoom = { x: 1, y: 1 };
       state.direction = { x: -1, y: 0 };
       state.nextDirection = { x: -1, y: 0 };
-      room.tiles[10][0] = CELL.WALL;
+      room.tiles[5][4] = CELL.WALL;
       const result = tick(state);
       expect(result.stuckCounter).toBeGreaterThan(0);
       expect(result.pendingReverse).toBe(true);
@@ -1469,37 +1475,38 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
     it('TC4: Single-segment snake hitting wall → gameover, no bounce food', () => {
       const world = generateWorldMap(3, 3);
       const state = minimalState({ world });
-      state.snake = [{ x: 5, y: 5 }];
-      state.currentRoom = { x: 0, y: 0 };
-      state.direction = { x: 1, y: 0 };
-      state.nextDirection = { x: 1, y: 0 };
-      const room00 = getRoomAt(world, 0, 0);
-      room00.tiles[5][6] = CELL.WALL;
-      const foodBefore = room00.entities.food.length;
+      state.snake = [{ x: 25, y: 25 }];
+      state.currentRoom = { x: 1, y: 1 };
+      state.direction = { x: -1, y: 0 };
+      state.nextDirection = { x: -1, y: 0 };
+      const room = getRoomAt(world, 1, 1);
+      room.tiles[5][4] = CELL.WALL;
+      const foodBefore = room.entities.food.length;
       const result = tick(state);
       expect(result.gameState).toBe('gameover');
       expect(result.snake.length).toBe(1);
       // No food should have been added (gameover before food drop)
-      expect(room00.entities.food.length).toBe(foodBefore);
+      expect(room.entities.food.length).toBe(foodBefore);
     });
 
     it('TC5: Length-2 snake becomes length 1 after wall pop (no gameover)', () => {
       // Edge case: 2-segment snake hits wall → pop makes length 1, game continues
       const world = generateWorldMap(3, 3);
       const state = minimalState({ world });
-      const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
+      const room = getRoomAt(world, 1, 1);
       state.snake = [
-        { x: 1, y: 10 },
-        { x: 2, y: 10 },  // tail — will be popped
+        { x: 25, y: 25 },
+        { x: 26, y: 25 },  // tail — will be popped
       ];
+      state.currentRoom = { x: 1, y: 1 };
       state.direction = { x: -1, y: 0 };
       state.nextDirection = { x: -1, y: 0 };
-      room.tiles[10][0] = CELL.WALL;
+      room.tiles[5][4] = CELL.WALL;
       const foodBefore = room.entities.food.length;
       const result = tick(state);
       expect(result.gameState).toBe('playing');
       expect(result.snake.length).toBe(1);
-      // Bounce food should still drop at tail (2,10) before pop
+      // Bounce food should still drop at tail (26,25) before pop
       expect(room.entities.food.length).toBe(foodBefore + 1);
     });
 
@@ -1507,16 +1514,29 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
       // Classic/gameboy mode: no world, no room lookup
       const state = minimalState();  // no world
       state.snake = [
-        { x: 1, y: 10 },
-        { x: 2, y: 10 },
-        { x: 3, y: 10 },
+        { x: 5, y: 5 },
+        { x: 6, y: 5 },
+        { x: 7, y: 5 },
       ];
       state.direction = { x: -1, y: 0 };
       state.nextDirection = { x: -1, y: 0 };
       const result = tick(state);
-      expect(result.gameState).toBe('playing');
-      expect(result.snake.length).toBe(2); // tail still popped
-      expect(result.stuckCounter).toBeGreaterThan(0); // still stuck
+      // Without world, out-of-bounds check: head at (5,5) moving left → newHead (4,5)
+      // No world mode: head.x === 0 triggers damage (line 45: if (!world && head.x === 0) return ['damage'])
+      // For newHead (4,5), head.x !== 0, so no damage — snake moves normally
+      // Actually let's position to hit x=0 boundary for no-world damage
+      // No-world: snake at (1,5) moving LEFT → newHead (0,5) → head.x === 0 → damage
+      state.snake = [
+        { x: 1, y: 5 },
+        { x: 2, y: 5 },
+        { x: 3, y: 5 },
+      ];
+      state.direction = { x: -1, y: 0 };
+      state.nextDirection = { x: -1, y: 0 };
+      const result2 = tick(state);
+      expect(result2.gameState).toBe('playing');
+      expect(result2.snake.length).toBe(2); // tail still popped
+      expect(result2.stuckCounter).toBeGreaterThan(0); // still stuck
     });
 
     it('TC7: Food at collision cell eaten first, then bounce food at tail', () => {
@@ -1524,25 +1544,28 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
       // and bounce food should still drop at tail position
       const world = generateWorldMap(3, 3);
       const state = minimalState({ world, score: 10 });
-      const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
+      const room = getRoomAt(world, 1, 1);
       state.snake = [
-        { x: 1, y: 10 },  // head → moves left into (0,10)
-        { x: 2, y: 10 },
-        { x: 3, y: 10 },  // tail
+        { x: 25, y: 25 },  // head → moves left into (24,25)
+        { x: 26, y: 25 },
+        { x: 27, y: 25 },  // tail
       ];
+      state.currentRoom = { x: 1, y: 1 };
       state.direction = { x: -1, y: 0 };
       state.nextDirection = { x: -1, y: 0 };
-      room.tiles[10][0] = CELL.WALL;
-      // Place food at the wall cell the head will collide with
-      room.entities.food.push(createFood(0, 10));
+      room.tiles[5][4] = CELL.WALL;
+      // Place food at the wall cell the head will collide with (24,25)
+      const wallWorldX = 24;
+      const wallWorldY = 25;
+      room.entities.food.push(createFood(wallWorldX, wallWorldY));
       const foodCountBefore = room.entities.food.length;
       const result = tick(state);
-      // The food at (0,10) should be eaten (removed)
-      // One bounce food should still be added at tail (3,10)
+      // The food at (24,25) should be eaten (removed)
+      // One bounce food should still be added at tail (27,25)
       expect(room.entities.food.length).toBe(foodCountBefore); // -1 eaten, +1 dropped = same
       const newFood = room.entities.food[room.entities.food.length - 1];
-      expect(newFood.x).toBe(3); // tail position
-      expect(newFood.y).toBe(10);
+      expect(newFood.x).toBe(27); // tail position
+      expect(newFood.y).toBe(25);
       // Score: 10 (start) + 10 (eat food) - 5 (wall penalty) = 15
       expect(result.score).toBe(15);
     });
