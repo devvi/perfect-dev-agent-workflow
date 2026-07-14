@@ -104,7 +104,7 @@ function renderAboutScreen(ctx, state) {
   ctx.font = '12px monospace';
   ctx.textAlign = 'left';
   ctx.fillText('Commit: ' + truncateHash(info.hash), 80, 200);
-  ctx.fillText('Msg:   ' + truncateMessage(info.message), 80, 230);
+  ctx.fillText('Message: ' + truncateMessage(info.message), 80, 230);
   ctx.fillText('Date:  ' + info.date, 80, 270);
 
   ctx.fillStyle = PALETTE.FOOD;
