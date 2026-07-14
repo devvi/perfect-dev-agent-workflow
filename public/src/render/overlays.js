@@ -75,6 +75,14 @@ function renderTitleScreen(ctx, state) {
     ctx.textAlign = 'center';
     ctx.fillText(prefix + item, CANVAS_SIZE / 2, menuY + i * lineHeight);
   });
+
+  // Version label (bottom-right, subtle)
+  ctx.save();
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('v1.0.0', CANVAS_SIZE - 10, CANVAS_SIZE - 10);
+  ctx.restore();
 }
 
 /**
