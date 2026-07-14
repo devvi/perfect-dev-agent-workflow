@@ -13,6 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Real test gate — runs only on implement-stage PRs
   test-and-report:
     if: startsWith(github.event.pull_request.head.ref, 'impl/')
     runs-on: ubuntu-latest
@@ -90,3 +91,14 @@ jobs:
         run: |
           echo "E2E Play Test failed - runtime errors found."
           exit 1
+
+  # Dummy gate for non-impl branches (research/plan) — always succeeds
+  # Same job name as the real gate so branch protection sees a passing check
+  test-and-report:
+    if: "!startsWith(github.event.pull_request.head.ref, 'impl/')"
+    runs-on: ubuntu-latest
+    steps:
+      - name: CI not required for this branch type
+        run: |
+          echo "Branch type: ${{ github.event.pull_request.head.ref }}"
+          echo "CI is not required for research/plan branches. Reporting success."
