@@ -269,9 +269,10 @@ export function tick(state) {
     s.screenShake = { intensity: 4, duration: 8 };
     s.score = Math.max(0, s.score - 5);
 
-    // Drop bounce food at tail's last segment (not at newHead, which is inside the wall)
-    const lastSeg = s.snake[s.snake.length - 1];
-    const dropPos = { x: lastSeg.x, y: lastSeg.y };
+    // Drop bounce food at current head position (last valid pos before wall collision)
+    // After snake.reverse(), food ends up near tail — player must actively navigate to it
+    const headSeg = s.snake[0];
+    const dropPos = { x: headSeg.x, y: headSeg.y };
 
     if (s.world) {
       const { rx, ry } = worldToRoomCoords(dropPos.x, dropPos.y);
