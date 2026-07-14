@@ -56,6 +56,7 @@ import { saveGame, loadGame, applySave, clearSave } from '../public/src/engine/s
 
 // Render modules
 import { renderMinimap } from '../public/src/render/minimap.js';
+import { renderOverlay } from '../public/src/render/overlays.js';
 
 
 // Entity factories
@@ -2841,6 +2842,120 @@ describe('Phase 6 — Boss Battle (Issue #127)', () => {
       }
       expect(filled.length).toBe(4);
       expect(empty.length).toBe(2);
+    });
+  });
+});
+
+// =====================================================================
+// Phase 6 — Title Screen Version Label (Issue #175)
+// =====================================================================
+
+describe('Phase 6 — Title Screen Version Label (#175)', () => {
+  describe('UT1: version string is hardcoded in renderTitleScreen', () => {
+    it('contains "v1.0.0" in overlays.js renderTitleScreen function', () => {
+      const source = readFileSync(
+        new URL('../public/src/render/overlays.js', import.meta.url),
+        'utf-8'
+      );
+      // The version string should appear in the file
+      expect(source).toContain('v1.0.0');
+    });
+  });
+
+  describe('UT2: version uses correct fillStyle (rgba semi-transparent)', () => {
+    it('uses rgba(255, 255, 255, 0.3) for the version fillStyle', () => {
+      const source = readFileSync(
+        new URL('../public/src/render/overlays.js', import.meta.url),
+        'utf-8'
+      );
+      // Find the v1.0.0 line context and check fillStyle
+      const lines = source.split('\n');
+      const versionLineIdx = lines.findIndex(l => l.includes('v1.0.0'));
+      expect(versionLineIdx).toBeGreaterThan(-1);
+      // The fillStyle assignment should appear before the version fillText
+      const beforeVersion = lines.slice(0, versionLineIdx).join('\n');
+      const lastFillStyle = beforeVersion.match(/fillStyle\s*=\s*'([^']+)'/g);
+      expect(lastFillStyle).not.toBeNull();
+      const last = lastFillStyle[lastFillStyle.length - 1];
+      expect(last).toContain('0.3');
+      expect(last).toContain('255');
+    });
+  });
+
+  describe('UT3: version uses textAlign = "right"', () => {
+    it('uses right textAlign for the version label', () => {
+      const source = readFileSync(
+        new URL('../public/src/render/overlays.js', import.meta.url),
+        'utf-8'
+      );
+      const lines = source.split('\n');
+      const versionLineIdx = lines.findIndex(l => l.includes('v1.0.0'));
+      expect(versionLineIdx).toBeGreaterThan(-1);
+      // Check that textAlign = 'right' appears in renderTitleScreen
+      const contextBefore = lines.slice(Math.max(0, versionLineIdx - 20), versionLineIdx + 1).join('\n');
+      expect(contextBefore).toContain("'right'");
+    });
+  });
+
+  describe('UT4: version is positioned at CANVAS_SIZE - 10, CANVAS_SIZE - 10 (bottom-right)', () => {
+    it('uses CANVAS_SIZE - 10 for both x and y coordinates', () => {
+      const source = readFileSync(
+        new URL('../public/src/render/overlays.js', import.meta.url),
+        'utf-8'
+      );
+      const v1Match = source.match(/fillText\s*\(\s*['"]v1\.0\.0['"]/);
+      expect(v1Match).not.toBeNull();
+      // The fillText line should reference CANVAS_SIZE - 10
+      const lineStart = source.lastIndexOf('\n', v1Match.index) + 1;
+      const lineEnd = source.indexOf('\n', v1Match.index);
+      const line = source.substring(lineStart, lineEnd < 0 ? source.length : lineEnd);
+      expect(line).toContain('CANVAS_SIZE - 10');
+    });
+  });
+
+  describe('UT5: ctx.save/restore protect context state', () => {
+    it('wraps version rendering with save() and restore()', () => {
+      const source = readFileSync(
+        new URL('../public/src/render/overlays.js', import.meta.url),
+        'utf-8'
+      );
+      const lines = source.split('\n');
+      const versionLineIdx = lines.findIndex(l => l.includes('v1.0.0'));
+      expect(versionLineIdx).toBeGreaterThan(-1);
+      // Check lines before version for save()
+      const beforeLines = lines.slice(Math.max(0, versionLineIdx - 10), versionLineIdx).join('\n');
+      expect(beforeLines).toContain('save()');
+      // Check lines after version for restore()
+      const afterLines = lines.slice(versionLineIdx + 1, versionLineIdx + 10).join('\n');
+      expect(afterLines).toContain('restore()');
+    });
+  });
+
+  describe('IT1: renderOverlay(title state) calls fillText with version string', () => {
+    it('calls fillText with "v1.0.0" when rendering title screen', () => {
+      const calls = [];
+      const mockCtx = {
+        save: () => { calls.push('save'); },
+        restore: () => { calls.push('restore'); },
+        fillStyle: '',
+        font: '',
+        textAlign: '',
+        fillText: (...args) => { calls.push(['fillText', ...args]); },
+        fillRect: () => { calls.push('fillRect'); },
+      };
+
+      const state = {
+        gameState: 'title',
+        menuMode: 'main',
+        menuIndex: 0,
+        commitInfo: { hash: 'abc1234', message: 'test', date: '2026-07-14' },
+      };
+
+      expect(() => renderOverlay(mockCtx, state)).not.toThrow();
+      // Find the fillText call with v1.0.0
+      const versionCall = calls.find(c => Array.isArray(c) && c[1] === 'v1.0.0');
+      expect(versionCall).toBeDefined();
+      expect(versionCall[1]).toBe('v1.0.0');
     });
   });
 });
