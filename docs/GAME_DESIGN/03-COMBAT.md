@@ -84,10 +84,8 @@ createEnemy(id, x, y, hp = 2, speedTicks = 2)
   ↓
 碰撞点有食物？→ 吃掉 +10 分（先处理）
   ↓
-★ 记录蛇尾最后一节坐标（始终在可通行格上）
-★ 在该坐标生成弹跳食物（createBounceFood）
-★ 移除蛇尾一节（s.snake.slice(0, -1））
-★ 长度归零？→ gameover
+★ 在碰撞位置生成弹跳食物（createBounceFood）
+★ 移除蛇尾一节（s.snake.slice(0, -1)）
   ↓
 stuckCounter = STUCK_TICKS、pendingReverse = true、屏幕震动、扣分 −5
   ↓
@@ -99,12 +97,9 @@ stuckCounter = STUCK_TICKS、pendingReverse = true、屏幕震动、扣分 −5
 | 方面 | 说明 |
 |------|------|
 | 弹跳食物 | 用 `createBounceFood` 而非普通食物，目的是制造紧迫感——食物有倒计时，玩家必须尽快回头拾取 |
-| 生成位置 | **蛇尾最后一节**，而非碰撞格（newHead）。newHead 在墙内不可见不可拾取；蛇尾始终在可通行格上，保证食物一定可达 |
 | 尾节移除 | 与射击代价机制（§3.1）一致，蛇长即生存资源 |
-| 长度归零 | 2 节蛇撞墙后头被吞、尾被移除 → 0 节 → gameover，防止数组越界 |
-| 经典模式 | 无 world 时不生成食物（跳过房间查询），但尾节移除仍然执行 |
+| 经典模式 | 无 world 时不生成食物，但尾节移除仍然执行 |
 | 同帧执行 | 尾节移除和扣分在同一帧完成，顺序不影响结果 |
-| 不依赖已有 UI | 弹跳食物的渲染和倒计时由 `createBounceFood` 自带逻辑处理，无需额外工作 |
 
 ### 与射击代价的关系
 
