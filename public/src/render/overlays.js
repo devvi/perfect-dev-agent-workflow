@@ -63,7 +63,7 @@ function renderTitleScreen(ctx, state) {
   ctx.fillText('⬆ ⬇ ⬅ ➡  Move', CANVAS_SIZE / 2, 250);
   ctx.fillText('Z  Fire projectile', CANVAS_SIZE / 2, 268);
   ctx.fillText('X  Interact (gacha/save)', CANVAS_SIZE / 2, 286);
-  ctx.fillText('ENTER  Select', CANVAS_SIZE / 2, 310);
+  ctx.fillText('ENTER/SPACE  Select', CANVAS_SIZE / 2, 310);
   ctx.fillText('SHIFT  Pause', CANVAS_SIZE / 2, 328);
 
   // Interactive menu
