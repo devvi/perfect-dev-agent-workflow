@@ -20,6 +20,12 @@ DIR = {
 
 **反向保护：** `nextDirection` 不允许与当前 direction 完全相反（不能 180 度掉头）。
 
+**视觉反馈（Issue #162）：** 蛇的眼睛渲染跟随 `nextDirection` 而非 `direction`——当玩家输入方向时，蛇眼立即转向新方向，即使蛇身尚未转向。这提供了即时输入反馈，改善手感。
+
+- `render/room.js`: `drawSnake()` 使用 `nextDirection` 计算眼珠位置
+- `gameboy.html`: CSS 动画为眼珠添加平滑过渡（`transition: left 150ms`）
+- 当 `nextDirection` 反转被阻塞时，眼珠保持在原方向
+
 ## 2.2 Stuck+Reverse 机制（Issue #46）
 
 当蛇头撞到墙壁或 STONE_WALL 时，不直接死亡——进入 **stuck 状态**：
