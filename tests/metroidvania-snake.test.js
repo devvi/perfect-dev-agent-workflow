@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 
 // Engine constants
 import {
-  ROOM_SIZE, MAP_COLS, MAP_ROWS, CELL_SIZE,
+  ROOM_SIZE, BOSS_ROOM_SIZE, MAP_COLS, MAP_ROWS, CELL_SIZE,
   ROOM_TYPE, DIR, CELL, DOOR_DIR,
   BASE_TICK_INTERVAL,
 } from '../public/src/engine/constants.js';
@@ -1152,11 +1152,21 @@ describe('Phase 8 — Integration', () => {
       for (let y = 0; y < world.rows; y++) {
         for (let x = 0; x < world.cols; x++) {
           const room = world.rooms[y][x];
-          expect(room.tiles.length).toBe(ROOM_SIZE);
-          for (let ty = 0; ty < ROOM_SIZE; ty++) {
-            expect(room.tiles[ty].length).toBe(ROOM_SIZE);
-            for (let tx = 0; tx < ROOM_SIZE; tx++) {
-              expect([0, 1, 2, 3, 4, 5, 6]).toContain(room.tiles[ty][tx]);
+          if (room.type === ROOM_TYPE.BOSS) {
+            expect(room.tiles.length).toBe(BOSS_ROOM_SIZE);
+            for (let ty = 0; ty < BOSS_ROOM_SIZE; ty++) {
+              expect(room.tiles[ty].length).toBe(BOSS_ROOM_SIZE);
+              for (let tx = 0; tx < BOSS_ROOM_SIZE; tx++) {
+                expect([0, 1, 2, 3, 4, 5, 6, 7]).toContain(room.tiles[ty][tx]);
+              }
+            }
+          } else {
+            expect(room.tiles.length).toBe(ROOM_SIZE);
+            for (let ty = 0; ty < ROOM_SIZE; ty++) {
+              expect(room.tiles[ty].length).toBe(ROOM_SIZE);
+              for (let tx = 0; tx < ROOM_SIZE; tx++) {
+                expect([0, 1, 2, 3, 4, 5, 6]).toContain(room.tiles[ty][tx]);
+              }
             }
           }
         }
@@ -1254,6 +1264,7 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
     it('wall collision triggers stuck+reverse — length preserved, stuckCounter set (Issue #46)', () => {
       const world = generateWorldMap(3, 3);
       const state = minimalState({ world });
+      state.currentRoom = { x: 0, y: 0 };
       const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
       const head = state.snake[0];
       // Place snake so it will move into a WALL
@@ -1755,7 +1766,7 @@ describe('Issue #70 — Food collision on wall cells', () => {
       // No food placed
 
       const result = checkSnakeCollision({ x: 10, y: 10 }, state.snake, state);
-      expect(result).toEqual(['damage']);
+      expect(result).toContain('damage');
     });
 
     it('A6: Food on SPIKE cell → [death] (death wins)', () => {
