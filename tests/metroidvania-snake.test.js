@@ -2959,3 +2959,72 @@ describe('Phase 6 — Title Screen Version Label (#175)', () => {
     });
   });
 });
+
+// =====================================================================
+// Issue #180 — ABOUT界面文案 Msg → Message
+// =====================================================================
+
+describe('Issue #180 — ABOUT screen label "Msg:" → "Message:"', () => {
+  describe('UT1: source contains "Message:" instead of "Msg:" for the commit message label', () => {
+    it('has "Message:" (not "Msg:") on the commit message line in overlays.js', () => {
+      const source = readFileSync(
+        new URL('../public/src/render/overlays.js', import.meta.url),
+        'utf-8'
+      );
+      // Line 107: ctx.fillText('Message: ' + truncateMessage(info.message), 80, 230);
+      const msgMatch = source.match(/fillText\s*\(\s*'Message:\s*'/);
+      expect(msgMatch).not.toBeNull();
+      // Ensure the old abbreviation is gone
+      expect(source).not.toContain("'Msg:   '");
+    });
+  });
+
+  describe('UT2: the "Message:" label appears in the renderAboutScreen function', () => {
+    it('is inside renderAboutScreen (between ctx.fillText for Commit and Date)', () => {
+      const source = readFileSync(
+        new URL('../public/src/render/overlays.js', import.meta.url),
+        'utf-8'
+      );
+      // Verify the three labels appear in order: Commit, Message, Date
+      const commitIdx = source.indexOf("'Commit: '");
+      const messageIdx = source.indexOf("'Message: '");
+      const dateIdx = source.indexOf("'Date:  '");
+      expect(commitIdx).toBeGreaterThan(-1);
+      expect(messageIdx).toBeGreaterThan(-1);
+      expect(dateIdx).toBeGreaterThan(-1);
+      expect(messageIdx).toBeGreaterThan(commitIdx);
+      expect(dateIdx).toBeGreaterThan(messageIdx);
+    });
+  });
+
+  describe('IT1: renderOverlay(about state) calls fillText with "Message:"', () => {
+    it('renders "Message:" when the ABOUT screen is active', () => {
+      const calls = [];
+      const mockCtx = {
+        save: () => { calls.push('save'); },
+        restore: () => { calls.push('restore'); },
+        fillStyle: '',
+        font: '',
+        textAlign: '',
+        fillText: (...args) => { calls.push(['fillText', ...args]); },
+        fillRect: () => { calls.push('fillRect'); },
+      };
+
+      const state = {
+        gameState: 'title',
+        menuMode: 'about',
+        menuIndex: 0,
+        commitInfo: { hash: 'abc1234', message: 'Add boss room', date: '2026-07-14' },
+      };
+
+      expect(() => renderOverlay(mockCtx, state)).not.toThrow();
+
+      // Find the fillText call containing "Message:"
+      const msgCall = calls.find(
+        c => Array.isArray(c) && typeof c[1] === 'string' && c[1].startsWith('Message:')
+      );
+      expect(msgCall).toBeDefined();
+      expect(msgCall[1]).toContain('Message: Add boss room');
+    });
+  });
+});
