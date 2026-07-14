@@ -56,6 +56,7 @@ import { saveGame, loadGame, applySave, clearSave } from '../public/src/engine/s
 
 // Render modules
 import { renderMinimap } from '../public/src/render/minimap.js';
+import { renderRoom } from '../public/src/render/room.js';
 
 
 // Entity factories
@@ -3332,6 +3333,173 @@ describe('Issue #158 — Boss stability regression fix (changeDirection directio
     // Reverse guard: if snake is moving DOWN, trying to go UP is rejected
     // {0,1} UP relative to DOWN is a reversal, so direction should stay DOWN
     expect(second.direction.y).toBe(1);
+  });
+});
+
+// =====================================================================
+// 手感优化 — Eye rendering follows nextDirection (Issue #162)
+// =====================================================================
+describe('Issue #162: 手感优化 — Eye rendering follows nextDirection', () => {
+  // Helper: minimal mock canvas context
+  function mockCtx() {
+    const calls = [];
+    return {
+      calls,
+      save: () => calls.push('save'),
+      restore: () => calls.push('restore'),
+      fillStyle: null,
+      globalAlpha: 1.0,
+      fillRect: (...a) => calls.push(['fillRect', ...a]),
+      beginPath: () => calls.push('beginPath'),
+      arc: (...a) => calls.push(['arc', ...a]),
+      fill: () => calls.push('fill'),
+      font: null,
+      textAlign: null,
+      fillText: (...a) => calls.push(['fillText', ...a]),
+      strokeStyle: null,
+      lineWidth: null,
+      moveTo: () => {},
+      lineTo: () => {},
+      stroke: () => {},
+    };
+  }
+
+  // Small helper: create a single-room world at room (1,1) with all FLOOR tiles
+  function oneRoomWorld() {
+    const world = generateWorldMap(3, 3);
+    // Ensure room (1,1) exists and tiles are floor
+    const room = getRoomAt(world, 1, 1);
+    room.tiles = Array.from({ length: ROOM_SIZE }, () =>
+      Array.from({ length: ROOM_SIZE }, () => CELL.FLOOR)
+    );
+    room.entities.food = [];
+    room.entities.enemies = [];
+    return world;
+  }
+
+  // Central function: creates a playing state, renders into mock ctx, returns ctx calls
+  function renderEyes(opts = {}) {
+    const {
+      direction = { x: 1, y: 0 },
+      nextDirection = null,
+    } = opts;
+    const world = oneRoomWorld();
+    const state = {
+      snake: [{ x: 30, y: 30 }],
+      direction,
+      nextDirection,
+      currentRoom: { x: 1, y: 1 },
+      gameState: 'playing',
+      world,
+      projectiles: [],
+      invulnerableTicks: 0,
+      stuckCounter: 0,
+    };
+    const ctx = mockCtx();
+    renderRoom(ctx, state, world);
+    return ctx.calls;
+  }
+
+  // Eye positions for each direction (px offsets):
+  // UP:    fillRect(px+5,  py+4, ...), fillRect(px+12, py+4, ...)
+  // DOWN:  fillRect(px+5,  py+13, ...), fillRect(px+12, py+13, ...)
+  // LEFT:  fillRect(px+4,  py+5, ...), fillRect(px+4, py+12, ...)
+  // RIGHT: fillRect(px+13, py+5, ...), fillRect(px+13, py+12, ...)
+
+  it('TC1: eyes use nextDirection when it differs from direction', () => {
+    // Snake moving RIGHT (direction) but player just pressed DOWN (nextDirection)
+    const calls = renderEyes({
+      direction: { x: 1, y: 0 },
+      nextDirection: { x: 0, y: 1 },
+    });
+
+    // Find eye fillRect calls (white eyes: fillRect with eyeSize=3)
+    // After fix: eyes should point DOWN, meaning both at same y (eye row)
+    // Before fix: eyes point RIGHT, meaning different y (two rows),
+    //   or possibly undefined behavior since nextDirection is ignored
+    const eyeCalls = calls.filter(
+      c => Array.isArray(c) && c[0] === 'fillRect' && c[3] === 3 && c[4] === 3
+    );
+
+    expect(eyeCalls.length).toBeGreaterThanOrEqual(2);
+
+    // For DOWN direction: both eyes at py+13 (same y offset)
+    const yValues = eyeCalls.map(c => c[2]);
+    // All eye calls should be at the same y position (both eyes same row for DOWN)
+    const allSameY = yValues.every(y => y === yValues[0]);
+    // BEFORE FIX: eyes point RIGHT (direction), so y differs → allSameY is false
+    // AFTER FIX: eyes point DOWN (nextDirection), so allSameY is true
+    expect(allSameY).toBe(true);
+  });
+
+  it('TC2: eyes fall back to direction when no nextDirection set', () => {
+    // Only direction is set (e.g. initial state, no input yet)
+    const calls = renderEyes({
+      direction: { x: 0, y: -1 },
+      nextDirection: null,
+    });
+
+    const eyeCalls = calls.filter(
+      c => Array.isArray(c) && c[0] === 'fillRect' && c[3] === 3 && c[4] === 3
+    );
+
+    expect(eyeCalls.length).toBeGreaterThanOrEqual(2);
+
+    // For UP direction (y=-1): both eyes at same y (py+4), different x (px+5, px+12)
+    const yValues = eyeCalls.map(c => c[2]);
+    const xValues = eyeCalls.map(c => c[1]);
+    // All eyes at the same row for up/down direction
+    expect(yValues.every(y => y === yValues[0])).toBe(true);
+    // Eyes should be at different x positions (left eye, right eye)
+    expect(xValues[0]).not.toBe(xValues[1]);
+    // The difference should be 7 pixels (px+12 - px+5)
+    expect(Math.abs(xValues[0] - xValues[1])).toBe(7);
+  });
+
+  it('TC3: reverse direction blocked — eyes stay at original nextDirection', () => {
+    // Snake moving RIGHT, nextDirection already set to RIGHT
+    // Player tries to go LEFT (reverse) → changeDirection returns {...state} without changing nextDirection
+    const calls = renderEyes({
+      direction: { x: 1, y: 0 },
+      nextDirection: { x: 1, y: 0 },
+    });
+
+    const eyeCalls = calls.filter(
+      c => Array.isArray(c) && c[0] === 'fillRect' && c[3] === 3 && c[4] === 3
+    );
+
+    expect(eyeCalls.length).toBeGreaterThanOrEqual(2);
+
+    // For RIGHT direction (x=1): eyes at same x (px+13), different y (py+5, py+12)
+    const xValues = eyeCalls.map(c => c[1]);
+    const yValues = eyeCalls.map(c => c[2]);
+    // All eyes at the same x position for left/right direction
+    expect(xValues.every(x => x === xValues[0])).toBe(true);
+    // Eyes should be at different y positions (top eye, bottom eye)
+    expect(yValues[0]).not.toBe(yValues[1]);
+    // Difference should be 7 pixels (py+12 - py+5)
+    expect(Math.abs(yValues[0] - yValues[1])).toBe(7);
+  });
+
+  it('TC4: nextDirection and direction match — same behavior as before', () => {
+    // When nextDirection === direction, displayDir = direction — no change
+    const calls = renderEyes({
+      direction: { x: 0, y: 1 },
+      nextDirection: { x: 0, y: 1 },
+    });
+
+    const eyeCalls = calls.filter(
+      c => Array.isArray(c) && c[0] === 'fillRect' && c[3] === 3 && c[4] === 3
+    );
+
+    expect(eyeCalls.length).toBeGreaterThanOrEqual(2);
+
+    // DOWN: eyes at same y (py+13), different x (px+5, px+12)
+    const xValues = eyeCalls.map(c => c[1]);
+    const yValues = eyeCalls.map(c => c[2]);
+    expect(yValues.every(y => y === yValues[0])).toBe(true);
+    expect(xValues[0]).not.toBe(xValues[1]);
+    expect(Math.abs(xValues[0] - xValues[1])).toBe(7);
   });
 });
 
