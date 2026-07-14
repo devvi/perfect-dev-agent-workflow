@@ -1964,6 +1964,9 @@ describe('Issue #70 — Food collision on wall cells', () => {
       const world = generateWorldMap(3, 3);
       const state = createInitialState(world);
       const room = getRoomAt(world, 0, 0);
+      // Clear random-placed food/enemies so they don't interfere with test data
+      room.entities.food = [];
+      room.entities.enemies = [];
       state.snake = [
         { x: 8, y: 10 },
         { x: 7, y: 10 },
@@ -2019,6 +2022,8 @@ describe('Issue #70 — Food collision on wall cells', () => {
       const world = generateWorldMap(3, 3);
       const state = createInitialState(world);
       const room = getRoomAt(world, 0, 0);
+      // Clear random-placed food so they don't interfere with test data
+      room.entities.food = [];
       state.snake = [{ x: 8, y: 10 }];
       state.direction = { x: 1, y: 0 };
       state.nextDirection = { x: 1, y: 0 };
