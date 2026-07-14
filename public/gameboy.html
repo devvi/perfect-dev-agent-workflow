@@ -539,6 +539,7 @@ document.addEventListener('keydown', (e) => {
     if (dir) {
       e.preventDefault();
       state = changeDirection(state, dir);
+      render(ctx, state);
     }
   }
 });

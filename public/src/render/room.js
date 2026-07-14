@@ -239,13 +239,14 @@ function drawSnake(ctx, state) {
       // Eyes
       ctx.fillStyle = '#ffffff';
       const eyeSize = 3;
-      if (state.direction.y === -1) { // up
+      const displayDir = state.nextDirection || state.direction;
+      if (displayDir.y === -1) { // up
         ctx.fillRect(px + 5, py + 4, eyeSize, eyeSize);
         ctx.fillRect(px + 12, py + 4, eyeSize, eyeSize);
-      } else if (state.direction.y === 1) { // down
+      } else if (displayDir.y === 1) { // down
         ctx.fillRect(px + 5, py + 13, eyeSize, eyeSize);
         ctx.fillRect(px + 12, py + 13, eyeSize, eyeSize);
-      } else if (state.direction.x === -1) { // left
+      } else if (displayDir.x === -1) { // left
         ctx.fillRect(px + 4, py + 5, eyeSize, eyeSize);
         ctx.fillRect(px + 4, py + 12, eyeSize, eyeSize);
       } else { // right
