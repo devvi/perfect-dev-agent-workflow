@@ -60,7 +60,7 @@ import { renderRoom } from '../public/src/render/room.js';
 
 
 // Entity factories
-import { createSnake, createEnemy, createProjectile, createFood } from '../public/src/engine/entities.js';
+import { createSnake, createEnemy, createProjectile, createFood, createBounceFood } from '../public/src/engine/entities.js';
 
 // =====================================================================
 // Helper: create a minimal GameState for tests
@@ -1401,6 +1401,149 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
       expect(room.entities.food.length).toBeLessThan(foodCountBefore);
       expect(result.score).toBe(20); // 10 + 10 (food eaten) - 5 (wall penalty) = 15? No: score += 10, then score - 5
       // Actually: score starts at 10, +10 for eating = 20, then max(0, 20-5) = 15
+      expect(result.score).toBe(15);
+    });
+  });
+
+  describe('Bug #163: Wall bounce food position fix', () => {
+    it('TC1: Bounce food drops at tail last segment (not wall position)', () => {
+      // KEY test: food should spawn at tail position (3,10), NOT at wall or newHead
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
+      state.snake = [
+        { x: 1, y: 10 },  // head → moves left into WALL at (0,10)
+        { x: 2, y: 10 },
+        { x: 3, y: 10 },  // tail — food should drop here
+      ];
+      state.direction = { x: -1, y: 0 };
+      state.nextDirection = { x: -1, y: 0 };
+      room.tiles[10][0] = CELL.WALL;
+      const foodBefore = room.entities.food.length;
+      const result = tick(state);
+      // One bounce food should be dropped at tail position (3,10)
+      expect(room.entities.food.length).toBe(foodBefore + 1);
+      const newFood = room.entities.food[room.entities.food.length - 1];
+      expect(newFood.x).toBe(3);  // tail's x, NOT wall (0) or newHead (1)
+      expect(newFood.y).toBe(10); // tail's y
+      expect(newFood.isBouncing).toBe(true);
+    });
+
+    it('TC2: Wall collision reduces snake length by 1 (tail pop)', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
+      state.snake = [
+        { x: 1, y: 10 },
+        { x: 2, y: 10 },
+        { x: 3, y: 10 },
+      ];
+      state.direction = { x: -1, y: 0 };
+      state.nextDirection = { x: -1, y: 0 };
+      room.tiles[10][0] = CELL.WALL;
+      const result = tick(state);
+      expect(result.gameState).toBe('playing');
+      expect(result.snake.length).toBe(2); // 3 → 2
+    });
+
+    it('TC3: Existing wall-damage behaviors preserved after fix', () => {
+      // stuckCounter, pendingReverse, screenShake, score penalty unchanged
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world, score: 20 });
+      const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
+      state.snake = [
+        { x: 1, y: 10 },
+        { x: 2, y: 10 },
+        { x: 3, y: 10 },
+      ];
+      state.direction = { x: -1, y: 0 };
+      state.nextDirection = { x: -1, y: 0 };
+      room.tiles[10][0] = CELL.WALL;
+      const result = tick(state);
+      expect(result.stuckCounter).toBeGreaterThan(0);
+      expect(result.pendingReverse).toBe(true);
+      expect(result.screenShake).not.toBeNull();
+      expect(result.score).toBe(15); // 20 - 5
+    });
+
+    it('TC4: Single-segment snake hitting wall → gameover, no bounce food', () => {
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      state.snake = [{ x: 5, y: 5 }];
+      state.currentRoom = { x: 0, y: 0 };
+      state.direction = { x: 1, y: 0 };
+      state.nextDirection = { x: 1, y: 0 };
+      const room00 = getRoomAt(world, 0, 0);
+      room00.tiles[5][6] = CELL.WALL;
+      const foodBefore = room00.entities.food.length;
+      const result = tick(state);
+      expect(result.gameState).toBe('gameover');
+      expect(result.snake.length).toBe(1);
+      // No food should have been added (gameover before food drop)
+      expect(room00.entities.food.length).toBe(foodBefore);
+    });
+
+    it('TC5: Length-2 snake becomes length 1 after wall pop (no gameover)', () => {
+      // Edge case: 2-segment snake hits wall → pop makes length 1, game continues
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world });
+      const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
+      state.snake = [
+        { x: 1, y: 10 },
+        { x: 2, y: 10 },  // tail — will be popped
+      ];
+      state.direction = { x: -1, y: 0 };
+      state.nextDirection = { x: -1, y: 0 };
+      room.tiles[10][0] = CELL.WALL;
+      const foodBefore = room.entities.food.length;
+      const result = tick(state);
+      expect(result.gameState).toBe('playing');
+      expect(result.snake.length).toBe(1);
+      // Bounce food should still drop at tail (2,10) before pop
+      expect(room.entities.food.length).toBe(foodBefore + 1);
+    });
+
+    it('TC6: No-world mode — tail still popped, no bounce food spawned', () => {
+      // Classic/gameboy mode: no world, no room lookup
+      const state = minimalState();  // no world
+      state.snake = [
+        { x: 1, y: 10 },
+        { x: 2, y: 10 },
+        { x: 3, y: 10 },
+      ];
+      state.direction = { x: -1, y: 0 };
+      state.nextDirection = { x: -1, y: 0 };
+      const result = tick(state);
+      expect(result.gameState).toBe('playing');
+      expect(result.snake.length).toBe(2); // tail still popped
+      expect(result.stuckCounter).toBeGreaterThan(0); // still stuck
+    });
+
+    it('TC7: Food at collision cell eaten first, then bounce food at tail', () => {
+      // If food is at the wall collision cell, it should be eaten (+10 pts)
+      // and bounce food should still drop at tail position
+      const world = generateWorldMap(3, 3);
+      const state = minimalState({ world, score: 10 });
+      const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
+      state.snake = [
+        { x: 1, y: 10 },  // head → moves left into (0,10)
+        { x: 2, y: 10 },
+        { x: 3, y: 10 },  // tail
+      ];
+      state.direction = { x: -1, y: 0 };
+      state.nextDirection = { x: -1, y: 0 };
+      room.tiles[10][0] = CELL.WALL;
+      // Place food at the wall cell the head will collide with
+      room.entities.food.push(createFood(0, 10));
+      const foodCountBefore = room.entities.food.length;
+      const result = tick(state);
+      // The food at (0,10) should be eaten (removed)
+      // One bounce food should still be added at tail (3,10)
+      expect(room.entities.food.length).toBe(foodCountBefore); // -1 eaten, +1 dropped = same
+      const newFood = room.entities.food[room.entities.food.length - 1];
+      expect(newFood.x).toBe(3); // tail position
+      expect(newFood.y).toBe(10);
+      // Score: 10 (start) + 10 (eat food) - 5 (wall penalty) = 15
       expect(result.score).toBe(15);
     });
   });
