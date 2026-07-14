@@ -1262,7 +1262,7 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
       expect(result).not.toContain('death');
     });
 
-    it('wall collision triggers stuck+reverse — length preserved, stuckCounter set (Issue #46)', () => {
+    it('wall collision triggers stuck+reverse — tail popped, stuckCounter set (Issue #46)', () => {
       const world = generateWorldMap(3, 3);
       const state = minimalState({ world });
       state.currentRoom = { x: 0, y: 0 };
@@ -1278,14 +1278,14 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
       state.nextDirection = { x: -1, y: 0 };
       room.tiles[10][0] = CELL.WALL;
       const result = tick(state);
-      // Now wall collision → stuck+reverse: length preserved, no gameover
+      // Now wall collision → stuck+reverse: tail popped, no gameover
       expect(result.gameState).toBe('playing');
-      expect(result.snake.length).toBe(state.snake.length);
+      expect(result.snake.length).toBe(2);
       expect(result.stuckCounter).toBeGreaterThan(0);
       expect(result.screenShake).not.toBeNull();
     });
 
-    it('snake length 1 hitting wall → stuck not gameover (Issue #46)', () => {
+    it('snake length 1 hitting wall → gameover (Issue #46)', () => {
       // With world: place WALL in front of snake
       const world = generateWorldMap(3, 3);
       const state = minimalState({
@@ -1300,10 +1300,9 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
       const room00 = getRoomAt(world, 0, 0);
       room00.tiles[5][6] = CELL.WALL;
       const result = tick(state);
-      // Wall collision now triggers stuck+reverse instead of gameover
-      expect(result.gameState).toBe('playing');
+      // Wall collision for length-1 → immediate gameover (Issue #150)
+      expect(result.gameState).toBe('gameover');
       expect(result.snake.length).toBe(1);
-      expect(result.stuckCounter).toBeGreaterThan(0);
     });
   });
 
@@ -1454,9 +1453,9 @@ describe('Phase 4 — Stuck+Reverse on obstacle collision (Issue #46)', () => {
       state.nextDirection = { x: 1, y: 0 };
       const result = tick(state);
 
-      // Snake should not have moved (no length loss)
+      // Snake should not have moved (tail popped)
       expect(result.stuckCounter).toBeGreaterThan(0);
-      expect(result.snake.length).toBe(state.snake.length);
+      expect(result.snake.length).toBe(2);
       // Snake head should not have advanced into the wall
       expect(result.snake[0]).toEqual(state.snake[0]);
     });
@@ -1600,7 +1599,7 @@ describe('Phase 4 — Stuck+Reverse on obstacle collision (Issue #46)', () => {
   });
 
   describe('Test 7: Edge case — snake length = 1', () => {
-    it('should reverse a single-segment snake on wall collision (direction flips, same cell)', () => {
+    it('should gameover a single-segment snake on wall collision (Issue #150)', () => {
       const world = generateWorldMap(3, 3);
       const state = minimalState({
         world,
@@ -1612,17 +1611,11 @@ describe('Phase 4 — Stuck+Reverse on obstacle collision (Issue #46)', () => {
       state.direction = { x: 1, y: 0 };
       state.nextDirection = { x: 1, y: 0 };
 
-      let s = tick(state); // stuck
-      // Tick through stuck
-      // 5 ticks = stuck 5→0, reverse executes on 5th tick (no extra move)
-      for (let i = 0; i < 5; i++) {
-        s = tick(s);
-      }
-      // Single segment: snake.reverse() on 1 element = same array
+      const s = tick(state);
+      // Single segment: wall hit → immediate gameover (Issue #150)
+      expect(s.gameState).toBe('gameover');
       expect(s.snake).toHaveLength(1);
       expect(s.snake[0]).toEqual({ x: 5, y: 5 });
-      // Direction flipped 180°
-      expect(s.direction).toEqual({ x: -1, y: 0 });
     });
   });
 });
@@ -1992,8 +1985,8 @@ describe('Issue #70 — Food collision on wall cells', () => {
       const foodStillThere = roomAfter.entities.food.some(f => f.x === 9 && f.y === 10);
       expect(foodStillThere).toBe(false);
       // Damage handler returns early (stuck+reverse), enemy not processed
-      // Snake length preserved (no tail pop or growth)
-      expect(result.snake.length).toBe(state.snake.length);
+      // Snake length reduced by tail pop
+      expect(result.snake.length).toBe(3);
       // StuckCounter set because wall damage wins
       expect(result.stuckCounter).toBeGreaterThan(0);
     });
@@ -2022,7 +2015,7 @@ describe('Issue #70 — Food collision on wall cells', () => {
       expect(result.score).toBe(5);
     });
 
-    it('C4: Snake length 1 hits wall with food — stuckCounter set, food removed, playing', () => {
+    it('C4: Snake length 1 hits wall with food — gameover, food not processed', () => {
       const world = generateWorldMap(3, 3);
       const state = createInitialState(world);
       const room = getRoomAt(world, 0, 0);
@@ -2035,10 +2028,8 @@ describe('Issue #70 — Food collision on wall cells', () => {
       room.entities.food.push({ x: 9, y: 10 });
 
       const result = tick(state);
-      expect(result.gameState).toBe('playing');
-      expect(result.stuckCounter).toBeGreaterThan(0);
-      const roomAfter = getRoomAt(world, 0, 0);
-      expect(roomAfter.entities.food.find(f => f.x === 9 && f.y === 10)).toBeUndefined();
+      // Length 1 hitting wall → gameover (Issue #150); food not processed
+      expect(result.gameState).toBe('gameover');
     });
   });
 });
