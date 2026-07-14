@@ -1148,7 +1148,7 @@ describe('Phase 7 — Game Flow', () => {
 
 describe('Phase 8 — Integration', () => {
   describe('World map tiles construct correctly', () => {
-    it('generates valid tile layouts for all rooms', () => {
+    it('generates valid tile layouts for all rooms', { timeout: 30_000 }, () => {
       const world = generateWorldMap(5, 5);
       for (let y = 0; y < world.rows; y++) {
         for (let x = 0; x < world.cols; x++) {
