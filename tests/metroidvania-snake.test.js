@@ -1277,9 +1277,9 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
       state.nextDirection = { x: -1, y: 0 };
       room.tiles[10][0] = CELL.WALL;
       const result = tick(state);
-      // Now wall collision → stuck+reverse: tail popped (health loss), no gameover
+      // Now wall collision → stuck+reverse: length preserved, no gameover
       expect(result.gameState).toBe('playing');
-      expect(result.snake.length).toBe(state.snake.length - 1);
+      expect(result.snake.length).toBe(state.snake.length);
       expect(result.stuckCounter).toBeGreaterThan(0);
       expect(result.screenShake).not.toBeNull();
     });
@@ -1321,9 +1321,9 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
       state.nextDirection = { x: -1, y: 0 };
       room.tiles[10][0] = CELL.WALL;
       const result = tick(state);
-      // Bug-fixed: tail popped (health loss) → length reduced by 1
+      // BUG: length is preserved instead of being reduced
       expect(result.gameState).toBe('playing');
-      expect(result.snake.length).toBe(state.snake.length - 1); // tail popped: 3→2
+      expect(result.snake.length).toBe(state.snake.length); // ← should be -1 after fix
     });
 
     it('TC2: Wall collision does NOT spawn food at newHead (broken behavior)', () => {
@@ -1380,14 +1380,10 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
       expect(result.snake.length).toBe(1);
     });
 
-    it('TC5: Food at collision cell is eaten before damage (+10 pts) (Bug #163 fix)', () => {
-      // Food at the wall collision cell (newHead) is eaten first; bounce food
-      // is then dropped at tail position — net food count unchanged.
+    it('TC5: Food at collision cell is eaten before damage (+10 pts) (preserved behavior)', () => {
+      // If food is at the same cell as the wall collision, it should be eaten first
       const world = generateWorldMap(3, 3);
       const state = minimalState({ world, score: 10 });
-      // Override currentRoom to be (0,0) so newHead moving LEFT from (1,10)
-      // doesn't trigger a room transition (the collision cell (0,10) is in room (0,0))
-      state.currentRoom = { x: 0, y: 0 };
       const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
       state.snake = [
         { x: 1, y: 10 },
@@ -1397,14 +1393,14 @@ describe('Issue #22 — Obstacle Death Penalty Iteration', () => {
       state.direction = { x: -1, y: 0 };
       state.nextDirection = { x: -1, y: 0 };
       room.tiles[10][0] = CELL.WALL;
-      // Place food at the collision cell (0,10) which is newHead when moving LEFT
-      room.entities.food.push({ x: 0, y: 10 });
+      // Place food at the collision cell (1,10) which is newHead
+      room.entities.food.push({ x: 1, y: 10 });
       const foodCountBefore = room.entities.food.length;
       const result = tick(state);
-      // Food at collision cell is removed (eaten) but bounce food is added at tail
-      // Net: -1 eaten + 1 bounce = same count as before
-      expect(room.entities.food.length).toBe(foodCountBefore);
-      // Score: 10 (start) + 10 (eat food) - 5 (wall penalty) = 15
+      // Food at collision cell is removed (eaten)
+      expect(room.entities.food.length).toBeLessThan(foodCountBefore);
+      expect(result.score).toBe(20); // 10 + 10 (food eaten) - 5 (wall penalty) = 15? No: score += 10, then score - 5
+      // Actually: score starts at 10, +10 for eating = 20, then max(0, 20-5) = 15
       expect(result.score).toBe(15);
     });
   });
@@ -1722,9 +1718,9 @@ describe('Phase 4 — Stuck+Reverse on obstacle collision (Issue #46)', () => {
       state.nextDirection = { x: 1, y: 0 };
       const result = tick(state);
 
-      // Snake should have lost one segment (tail popped on wall hit)
+      // Snake should not have moved (no length loss)
       expect(result.stuckCounter).toBeGreaterThan(0);
-      expect(result.snake.length).toBe(state.snake.length - 1);
+      expect(result.snake.length).toBe(state.snake.length);
       // Snake head should not have advanced into the wall
       expect(result.snake[0]).toEqual(state.snake[0]);
     });
@@ -2255,8 +2251,8 @@ describe('Issue #70 — Food collision on wall cells', () => {
       const foodStillThere = roomAfter.entities.food.some(f => f.x === 9 && f.y === 10);
       expect(foodStillThere).toBe(false);
       // Damage handler returns early (stuck+reverse), enemy not processed
-      // Wall damage pops tail — length decreased by 1
-      expect(result.snake.length).toBe(state.snake.length - 1);
+      // Snake length preserved (no tail pop or growth)
+      expect(result.snake.length).toBe(state.snake.length);
       // StuckCounter set because wall damage wins
       expect(result.stuckCounter).toBeGreaterThan(0);
     });

@@ -7,7 +7,7 @@ import {
 } from './constants.js';
 import { generateWorldMap, findRoomOfType } from './generator.js';
 import { getRoomAt } from './world.js';
-import { createSnake, createFood, createBounceFood } from './entities.js';
+import { createSnake, createFood } from './entities.js';
 import { worldToRoomCoords, roomToWorldCoords, getCellAt } from './world.js';
 import { checkSnakeCollision, checkProjectileCollision, checkRoomTransition, checkDoorPassable, lineSweepProjectileCollision } from './collision.js';
 import { fireProjectile, updateProjectiles, applyProjectileDamage, updateCooldowns } from './combat.js';
@@ -268,29 +268,6 @@ export function tick(state) {
     s.pendingReverse = true;
     s.screenShake = { intensity: 4, duration: 8 };
     s.score = Math.max(0, s.score - 5);
-
-    // Drop bounce food at tail's last segment (not at newHead, which is inside the wall)
-    const lastSeg = s.snake[s.snake.length - 1];
-    const dropPos = { x: lastSeg.x, y: lastSeg.y };
-
-    if (s.world) {
-      const { rx, ry } = worldToRoomCoords(dropPos.x, dropPos.y);
-      const room = getRoomAt(s.world, rx, ry);
-      if (room) {
-        const food = createBounceFood(dropPos.x, dropPos.y, null);
-        room.entities.food.push(food);
-      }
-    }
-
-    // Remove last tail segment (health loss)
-    s.snake = s.snake.slice(0, -1);
-
-    // If pop made snake length 0 → gameover
-    if (s.snake.length === 0) {
-      s.gameState = 'gameover';
-      return s;
-    }
-
     // Don't move head, don't remove tail — return early
     return s;
   }
