@@ -1,5 +1,6 @@
 name: review
-# CI testing — runs ONLY on implement-stage PRs
+# CI testing — runs on ALL PRs but only executes tests on implement-stage branches
+# For research/plan branches, reports success without running tests
 # Self-healing is handled by Hermes dispatcher (reads CI logs, fixes via OpenCode Serve)
 # This workflow only tests, reports, and gates the merge.
 
@@ -14,7 +15,6 @@ concurrency:
 
 jobs:
   test-and-report:
-    if: startsWith(github.event.pull_request.head.ref, 'impl/')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -23,16 +23,25 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Non-impl branch — skip tests
+        if: "!startsWith(github.event.pull_request.head.ref, 'impl/')"
+        run: |
+          echo "Branch type: ${{ github.event.pull_request.head.ref }}"
+          echo "CI tests only run on impl/* branches. Reporting success."
+
       - name: Setup Node.js
+        if: startsWith(github.event.pull_request.head.ref, 'impl/')
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
 
       - name: Install dependencies
+        if: startsWith(github.event.pull_request.head.ref, 'impl/')
         run: npm ci 2>/dev/null || npm install
 
       - name: Run tests
+        if: startsWith(github.event.pull_request.head.ref, 'impl/')
         id: test
         run: |
           npm test 2>&1 | tee test-output.log
@@ -40,7 +49,7 @@ jobs:
         continue-on-error: true
 
       - name: Test gate — block merge on failure
-        if: steps.test.outputs.exit_code != '0'
+        if: startsWith(github.event.pull_request.head.ref, 'impl/') && steps.test.outputs.exit_code != '0'
         run: |
           echo "❌ Tests FAILED (exit code ${{ steps.test.outputs.exit_code }}). Blocking merge."
           exit 1
@@ -54,7 +63,7 @@ jobs:
           retention-days: 3
 
       - name: Comment failure summary on PR
-        if: steps.test.outputs.exit_code != '0'
+        if: startsWith(github.event.pull_request.head.ref, 'impl/') && steps.test.outputs.exit_code != '0'
         uses: actions/github-script@v7
         with:
           script: |
@@ -76,17 +85,17 @@ jobs:
             });
 
       - name: Install Playwright browsers
-        if: success() || failure()
+        if: startsWith(github.event.pull_request.head.ref, 'impl/')
         run: npx playwright install chromium 2>&1
 
       - name: E2E Play Test
         id: playtest
-        if: success() || failure()
+        if: startsWith(github.event.pull_request.head.ref, 'impl/')
         run: npm run test:e2e
         continue-on-error: true
 
       - name: Play Test gate
-        if: steps.playtest.outcome != 'success'
+        if: startsWith(github.event.pull_request.head.ref, 'impl/') && steps.playtest.outcome != 'success'
         run: |
           echo "E2E Play Test failed - runtime errors found."
           exit 1
