@@ -36,7 +36,7 @@ const WORLD_STUB = {
       explored: false,
       type: 'normal',
       doors: { up: false, down: false, left: false, right: false },
-      sizeGate: false,
+      sizeGate: null,
     }))
   ),
 };
