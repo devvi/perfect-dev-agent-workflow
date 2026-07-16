@@ -35,22 +35,56 @@ import time
 from collections import defaultdict
 
 PENDING_FILE = os.environ.get("EVENT_PROCESSOR_PENDING_FILE") or os.path.expanduser("~/.hermes/workflow-pending.json")
+WORKFLOW_CONFIG = os.path.expanduser("~/.hermes/workflow-config.json")
 
-# ── Work hours ────────────────────────────────────────────────
-# Outside work hours, no LLM calls are made (script outputs nothing).
-# Events still accumulate in pending file.
-WORK_START_HOUR = int(os.environ.get("WORK_START_HOUR", "8"))
-WORK_END_HOUR = int(os.environ.get("WORK_END_HOUR", "22"))
+# ── Workflow config defaults ────────────────────────────────────
+DEFAULT_CONFIG = {
+    "enabled": True,
+    "work_start_hour": 8,
+    "work_end_hour": 22,
+    "preset": "daytime",
+}
+
+# ── Presets ─────────────────────────────────────────────────────
+WORK_HOUR_PRESETS = {
+    "daytime": {"work_start_hour": 8, "work_end_hour": 22},
+    "night-owl": {"work_start_hour": 14, "work_end_hour": 2},
+    "always": {"work_start_hour": 0, "work_end_hour": 24},
+}
 
 
-def is_work_hours() -> bool:
+def read_workflow_config() -> dict:
+    """Read workflow config, falling back to env vars then defaults."""
+    config = dict(DEFAULT_CONFIG)
+    try:
+        with open(WORKFLOW_CONFIG) as f:
+            config.update(json.load(f))
+    except (FileNotFoundError, json.JSONDecodeError, IOError):
+        pass
+    # Env vars override file config
+    if "WORK_START_HOUR" in os.environ:
+        config["work_start_hour"] = int(os.environ["WORK_START_HOUR"])
+    if "WORK_END_HOUR" in os.environ:
+        config["work_end_hour"] = int(os.environ["WORK_END_HOUR"])
+    if "WORKFLOW_DISABLED" in os.environ:
+        config["enabled"] = not os.environ["WORKFLOW_DISABLED"].lower() in ("1", "true")
+    return config
+
+
+def is_work_hours(cfg: dict = None) -> bool:
     """Check if current time is within configured work hours."""
+    if cfg is None:
+        cfg = read_workflow_config()
+    if not cfg.get("enabled", True):
+        return False
     hour = datetime.datetime.now().hour
-    if WORK_START_HOUR <= WORK_END_HOUR:
-        return WORK_START_HOUR <= hour < WORK_END_HOUR
+    start = cfg.get("work_start_hour", 8)
+    end = cfg.get("work_end_hour", 22)
+    if start <= end:
+        return start <= hour < end
     else:
-        # Wrapping: e.g. 22-8 means night shift
-        return hour >= WORK_START_HOUR or hour < WORK_END_HOUR
+        # Wrapping: e.g. 14-2 means afternoon to late night
+        return hour >= start or hour < end
 
 
 # ── Priority labels ───────────────────────────────────────────
@@ -466,8 +500,9 @@ def preprocess():
 
 def main():
     try:
+        cfg = read_workflow_config()
         # Outside work hours → no output, no LLM call
-        if not is_work_hours():
+        if not is_work_hours(cfg):
             return
 
         lines = preprocess()
