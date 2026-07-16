@@ -19,6 +19,7 @@ export const ROOM_TYPE = {
   HIDDEN:     'hidden',
   GACHA:      'gacha',
   KEY_SHRINE: 'key_shrine',
+  COMBAT:     'combat',
 };
 
 // Direction
@@ -92,6 +93,12 @@ export const STUCK_TICKS = 5;
 // Invulnerability after enemy hit (Issue #118)
 export const INVULNERABILITY_DURATION = 10; // ticks of invulnerability after enemy hit
 
+// Combat room constants (Issue #224)
+export const COMBAT_FOOD_SPAWN_INTERVAL = 20;  // ticks between food spawns
+export const MAX_COMBAT_ROOMS = 4;               // max per map
+export const COMBAT_MIN_DIST = 2;                // min rooms-away from start
+export const COMBAT_ENEMY_MARGIN = 3;            // min cells from door for enemy spawn
+
 // Boss battle constants (Issue #127)
 export const BOSS_HP_SEGMENTS = 6;
 export const BOSS_CHARGE_WINDUP = 5;       // ticks of windup before charge
@@ -127,4 +134,5 @@ export const PALETTE = {
   HUD_BG:     '#1a1a2e',
   HUD_TEXT:   '#e94560',
   LOCKED:     '#aa3333',
+  COMBAT:     '#e94560',      // Combat room on minimap
 };

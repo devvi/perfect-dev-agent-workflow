@@ -331,6 +331,17 @@ function tickFn() {
         if (!d) return;
         state = { ...state, direction: d, nextDirection: d };
       },
+      addAllKeys: () => {
+        // Collect all key IDs from the world and add to inventory
+        // This bypasses locked doors for testing
+        if (!state || !state.world || !state.world.keyAssignments) return;
+        for (const ka of state.world.keyAssignments) {
+          if (ka.keyId && !state.keysFound.has(ka.keyId)) {
+            state.keysFound.add(ka.keyId);
+            state.inventory.keys.add(ka.keyId);
+          }
+        }
+      },
       findBossEntrance: () => {
         // Find a room adjacent to the boss room with a door to it
         if (!state || !state.world) return null;

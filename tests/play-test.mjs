@@ -120,6 +120,9 @@ async function testPage(browser, pageName) {
           const logs = [];
 
           // ── Scenario: Walk through door into boss room (REAL room transition) ──
+          // First, collect all keys to bypass any locked doors on the path
+          api.addAllKeys();
+
           const entrance = api.findBossEntrance();
           if (!entrance) {
             logs.push({ scenario: 'walk_into_boss', status: 'SKIP', detail: 'No entrance to boss room found' });

@@ -12,7 +12,7 @@ import { worldToRoomCoords, roomToWorldCoords, getCellAt } from './world.js';
 import { checkSnakeCollision, checkProjectileCollision, checkRoomTransition, checkDoorPassable, lineSweepProjectileCollision } from './collision.js';
 import { fireProjectile, updateProjectiles, applyProjectileDamage, updateCooldowns } from './combat.js';
 import { updateEnemies, emergencyFoodRespawn } from './ai.js';
-import { updateBoss, checkBossPlayerCollision, checkBossPillarCollision, updateFoodBlinkDespawn, trySpawnPeriodicFood, bossEatFood, bossTakeDamage } from './ai.js';
+import { updateBoss, checkBossPlayerCollision, checkBossPillarCollision, updateFoodBlinkDespawn, trySpawnPeriodicFood, bossEatFood, bossTakeDamage, spawnCombatEnemies, spawnCombatFood } from './ai.js';
 import { useGachaMachine, tickPowerUps } from './items.js';
 import { saveGame } from './save.js';
 
@@ -410,6 +410,35 @@ export function tick(state) {
         s.gameState = 'won';
         s.bossDefeated = true;
         return s;
+      }
+    }
+  }
+
+  // COMBAT room handling — activation & status (Issue #224)
+  if (s.world) {
+    const combatRoom = getRoomAt(s.world, s.currentRoom.x, s.currentRoom.y);
+    if (combatRoom && combatRoom.type === ROOM_TYPE.COMBAT) {
+      // Activate combat on first entry (checks non-transition path too)
+      if (!combatRoom.combatActivated) {
+        combatRoom.combatActive = true;
+        combatRoom.combatActivated = true;
+        const spawned = spawnCombatEnemies(combatRoom, s.world, s);
+        combatRoom.combatEnemyCount = spawned.length;
+        if (spawned.length > 0) {
+          s.doorMessage = '⚔ COMBAT!';
+        }
+      }
+
+      // Status check — enemies all dead → unlock
+      if (combatRoom.combatActive) {
+        const aliveEnemies = combatRoom.entities.enemies.filter(e => e.hp > 0).length;
+        if (aliveEnemies === 0) {
+          combatRoom.combatActive = false;
+          s.doorMessage = '✓ ROOM CLEARED!';
+        }
+
+        // Periodic food spawn for active combat rooms
+        spawnCombatFood(combatRoom, s);
       }
     }
   }

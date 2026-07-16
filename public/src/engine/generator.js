@@ -269,6 +269,23 @@ export function assignRoomTypes(world, rng = Math.random) {
       placed++;
     }
   }
+
+  // Place combat rooms (2-4, dist >= 2 from start) (Issue #224)
+  const combatCount = 2 + Math.floor(rng() * 3);  // 2-4 combat rooms
+  placed = 0;
+  for (let attempts = 0; attempts < 50 && placed < combatCount; attempts++) {
+    const rx = Math.floor(rng() * cols);
+    const ry = Math.floor(rng() * rows);
+    const room = rooms[ry][rx];
+    const dist = Math.abs(rx) + Math.abs(ry);
+    if (room.type === ROOM_TYPE.NORMAL && dist >= 2) {
+      room.type = ROOM_TYPE.COMBAT;
+      room.combatActive = false;
+      room.combatEnemyCount = 0;
+      room.combatActivated = false;
+      placed++;
+    }
+  }
 }
 
 /**
@@ -467,7 +484,7 @@ function bfsWithKeys(world) {
   return false;
 }
 
-function isNearDoor(cx, cy, room) {
+export function isNearDoor(cx, cy, room) {
   const mid = Math.floor(ROOM_SIZE / 2);
   if (room.doors['up'] && cy <= 3 && Math.abs(cx - mid) <= 3) return true;
   if (room.doors['down'] && cy >= ROOM_SIZE - 4 && Math.abs(cx - mid) <= 3) return true;
@@ -721,9 +738,14 @@ export function placeEnemiesAndItems(world, difficulty = 1, rng = Math.random) {
         continue;
       }
 
-      // Don't place enemies in start or save rooms
-      if (room.type === ROOM_TYPE.SAVE || room.type === ROOM_TYPE.GOAL || room.type === ROOM_TYPE.BOSS) {
-        placeFoodInRoom(room, 2, world, rng);
+      // Don't place enemies in start, save, goal, boss, or combat rooms
+      if (room.type === ROOM_TYPE.SAVE || room.type === ROOM_TYPE.GOAL ||
+          room.type === ROOM_TYPE.BOSS || room.type === ROOM_TYPE.COMBAT) {
+        // Boss/combat rooms manage their own enemies
+        // Still place food for non-combat rooms
+        if (room.type !== ROOM_TYPE.COMBAT) {
+          placeFoodInRoom(room, 2, world, rng);
+        }
         continue;
       }
 
@@ -847,6 +869,12 @@ function buildSafeMap(cols, rows) {
   rooms[1][1].type = ROOM_TYPE.GACHA;
   rooms[1][1].gachaMachine = { x: Math.floor(ROOM_SIZE / 2), y: Math.floor(ROOM_SIZE / 2) };
   rooms[1][0].type = ROOM_TYPE.KEY_SHRINE;
+
+  // Add a combat room in the safe map fallback (Issue #224)
+  rooms[2][2].type = ROOM_TYPE.COMBAT;
+  rooms[2][2].combatActive = false;
+  rooms[2][2].combatEnemyCount = 0;
+  rooms[2][2].combatActivated = false;
 
   // Generate tiles for all rooms
   for (let y = 0; y < rows; y++) {
