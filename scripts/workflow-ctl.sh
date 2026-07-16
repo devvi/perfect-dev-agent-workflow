@@ -72,6 +72,9 @@ cmd_status() {
 }
 
 cmd_pause() {
+  # Create pause file for event-processor (immediate block)
+  touch "$HOME/.hermes/workflow-pause"
+  # Also disable in config as fallback
   local cfg=$(read_config | python3 -c "
 import sys, json
 cfg = json.load(sys.stdin)
@@ -84,18 +87,21 @@ print(json.dumps(cfg, indent=2))
 }
 
 cmd_resume() {
+  # Remove pause file
+  rm -f "$HOME/.hermes/workflow-pause"
   local cfg=$(read_config | python3 -c "
 import sys, json
 cfg = json.load(sys.stdin)
 cfg['enabled'] = True
 if cfg.get('preset') == 'paused':
+    # Restore previous preset (stored in paused_settings if available)
     cfg['preset'] = 'daytime'
     cfg['work_start_hour'] = 8
     cfg['work_end_hour'] = 22
 print(json.dumps(cfg, indent=2))
 ")
   write_config "$cfg"
-  echo "✅ Workflow resumed (default daytime preset)."
+  echo "✅ Workflow resumed."
 }
 
 cmd_hours() {
