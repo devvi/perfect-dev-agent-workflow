@@ -42,6 +42,7 @@ export function renderMinimap(ctx, state, world) {
         else if (room.type === ROOM_TYPE.SAVE) color = PALETTE.SAVE_POINT;
         else if (room.type === ROOM_TYPE.GACHA) color = PALETTE.GOLD;
         else if (room.type === ROOM_TYPE.KEY_SHRINE) color = '#aaccff';
+        else if (room.type === ROOM_TYPE.COMBAT) color = PALETTE.COMBAT;
 
         ctx.fillStyle = color;
         ctx.fillRect(px, py, ROOM_PX, ROOM_PX);
