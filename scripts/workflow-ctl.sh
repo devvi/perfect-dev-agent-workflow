@@ -112,7 +112,7 @@ cmd_hours() {
     daytime|night-owl|always)
       local cfg=$(python3 -c "
 import json
-presets = {'daytime': (8,22), 'night-owl': (14,2), 'always': (0,24)}
+presets = {'daytime': (8,22), 'night-owl': (23,8), 'always': (0,24)}
 s, e = presets['$preset_or_start']
 cfg = {\"enabled\": True, \"work_start_hour\": s, \"work_end_hour\": e, \"preset\": \"$preset_or_start\"}
 print(json.dumps(cfg, indent=2))
