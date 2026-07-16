@@ -107,3 +107,21 @@ Python 脚本在 cron tick 的 LLM 阶段之前运行，做纯数据加工：
 | `sync-to-hermes.sh` | 修改脚本后将项目副本同步到 `~/.hermes/scripts/` | 手动运行 |
 
 > **改脚本的流程：** 改 `scripts/` 下的文件 → `./scripts/sync-to-hermes.sh` → commit + push。
+
+## Workflow 控制
+
+通过 slash 命令或自然语言控制 workflow 运行状态：
+
+| 命令 | 效果 |
+|------|------|
+| `/workflow status` | 查看状态：是否启用、预设、时间段、当前是否在工作时段 |
+| `/workflow pause` | 暂停：event-processor 输出空 → 无 LLM 调用，事件累积 |
+| `/workflow resume` | 恢复：启用 daytime 预设，下个 tick 正常处理 |
+| `/workflow hours daytime` | 8:00-22:00（默认） |
+| `/workflow hours night-owl` | 14:00-2:00（夜猫子） |
+| `/workflow hours always` | 全天无限制 |
+| `/workflow hours 9 23` | 自定义时间段 |
+
+> **slash 命令不可用时：** gateway 重启前 /workflow 不会生效。用自然语言代替，如"暂停 workflow"、"workflow 什么状态"。
+>
+> **原理：** `scripts/event-processor.py` 每分钟读取 `~/.hermes/workflow-config.json`，判断是否在工作时间 + 是否启用。配置更改后下一个 cron tick 自动生效。

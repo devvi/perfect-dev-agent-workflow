@@ -45,3 +45,4 @@ CI blocks merge on test failure. E2E play tests run in headless Playwright.
 - GitHub (issues, PRs, Actions)
 - Vercel (deployment — optional)
 - Obsidian (knowledge base — optional)
+# Workflow control
