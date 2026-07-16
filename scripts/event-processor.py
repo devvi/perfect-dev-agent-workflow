@@ -48,7 +48,7 @@ DEFAULT_CONFIG = {
 # ── Presets ─────────────────────────────────────────────────────
 WORK_HOUR_PRESETS = {
     "daytime": {"work_start_hour": 8, "work_end_hour": 22},
-    "night-owl": {"work_start_hour": 14, "work_end_hour": 2},
+    "night-owl": {"work_start_hour": 23, "work_end_hour": 8},
     "always": {"work_start_hour": 0, "work_end_hour": 24},
 }
 
