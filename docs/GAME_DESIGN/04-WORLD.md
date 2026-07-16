@@ -58,6 +58,8 @@ room.sizeGate = {
 }
 ```
 
+**注意：** 初始蛇身长度为 2 节（参见 01-OVERVIEW.md 1.6 节），因此尺寸门的难度曲线实际起点为 `dist=1` 时 `requiredLength=3 > 2`——玩家必须至少吃 1 个食物才能通过相邻房间的尺寸门。
+
 **难度曲线：** 基于房间的曼哈顿距离：
 ```javascript
 const requiredLength = 3 + Math.floor(distFromStart / 3) * 2;
@@ -71,7 +73,7 @@ const requiredLength = 3 + Math.floor(distFromStart / 3) * 2;
 
 | 类型 | 用途 | 视觉 |
 |------|------|------|
-| `START` | 出生点（0,0），始终无锁 | 标准房间 |
+| `START` | 出生点（0,0），始终无锁，**含 2 个敌人** | 标准房间 |
 | `NORMAL` | 普通探索 | 标准房间 |
 | `SAVE` | 存档点，进入自动存档 | 蓝色标记 |
 | `GACHA` | 抽奖机，消耗长度获取道具 | 金色标记 |
