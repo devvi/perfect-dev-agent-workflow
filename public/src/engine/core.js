@@ -204,6 +204,7 @@ export function tick(state) {
       s.gameState = 'bossIntro';
       s.bossIntroData = { bossName: 'Blue Hammer', dialog: 'Snake tasts GOOD !' };
       s.bossDefeated = false;
+      s.bossIntroShown = true;
       return s;
     }
 
