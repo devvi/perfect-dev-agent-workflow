@@ -265,6 +265,11 @@ export function checkDoorPassable(state, doorDir) {
     return { passable: false, reason: 'boss_door' };
   }
 
+  // COMBAT room: all doors locked when combatActive is true (Issue #224)
+  if (room.type === ROOM_TYPE.COMBAT && room.combatActive) {
+    return { passable: false, reason: 'combat_locked' };
+  }
+
   if (door.locked && door.keyId) {
     if (!state.inventory || !state.inventory.keys || !state.inventory.keys.has(door.keyId)) {
       return { passable: false, reason: 'locked' };

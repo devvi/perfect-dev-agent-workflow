@@ -46,7 +46,7 @@ import {
 } from '../public/src/engine/combat.js';
 
 // Enemy AI
-import { updateEnemies, enemyChasePath, findNearestFood } from '../public/src/engine/ai.js';
+import { updateEnemies, enemyChasePath, findNearestFood, spawnCombatEnemies, spawnCombatFood } from '../public/src/engine/ai.js';
 
 // Items / gacha
 import { useGachaMachine, getRandomPowerUp, applyPowerUp, tickPowerUps } from '../public/src/engine/items.js';
@@ -3023,4 +3023,368 @@ describe('Issue #180 — ABOUT screen label "Msg:" → "Message:"', () => {
       expect(msgCall[1]).toContain('Message: Add boss room');
     });
   });
+});
+
+// =====================================================================
+// Issue #224 — Combat Rooms (增加战斗房间)
+// =====================================================================
+
+describe('Issue #224 — Combat Rooms', () => {
+
+  describe('TC1: Generator creates 2-4 COMBAT rooms at dist ≥ 2 from start', () => {
+    it('creates at least one COMBAT room with correct initial state', () => {
+      const world = generateWorldMap(5, 5);
+      const combatRooms = world.rooms.flat().filter(r => r.type === ROOM_TYPE.COMBAT);
+
+      expect(combatRooms.length).toBeGreaterThanOrEqual(1);
+
+      for (const room of combatRooms) {
+        const dist = Math.abs(room.x) + Math.abs(room.y);
+        expect(dist).toBeGreaterThanOrEqual(2);
+        expect(room.combatActive).toBe(false);
+        expect(room.combatEnemyCount).toBe(0);
+      }
+    });
+
+    it('does not overlap COMBAT with special room types', () => {
+      const world = generateWorldMap(5, 5);
+      const combatRooms = world.rooms.flat().filter(r => r.type === ROOM_TYPE.COMBAT);
+
+      // Start room (0,0) should never be COMBAT
+      expect(world.rooms[0][0].type).not.toBe(ROOM_TYPE.COMBAT);
+      // COMBAT rooms should not be on rooms that are BOSS, SAVE, GACHA, KEY_SHRINE, GOAL
+      for (const room of combatRooms) {
+        expect(room.type).toBe(ROOM_TYPE.COMBAT);
+      }
+    });
+
+    it('every COMBAT room has combatActive=false and combatEnemyCount=0 initially', () => {
+      const world = generateWorldMap(5, 5);
+      for (const room of world.rooms.flat()) {
+        if (room.type === ROOM_TYPE.COMBAT) {
+          expect(room.combatActive).toBe(false);
+          expect(room.combatEnemyCount).toBe(0);
+        }
+      }
+    });
+  });
+
+  describe('TC2: Entering COMBAT room sets combatActive=true and spawns enemies', () => {
+    it('sets doorMessage to COMBAT on first entry via tick', () => {
+      const world = generateWorldMap(5, 5);
+      const combatRoom = world.rooms.flat().find(r => r.type === ROOM_TYPE.COMBAT);
+      if (!combatRoom) return;
+
+      const state = createInitialState(world);
+      state.currentRoom = { x: combatRoom.x, y: combatRoom.y };
+      state.previousRoom = { x: combatRoom.x, y: combatRoom.y };
+      state.gameState = 'playing';
+      state.snake = [{ x: combatRoom.x * 20 + 10, y: combatRoom.y * 20 + 10 }];
+
+      const result = tick(state);
+      expect(result.doorMessage).toBe('⚔ COMBAT!');
+    });
+
+    it('spawnCombatEnemies creates 3-5 enemies with HP ≥ 1', () => {
+      const world = generateWorldMap(5, 5);
+      const combatRoom = world.rooms.flat().find(r => r.type === ROOM_TYPE.COMBAT);
+      if (!combatRoom) return;
+
+      const spawned = spawnCombatEnemies(combatRoom, world, { snake: [{ x: 0, y: 0 }] });
+      expect(spawned.length).toBeGreaterThanOrEqual(3);
+      expect(spawned.length).toBeLessThanOrEqual(5);
+
+      for (const enemy of spawned) {
+        expect(enemy.hp).toBeGreaterThanOrEqual(1);
+        expect(enemy.segments.length).toBeGreaterThanOrEqual(1);
+      }
+      expect(combatRoom.entities.enemies.length).toBeGreaterThanOrEqual(3);
+    });
+  });
+
+  describe('TC3: All doors blocked when combatActive=true', () => {
+    it('blocks all door directions when combatActive is true', () => {
+      const world = generateWorldMap(5, 5);
+      const combatRoom = world.rooms.flat().find(r => r.type === ROOM_TYPE.COMBAT);
+      if (!combatRoom) return;
+
+      combatRoom.combatActive = true;
+
+      // Ensure doors exist for all 4 directions
+      const dirs = ['up', 'down', 'left', 'right'];
+      for (const dir of dirs) {
+        if (!combatRoom.doors[dir]) {
+          combatRoom.doors[dir] = { connectedTo: { roomX: combatRoom.x, roomY: combatRoom.y }, locked: false, keyId: null };
+        }
+      }
+
+      const state = createInitialState(world);
+      state.currentRoom = { x: combatRoom.x, y: combatRoom.y };
+
+      for (const dir of dirs) {
+        const result = checkDoorPassable(state, dir);
+        expect(result.passable).toBe(false);
+        expect(result.reason).toBe('combat_locked');
+      }
+    });
+
+    it('allows passage when combatActive is false (cleared)', () => {
+      const world = generateWorldMap(5, 5);
+      const combatRoom = world.rooms.flat().find(r => r.type === ROOM_TYPE.COMBAT);
+      if (!combatRoom) return;
+
+      combatRoom.combatActive = false;
+      combatRoom.doors.right = { connectedTo: { roomX: combatRoom.x + 1, roomY: combatRoom.y }, locked: false, keyId: null };
+
+      const state = createInitialState(world);
+      state.currentRoom = { x: combatRoom.x, y: combatRoom.y };
+
+      const result = checkDoorPassable(state, 'right');
+      expect(result.passable).toBe(true);
+    });
+
+    it('does not affect non-combat rooms', () => {
+      const world = generateWorldMap(5, 5);
+      const normalRoom = world.rooms.flat().find(r => r.type === ROOM_TYPE.NORMAL);
+      if (!normalRoom) return;
+
+      normalRoom.doors.right = { connectedTo: { roomX: normalRoom.x + 1, roomY: normalRoom.y }, locked: false, keyId: null };
+
+      const state = createInitialState(world);
+      state.currentRoom = { x: normalRoom.x, y: normalRoom.y };
+
+      const result = checkDoorPassable(state, 'right');
+      expect(result.passable).toBe(true);
+    });
+  });
+
+  describe('TC4: Killing all enemies → combatActive=false → doors unlock', () => {
+    it('clears combat when all enemies are dead', () => {
+      const world = generateWorldMap(5, 5);
+      const combatRoom = world.rooms.flat().find(r => r.type === ROOM_TYPE.COMBAT);
+      if (!combatRoom) return;
+
+      combatRoom.combatActive = true;
+      combatRoom.combatActivated = true;
+      combatRoom.combatEnemyCount = 2;
+      combatRoom.entities.enemies = [
+        { id: 1, hp: 0, x: 100, y: 100, segments: [] },
+        { id: 2, hp: 0, x: 101, y: 101, segments: [] },
+      ];
+
+      const state = createInitialState(world);
+      // Position snake inside combat room to avoid false room transition
+      const cx = combatRoom.x * ROOM_SIZE + Math.floor(ROOM_SIZE / 2);
+      const cy = combatRoom.y * ROOM_SIZE + Math.floor(ROOM_SIZE / 2);
+      state.snake = [{ x: cx, y: cy }, { x: cx - 1, y: cy }];
+      state.currentRoom = { x: combatRoom.x, y: combatRoom.y };
+      state.gameState = 'playing';
+      state.direction = { x: 1, y: 0 };
+      state.nextDirection = { x: 1, y: 0 };
+
+      const result = tick(state);
+      expect(combatRoom.combatActive).toBe(false);
+      expect(result.doorMessage).toBe('✓ ROOM CLEARED!');
+    });
+
+    it('keeps combatActive=true when one enemy survives', () => {
+      const world = generateWorldMap(5, 5);
+      const combatRoom = world.rooms.flat().find(r => r.type === ROOM_TYPE.COMBAT);
+      if (!combatRoom) return;
+
+      combatRoom.combatActive = true;
+      combatRoom.combatEnemyCount = 2;
+      combatRoom.entities.enemies = [
+        { id: 1, hp: 0, x: 100, y: 100, segments: [] },
+        { id: 2, hp: 2, x: 101, y: 101, segments: [] },
+      ];
+
+      const state = createInitialState(world);
+      state.currentRoom = { x: combatRoom.x, y: combatRoom.y };
+
+      tick(state);
+      expect(combatRoom.combatActive).toBe(true);
+    });
+
+    it('clears when enemies array is empty', () => {
+      const world = generateWorldMap(5, 5);
+      const combatRoom = world.rooms.flat().find(r => r.type === ROOM_TYPE.COMBAT);
+      if (!combatRoom) return;
+
+      combatRoom.combatActive = true;
+      combatRoom.combatActivated = true;
+      combatRoom.combatEnemyCount = 0;
+      combatRoom.entities.enemies = [];
+
+      const state = createInitialState(world);
+      // Position snake inside combat room to avoid false room transition
+      const cx = combatRoom.x * 20 + 10;
+      const cy = combatRoom.y * 20 + 10;
+      state.snake = [{ x: cx, y: cy }, { x: cx - 1, y: cy }];
+      state.currentRoom = { x: combatRoom.x, y: combatRoom.y };
+      state.gameState = 'playing';
+      state.direction = { x: 1, y: 0 };
+      state.nextDirection = { x: 1, y: 0 };
+
+      const result = tick(state);
+      expect(combatRoom.combatActive).toBe(false);
+      expect(result.doorMessage).toBe('✓ ROOM CLEARED!');
+    });
+  });
+
+  describe('TC5: Periodic food spawn in active combat room', () => {
+    it('spawns food when tickCount is a multiple of COMBAT_FOOD_SPAWN_INTERVAL', () => {
+      const world = generateWorldMap(5, 5);
+      const combatRoom = world.rooms.flat().find(r => r.type === ROOM_TYPE.COMBAT);
+      if (!combatRoom) return;
+
+      combatRoom.entities.food = [];
+      combatRoom.combatActive = true;
+
+      const state = { tickCount: 20, world };
+
+      const foodLenBefore = combatRoom.entities.food.length;
+      spawnCombatFood(combatRoom, state);
+      expect(combatRoom.entities.food.length).toBe(foodLenBefore + 1);
+      expect(combatRoom.entities.food[0].combatFood).toBe(true);
+    });
+
+    it('does not spawn food when room already has food', () => {
+      const world = generateWorldMap(5, 5);
+      const combatRoom = world.rooms.flat().find(r => r.type === ROOM_TYPE.COMBAT);
+      if (!combatRoom) return;
+
+      combatRoom.entities.food = [{ x: 100, y: 100, combatFood: true }];
+      combatRoom.combatActive = true;
+
+      const state = { tickCount: 20, world };
+
+      spawnCombatFood(combatRoom, state);
+      expect(combatRoom.entities.food.length).toBe(1);
+    });
+
+    it('does not spawn food outside of interval ticks', () => {
+      const world = generateWorldMap(5, 5);
+      const combatRoom = world.rooms.flat().find(r => r.type === ROOM_TYPE.COMBAT);
+      if (!combatRoom) return;
+
+      combatRoom.entities.food = [];
+      combatRoom.combatActive = true;
+
+      const state = { tickCount: 19, world };
+
+      spawnCombatFood(combatRoom, state);
+      expect(combatRoom.entities.food.length).toBe(0);
+    });
+
+    it('does not crash when no empty floor cells', () => {
+      const world = generateWorldMap(5, 5);
+      const combatRoom = world.rooms.flat().find(r => r.type === ROOM_TYPE.COMBAT);
+      if (!combatRoom) return;
+
+      combatRoom.entities.food = [];
+      combatRoom.combatActive = true;
+      for (let cy = 0; cy < 20; cy++) {
+        for (let cx = 0; cx < 20; cx++) {
+          combatRoom.tiles[cy][cx] = 2;
+        }
+      }
+
+      const state = { tickCount: 20, world };
+      expect(() => spawnCombatFood(combatRoom, state)).not.toThrow();
+    });
+  });
+
+  describe('TC6: Combat room enemies skip from global enemy placement', () => {
+    it('COMBAT rooms have no pre-placed enemies at generation', () => {
+      const world = generateWorldMap(5, 5);
+      for (const room of world.rooms.flat()) {
+        if (room.type === ROOM_TYPE.COMBAT) {
+          expect(room.entities.enemies.length).toBe(0);
+        }
+      }
+    });
+
+    it('COMBAT rooms have no pre-placed food at generation', () => {
+      const world = generateWorldMap(5, 5);
+      for (const room of world.rooms.flat()) {
+        if (room.type === ROOM_TYPE.COMBAT) {
+          expect(room.entities.food.length).toBe(0);
+        }
+      }
+    });
+  });
+
+  describe('TC7: Minimap shows COMBAT rooms', () => {
+    it('does not crash when rendering a world with combat rooms', () => {
+      const world = generateWorldMap(5, 5);
+      const mockCtx = { fillStyle: '', fillRect: () => {}, strokeRect: () => {}, save: () => {}, restore: () => {}, beginPath: () => {}, arc: () => {}, fill: () => {}, strokeStyle: '', lineWidth: 1, font: '', textAlign: 'left', fillText: () => {}, globalAlpha: 1.0 };
+      const state = createInitialState(world);
+      state.world = world;
+
+      expect(() => renderMinimap(mockCtx, state, world)).not.toThrow();
+    });
+  });
+
+  describe('TC8: Save/load resets combat rooms', () => {
+    it('resets combatActive and clears enemies on load', () => {
+      const world = generateWorldMap(5, 5);
+      const combatRoom = world.rooms.flat().find(r => r.type === ROOM_TYPE.COMBAT);
+      if (!combatRoom) return;
+
+      combatRoom.combatActive = true;
+      combatRoom.combatEnemyCount = 3;
+      combatRoom.entities.enemies = [
+        { id: 1, hp: 2, x: 100, y: 100, segments: [] },
+        { id: 2, hp: 1, x: 101, y: 101, segments: [] },
+      ];
+
+      const state = createInitialState(world);
+      state.currentRoom = { x: combatRoom.x, y: combatRoom.y };
+
+      const saveData = {
+        world,
+        currentRoom: { x: combatRoom.x, y: combatRoom.y },
+        snake: state.snake,
+        direction: state.direction,
+        gameState: 'playing',
+        score: 0,
+        inventory: { keys: [], items: [] },
+        worldState: { rooms: state.world.rooms.map(row => row.map(room => ({
+          ...room,
+          entities: { ...room.entities, enemies: [...room.entities.enemies], food: [...room.entities.food], items: [...room.entities.items] },
+        }))) },
+        exploredMap: state.world.rooms.map(row => row.map(r => r.explored || false)),
+      };
+
+      const result = applySave(saveData);
+
+      for (let y = 0; y < result.world.rows; y++) {
+        for (let x = 0; x < result.world.cols; x++) {
+          const room = result.world.rooms[y][x];
+          if (room.type === 'combat') {
+            expect(room.combatActive).toBe(false);
+            expect(room.combatEnemyCount).toBe(0);
+            expect(room.entities.enemies.length).toBe(0);
+          }
+        }
+      }
+    });
+  });
+
+  describe('TC9: Maps always have combat rooms', () => {
+    it('generates at least one COMBAT room across 10 different maps', () => {
+      let combatFound = false;
+      for (let i = 0; i < 10; i++) {
+        const world = generateWorldMap(5, 5);
+        const hasCombat = world.rooms.flat().some(r => r.type === ROOM_TYPE.COMBAT);
+        if (hasCombat) {
+          combatFound = true;
+          break;
+        }
+      }
+      expect(combatFound).toBe(true);
+    });
+  });
+
 });

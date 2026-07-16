@@ -186,6 +186,19 @@ export function applySave(saveData) {
   const room = world.rooms[saveData.currentRoom.y][saveData.currentRoom.x];
   if (room) room.explored = true;
 
+  // Reset all combat rooms on load — fair retry, no stale combat state (Issue #224)
+  for (let y = 0; y < world.rows; y++) {
+    for (let x = 0; x < world.cols; x++) {
+      const combatRoom = world.rooms[y][x];
+      if (combatRoom.type === 'combat') {
+        combatRoom.combatActive = false;
+        combatRoom.combatActivated = false;
+        combatRoom.combatEnemyCount = 0;
+        combatRoom.entities.enemies = [];
+      }
+    }
+  }
+
   return { state, world };
 }
 
