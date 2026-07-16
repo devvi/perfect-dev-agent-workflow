@@ -23,6 +23,7 @@ File modification:
 Uses atomic write (tempfile + rename) to avoid sibling-agent races.
 """
 
+import datetime
 import json
 import os
 import re
@@ -34,6 +35,48 @@ import time
 from collections import defaultdict
 
 PENDING_FILE = os.environ.get("EVENT_PROCESSOR_PENDING_FILE") or os.path.expanduser("~/.hermes/workflow-pending.json")
+
+# ── Work hours ────────────────────────────────────────────────
+# Outside work hours, no LLM calls are made (script outputs nothing).
+# Events still accumulate in pending file.
+WORK_START_HOUR = int(os.environ.get("WORK_START_HOUR", "8"))
+WORK_END_HOUR = int(os.environ.get("WORK_END_HOUR", "22"))
+
+
+def is_work_hours() -> bool:
+    """Check if current time is within configured work hours."""
+    hour = datetime.datetime.now().hour
+    if WORK_START_HOUR <= WORK_END_HOUR:
+        return WORK_START_HOUR <= hour < WORK_END_HOUR
+    else:
+        # Wrapping: e.g. 22-8 means night shift
+        return hour >= WORK_START_HOUR or hour < WORK_END_HOUR
+
+
+# ── Priority labels ───────────────────────────────────────────
+PRIORITY_LABEL_ORDER = [
+    "priority/critical",
+    "priority/high",
+    "priority/medium",
+    "priority/low",
+]
+
+
+def issue_priority_sort_key(issue_num: int) -> int:
+    """Return sort index for an issue's priority label. Lower = higher priority.
+    Caches results to avoid redundant gh calls per tick."""
+    raw = gh("issue", "view", str(issue_num), "--json", "labels")
+    if not raw:
+        return PRIORITY_LABEL_ORDER.index("priority/medium")
+    try:
+        data = json.loads(raw)
+        label_names = [l.get("name", "") for l in data.get("labels", [])]
+        for idx, p in enumerate(PRIORITY_LABEL_ORDER):
+            if p in label_names:
+                return idx
+        return PRIORITY_LABEL_ORDER.index("priority/medium")
+    except (json.JSONDecodeError, ValueError):
+        return PRIORITY_LABEL_ORDER.index("priority/medium")
 
 # ── Priority definitions ───────────────────────────────────────────
 # Lower number = higher priority
@@ -305,8 +348,14 @@ def preprocess():
             for ev in group_events[1:]:
                 discarded_keys.add(ev.get("_key", ""))
 
-    # Step 3: Sort kept events by priority (P1 first)
-    kept.sort(key=lambda e: event_priority(e))
+    # Step 3: Sort kept events by priority (P1 first), then by issue priority label
+    def _sort_key(e):
+        ep = event_priority(e)
+        if e.get("type") == "issues.labeled":
+            issue_num = int(e.get("issue", 0))
+            return (ep, issue_priority_sort_key(issue_num))
+        return (ep, 2)  # non-labeled events at same priority as medium
+    kept.sort(key=_sort_key)
 
     # Step 4: Validate check_run events
     valid_kept = [e for e in kept if validate_check_run(e)]
@@ -417,6 +466,10 @@ def preprocess():
 
 def main():
     try:
+        # Outside work hours → no output, no LLM call
+        if not is_work_hours():
+            return
+
         lines = preprocess()
         if lines:
             print("\n".join(lines))

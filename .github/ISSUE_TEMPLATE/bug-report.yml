@@ -44,6 +44,20 @@ body:
     validations:
       required: true
 
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 优先级
+      description: 这个 Bug 的紧急程度
+      options:
+        - medium（正常优先级）
+        - critical（阻塞性 Bug，必须立即处理）
+        - high（重要功能，下个版本必须）
+        - low（锦上添花，有空再做）
+      default: 0
+    validations:
+      required: true
+
   - type: textarea
     id: dependencies
     attributes:
