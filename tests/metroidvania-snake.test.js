@@ -1605,6 +1605,9 @@ describe('Phase 4 — Stuck+Reverse on obstacle collision (Issue #46)', () => {
         world,
         snake: [{ x: 5, y: 5 }],
       });
+      // Match currentRoom to snake's actual location so tick() doesn't
+      // trigger a room transition that may be blocked by lock/size gate
+      state.currentRoom = { x: 0, y: 0 };
       const { rx, ry, cx, cy } = worldToRoomCoords(6, 5);
       const room = getRoomAt(world, rx, ry);
       if (room) room.tiles[cy][cx] = CELL.WALL;
@@ -3141,6 +3144,8 @@ describe('Issue #223 — Locked Rooms / Size Gates', () => {
       if (!lockDoor) return;
 
       const state = createInitialState(keyed);
+      // Snake length 3 ensures size gates don't interfere with lock test
+      state.snake = [{ x: 5, y: 8 }, { x: 4, y: 8 }, { x: 3, y: 8 }];
       state.currentRoom = { x: lockRoom.x, y: lockRoom.y };
       state.inventory.keys.add(lockKeyId);
 
@@ -3179,6 +3184,8 @@ describe('Issue #223 — Locked Rooms / Size Gates', () => {
       if (!lockDoor) return;
 
       const state = createInitialState(keyed);
+      // Snake length 3 ensures size gates don't interfere with lock test
+      state.snake = [{ x: 5, y: 8 }, { x: 4, y: 8 }, { x: 3, y: 8 }];
       state.currentRoom = { x: lockRoom.x, y: lockRoom.y };
       // No key in inventory
 
