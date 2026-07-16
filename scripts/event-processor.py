@@ -77,6 +77,11 @@ def is_work_hours(cfg: dict = None) -> bool:
         cfg = read_workflow_config()
     if not cfg.get("enabled", True):
         return False
+    return _time_in_window(cfg)
+
+
+def _time_in_window(cfg: dict) -> bool:
+    """Pure time check — does NOT check enabled flag."""
     hour = datetime.datetime.now().hour
     start = cfg.get("work_start_hour", 8)
     end = cfg.get("work_end_hour", 22)
@@ -85,6 +90,34 @@ def is_work_hours(cfg: dict = None) -> bool:
     else:
         # Wrapping: e.g. 14-2 means afternoon to late night
         return hour >= start or hour < end
+
+
+def is_paused() -> bool:
+    """Check if workflow is paused via pause file."""
+    return os.path.exists(os.path.expanduser("~/.hermes/workflow-pause"))
+
+
+def should_process_event(event_type: str, label: str = "") -> bool:
+    """Determine if an event should be processed now.
+    
+    Outside work hours:
+      - CI results (check_run) → YES (pipeline must finish)
+      - Phase labels (workflow/research/plan/implement/self-correct) → YES
+      - status/done → YES
+      - Picker (new issue entry) → NO
+      - workflow/available → NO
+    """
+    if is_work_hours():
+        return True
+    if is_paused():
+        return False
+    # Always process pipeline events even outside work hours
+    if event_type in ("check_run",):
+        return True
+    if label.startswith("workflow/") and label not in ("workflow/available",):
+        return True  # research, plan, implement, self-correct, status/done
+    # Block everything else (available, picker)
+    return False
 
 
 # ── Priority labels ───────────────────────────────────────────
@@ -337,6 +370,208 @@ def _pr_exists_for_issue(stage: str, issue: int) -> bool:
     return False  # on error, spawn anyway (cautious)
 
 
+# ── Issue Picker ─────────────────────────────────────────────────
+# Reads backlog, picks candidate, adds workflow/available label.
+
+MAX_CONCURRENT = int(os.environ.get("MAX_CONCURRENT_ISSUES", "3"))
+MAX_SPAWN_PER_TICK = int(os.environ.get("MAX_SPAWN_PER_TICK", "3"))
+
+# Stage labels that count toward concurrency limit
+ACTIVE_STAGE_LABELS = [
+    "workflow/research", "workflow/plan", "workflow/implement",
+    "workflow/self-correct",
+]
+WORKFLOW_LABELS = set(ACTIVE_STAGE_LABELS + ["workflow/available", "status/done"])
+
+
+def current_workflow_count() -> int:
+    """Count how many issues are currently in active stages."""
+    raw = gh(
+        "issue", "list",
+        "--label", ",".join(ACTIVE_STAGE_LABELS),
+        "--state", "open",
+        "--json", "number",
+        "--jq", "length",
+    )
+    try:
+        return int(raw) if raw else 0
+    except (ValueError, TypeError):
+        return 0
+
+
+def get_issue_target_files(issue_num: int) -> set:
+    """Get files that this issue's implement phase will modify.
+    Reads DESIGN doc if available, otherwise returns empty set."""
+    try:
+        import glob
+        design_files = glob.glob(
+            f"/home/pi/workspace/.pda/perfect-dev-agent-workflow/docs/DESIGN/{issue_num}-*.md"
+        )
+        if design_files:
+            with open(design_files[0]) as f:
+                content = f.read()
+            files = set()
+            for m in re.finditer(r'\`([^\`]+?\.(?:js|html|css|yml|json))\`', content):
+                files.add(m.group(1))
+            return files
+    except Exception:
+        pass
+    return set()
+
+
+def _get_active_issue_target_files() -> set:
+    """Get target files for all currently active (impl stage) issues."""
+    all_files = set()
+    for label in ACTIVE_STAGE_LABELS:
+        raw = gh(
+            "issue", "list",
+            "--label", label, "--state", "open",
+            "--json", "number",
+            "--jq", ".[].number",
+        )
+        if raw:
+            for n in raw.strip().split("\n"):
+                try:
+                    all_files |= get_issue_target_files(int(n.strip()))
+                except ValueError:
+                    pass
+    return all_files
+
+
+def _has_file_conflict(issue_num: int, active_files: set) -> bool:
+    """Check if this issue's target files overlap with currently active issues."""
+    if not active_files:
+        return False
+    target = get_issue_target_files(issue_num)
+    if not target:
+        return False  # no DESIGN doc yet → conservative: assume no conflict
+    return bool(target & active_files)
+
+
+def _pick_candidate() -> int | None:
+    """Scan backlog and pick the best candidate issue to start.
+    
+    Criteria (in order):
+    1. No workflow/* label
+    2. Has priority label (critical > high > medium > low)
+    3. Dependencies resolved
+    4. No file conflict with current implement-stage issues
+    5. Within concurrency limit
+    """
+    active_files = _get_active_issue_target_files()
+    
+    # Fetch all OPEN issues without workflow labels
+    raw = gh(
+        "issue", "list", "--state", "open",
+        "--json", "number,labels,title",
+        "--limit", "30",
+    )
+    if not raw:
+        return None
+    
+    try:
+        issues = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    
+    # Filter out issues that already have workflow labels
+    candidates = []
+    for iss in issues:
+        label_names = [l.get("name", "") for l in iss.get("labels", [])]
+        if any(lbl in WORKFLOW_LABELS for lbl in label_names):
+            continue
+        if "bug" not in label_names and "enhancement" not in label_names:
+            continue  # only feature + bug issues
+        candidates.append(iss)
+    
+    if not candidates:
+        return None
+    
+    # Sort by priority label
+    def _sort_key(iss):
+        label_names = [l.get("name", "") for l in iss.get("labels", [])]
+        for idx, p in enumerate(PRIORITY_LABEL_ORDER):
+            if p in label_names:
+                return idx
+        return len(PRIORITY_LABEL_ORDER)  # lowest priority if no label
+    
+    candidates.sort(key=_sort_key)
+    
+    # Try each candidate
+    for candidate in candidates:
+        n = candidate["number"]
+        
+        # Check dependencies
+        unresolved = _has_unresolved_dependencies(n)
+        if unresolved:
+            continue
+        
+        # Check file conflict (only against implement-stage issues)
+        if _has_file_conflict(n, active_files):
+            continue
+        
+        return n
+    
+    return None
+
+
+def pick_next_issue():
+    """Entry point: called after slot freed or at window entry.
+    Fills up to MAX_CONCURRENT issues."""
+    if is_paused():
+        return
+    
+    current = current_workflow_count()
+    while current < MAX_CONCURRENT:
+        candidate = _pick_candidate()
+        if candidate is None:
+            break
+        gh("issue", "edit", str(candidate), "--add-label", "workflow/available")
+        print(f"[PICKER] marked #{candidate} as workflow/available", file=sys.stderr)
+        current += 1
+
+
+def reconcile():
+    """After crash or pause resume: check GitHub state vs pending events.
+    Finds issues with workflow labels but no corresponding pending event."""
+    events = []
+    try:
+        events = read_pending()
+    except Exception:
+        pass
+    existing_keys = {e.get("_key") for e in events}
+    
+    for label in ("workflow/available", "workflow/research", "workflow/plan",
+                  "workflow/implement", "workflow/self-correct"):
+        raw = gh(
+            "issue", "list",
+            "--label", label, "--state", "open",
+            "--json", "number",
+            "--jq", ".[].number",
+        )
+        if not raw:
+            continue
+        for n_str in raw.strip().split("\n"):
+            try:
+                n = int(n_str.strip())
+            except ValueError:
+                continue
+            event_key = f"issues.labeled#{n}:{label}"
+            if event_key not in existing_keys:
+                # Missing event — add a synthetic one
+                events.append({
+                    "_key": event_key,
+                    "type": "issues.labeled",
+                    "issue": n,
+                    "repo": "devvi/perfect-dev-agent-workflow",
+                    "ts": time.time(),
+                    "label": label,
+                })
+    
+    if events:
+        write_pending(events)
+
+
 def preprocess():
     """Main preprocessing logic. Returns list of actionable event summaries."""
     events = read_pending()
@@ -501,21 +736,81 @@ def preprocess():
 def main():
     try:
         cfg = read_workflow_config()
-        # Outside work hours → no output, no LLM call
-        if not is_work_hours(cfg):
+        
+        # Pause check
+        if is_paused():
             return
-
+        
+        # Window entry detection: if we just entered work hours, reconcile + pick
+        was_outside = False
+        try:
+            state_file = os.path.expanduser("~/.hermes/.workflow-state.json")
+            if os.path.exists(state_file):
+                with open(state_file) as f:
+                    state = json.load(f)
+                was_outside = state.get("last_hour", -1) != datetime.datetime.now().hour
+        except Exception:
+            pass
+        
+        in_window = _time_in_window(cfg)
+        if in_window and was_outside:
+            # Just entered work hours
+            reconcile()
+            pick_next_issue()
+        
+        # Save current hour for window entry detection
+        try:
+            with open(os.path.expanduser("~/.hermes/.workflow-state.json"), "w") as f:
+                json.dump({"last_hour": datetime.datetime.now().hour, "window_open": in_window}, f)
+        except Exception:
+            pass
+        
+        # Outside hours → only process pipeline events, block picker + available
+        if not in_window:
+            # Only process pipeline events via standard preprocess
+            pass  # fall through to preprocess with proper filtering
+        
         lines = preprocess()
+        
+        # Filter lines by window/pause state
+        if not in_window or is_paused():
+            # Remove SPAWN for available/since it's blocked outside hours
+            filtered = []
+            for line in lines:
+                if line.startswith("SPAWN:") and "workflow/available" in line:
+                    continue
+                if line.startswith("SPAWN:"):
+                    filtered.append(line)
+                elif line.startswith("BLOCKED:"):
+                    filtered.append(line)
+                elif line.startswith("P1:") or line.startswith("P2:"):
+                    filtered.append(line)
+            lines = filtered
+        
+        # Cap spawns per tick
+        spawn_count = 0
+        capped = []
+        for line in lines:
+            if line.startswith("SPAWN:"):
+                if spawn_count >= MAX_SPAWN_PER_TICK:
+                    # Silently drop excess spawns (they'll be processed next tick)
+                    continue
+                spawn_count += 1
+            capped.append(line)
+        lines = capped
+        
         if lines:
             print("\n".join(lines))
+            
+            # If there was a status/done event, trigger picker to fill slot
+            if in_window and any("status/done" in l for l in lines):
+                pick_next_issue()
         else:
-            # No actionable events from pending file. Output STALLED_CHECK signal
-            # to trigger the LLM's proactive scan (stalled PRs, labels, phases).
-            # The LLM will only run if there's script output.
+            # No events → try picker to fill empty slots
+            if in_window and not is_paused():
+                pick_next_issue()
             print("[NO_ACTIONABLE_EVENTS: run stalled scan]")
     except Exception as e:
-        # On error, output nothing and let the LLM handle things normally
-        # The pending file is NOT modified on error (safe fallback)
         print(f"[event-processor error: {e}]", file=sys.stderr)
 
 
