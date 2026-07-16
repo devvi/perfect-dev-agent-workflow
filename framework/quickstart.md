@@ -51,7 +51,13 @@ auto
 4. CI 跑测试 → review → 合并 → 部署
 ```
 
-整个过程不需要你碰命令行。
+全过程不需要你碰命令行。
+
+> **首次使用前：** 确保 `scripts/` 下的 Python 脚本已同步到 `~/.hermes/scripts/`：
+> ```bash
+> ./scripts/sync-to-hermes.sh
+> ```
+> 之后每次修改 `scripts/` 下的文件，重新跑这个命令再 commit。
 
 ## Step 4: 引导 Research Agent
 

@@ -27,8 +27,10 @@ The framework treats the game maker's existing knowledge (Obsidian vault, design
 ┌────────────────────────▼────────────────────────────────────┐
 │                Hermes Gateway (Event Router)                  │
 │                                                              │
-│  route-script → pending.json → cron poller → operator agent  │
-│  (thin, no gh)                    (every 1m, reads local)     │
+│  route-script → pending.json → event-processor → cron → agent │
+│  (thin, no gh)   (local JSON)   (deterministic  (every 1m,   │
+│                                  Python sort/     reads local) │
+│                                  dedup/priority)               │
 └────────────────────────┬────────────────────────────────────┘
                          │ delegate_task
     ┌────────────────────┼────────────────────┐
@@ -69,12 +71,19 @@ The framework treats the game maker's existing knowledge (Obsidian vault, design
 ### Skill System
 
 ```
-game-research-agent       — generates PRD from Issue + Obsidian knowledge
+# 项目内（version controlled, agents/skills/）
+game-research-agent        — generates PRD from Issue + Obsidian knowledge
   └─ obsidian-knowledge-search  — searches wiki, extracts patterns, caches to REFERENCE/
-game-plan-agent           — generates DESIGN doc + test case descriptions (not runnable files)
-game-implement-agent      — generates code + test files via OpenCode (layered pattern)
+game-plan-agent            — generates DESIGN doc + test case descriptions (not runnable files)
+game-implement-agent       — generates code + test files via OpenCode (layered pattern)
   └─ OpenCode Serve (:18765)  — LLM-powered code generation
-game-review-agent         — reviews code against DESIGN before merge
+game-review-agent          — reviews code against DESIGN before merge
+dev-workflow-dispatcher    — event routing, cron prompt, operator agent pattern
+
+# 运行时（~/.hermes/scripts/，从 scripts/ 同步）
+event-processor.py         — deterministic preprocessor: read pending.json → SPAWN/BLOCKED
+stage-gate.py              — PR validation + auto-fix labels via REST API
+workflow-dispatcher.py     — thin webhook route: write event → pending.json, output [SILENT]
 ```
 
 ### Teleport Testing
@@ -118,6 +127,17 @@ project-root/
 │   ├── quickstart.md
 │   ├── templates/                ← Template copies for new projects
 │   └── cicd/                     ← CI/CD workflow copies
+├── agents/skills/                ← Agent skill definitions (version controlled)
+│   ├── game-research-agent/
+│   ├── game-plan-agent/
+│   ├── game-implement-agent/
+│   ├── game-review-agent/
+│   └── dev-workflow-dispatcher/
+├── scripts/                      ← Deterministic Python scripts (version controlled)
+│   ├── event-processor.py
+│   ├── stage-gate.py
+│   ├── workflow-dispatcher.py
+│   └── sync-to-hermes.sh
 ├── experiments/
 │   └── <game-name>/              ← Your game project
 │       ├── public/               ← Game source
