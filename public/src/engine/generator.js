@@ -732,9 +732,14 @@ export function placeEnemiesAndItems(world, difficulty = 1, rng = Math.random) {
     for (let x = 0; x < cols; x++) {
       const room = rooms[y][x];
 
-      // Skip start room for enemies (but still place some food)
+      // Place enemies in start room to create initial pressure
       if (room.type === ROOM_TYPE.START) {
         placeFoodInRoom(room, 3, world, rng);
+        // Place 2 enemies in start room
+        for (let e = 0; e < 2; e++) {
+          const enemy = spawnEnemyInRoom(room, world, rng);
+          if (enemy) room.entities.enemies.push(enemy);
+        }
         continue;
       }
 

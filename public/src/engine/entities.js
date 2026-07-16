@@ -10,7 +10,6 @@ export function createSnake(startWorldX, startWorldY) {
   return [
     { x: startWorldX, y: startWorldY },
     { x: startWorldX - 1, y: startWorldY },
-    { x: startWorldX - 2, y: startWorldY },
   ];
 }
 

@@ -34,13 +34,12 @@ function stateWithSnake(snake, overrides = {}) {
 }
 
 describe('createInitialState', () => {
-  it('should return idle state with snake length 3, score 0, and centered at (10,10)', () => {
+  it('should return idle state with snake length 2, score 0, and centered at (10,10)', () => {
     const state = createInitialState();
     expect(state.gameState).toBe('idle');
-    expect(state.snake).toHaveLength(3);
+    expect(state.snake).toHaveLength(2);
     expect(state.snake[0]).toEqual({ x: 10, y: 10 });
     expect(state.snake[1]).toEqual({ x: 9, y: 10 });
-    expect(state.snake[2]).toEqual({ x: 8, y: 10 });
     expect(state.direction).toEqual(DIR.RIGHT);
     expect(state.nextDirection).toEqual(DIR.RIGHT);
     expect(state.score).toBe(0);

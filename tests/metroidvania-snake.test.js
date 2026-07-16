@@ -229,7 +229,7 @@ describe('Phase 1b — Length Gates & Key Locks', () => {
       const startRoom = world.rooms[world.playerStart.roomY][world.playerStart.roomX];
       const doorDir = Object.keys(startRoom.doors).find(d => startRoom.doors[d]);
       if (!doorDir) return;
-      startRoom.sizeGate = { requiredLength: 3, doorDir };
+      startRoom.sizeGate = { requiredLength: 2, doorDir };
       const state = createInitialState(world);
       const canPass = state.snake.length >= (startRoom.sizeGate?.requiredLength || 0);
       expect(canPass).toBe(true);
@@ -1217,7 +1217,7 @@ describe('Issue #54 — Snake length-speed tuning with MAX_TICK_INTERVAL cap', (
       expect(state.currentTickInterval).toBe(150);
       // No food eaten — interval stays at base
       const result = tick(state);
-      expect(result.snake.length).toBe(3);
+      expect(result.snake.length).toBe(2);
       expect(result.currentTickInterval).toBe(150);
     });
   });
@@ -1605,6 +1605,9 @@ describe('Phase 4 — Stuck+Reverse on obstacle collision (Issue #46)', () => {
         world,
         snake: [{ x: 5, y: 5 }],
       });
+      // Match currentRoom to snake's actual location so tick() doesn't
+      // trigger a room transition that may be blocked by lock/size gate
+      state.currentRoom = { x: 0, y: 0 };
       const { rx, ry, cx, cy } = worldToRoomCoords(6, 5);
       const room = getRoomAt(world, rx, ry);
       if (room) room.tiles[cy][cx] = CELL.WALL;
@@ -1989,7 +1992,6 @@ describe('Issue #70 — Food collision on wall cells', () => {
       const foodStillThere = roomAfter.entities.food.some(f => f.x === 9 && f.y === 10);
       expect(foodStillThere).toBe(false);
       // Damage handler returns early (stuck+reverse), enemy not processed
-      // Snake length reduced by tail pop
       expect(result.snake.length).toBe(3);
       // StuckCounter set because wall damage wins
       expect(result.stuckCounter).toBeGreaterThan(0);
@@ -2221,6 +2223,8 @@ describe('Phase 4 — Enemy Attack on Player Snake (Issue #118)', () => {
       const state = minimalState({ world });
       state.gameState = 'playing';
       const room = getRoomAt(world, state.currentRoom.x, state.currentRoom.y);
+      // Clear any enemies that may interfere with deterministic food eating
+      room.entities.enemies = [];
       const head = state.snake[0];
       // Place food at next position (food dropped from enemy hit)
       room.entities.food.push({ x: head.x + 1, y: head.y });
@@ -3140,6 +3144,8 @@ describe('Issue #223 — Locked Rooms / Size Gates', () => {
       if (!lockDoor) return;
 
       const state = createInitialState(keyed);
+      // Snake length 3 ensures size gates don't interfere with lock test
+      state.snake = [{ x: 5, y: 8 }, { x: 4, y: 8 }, { x: 3, y: 8 }];
       state.currentRoom = { x: lockRoom.x, y: lockRoom.y };
       state.inventory.keys.add(lockKeyId);
 
@@ -3178,6 +3184,8 @@ describe('Issue #223 — Locked Rooms / Size Gates', () => {
       if (!lockDoor) return;
 
       const state = createInitialState(keyed);
+      // Snake length 3 ensures size gates don't interfere with lock test
+      state.snake = [{ x: 5, y: 8 }, { x: 4, y: 8 }, { x: 3, y: 8 }];
       state.currentRoom = { x: lockRoom.x, y: lockRoom.y };
       // No key in inventory
 
@@ -3266,11 +3274,11 @@ describe('Issue #223 — Locked Rooms / Size Gates', () => {
 
       roomA.doors.right = { connectedTo: { roomX: 1, roomY: 0 }, locked: false, keyId: null };
       roomB.doors.left = { connectedTo: { roomX: 0, roomY: 0 }, locked: false, keyId: null };
-      roomB.sizeGate = { requiredLength: 3, doorDir: 'left', unlocked: false };
+      roomB.sizeGate = { requiredLength: 2, doorDir: 'left', unlocked: false };
 
       const state = createInitialState(world);
       state.currentRoom = { x: 0, y: 0 };
-      // Snake length = 3 === 3
+      // Snake length = 2 === 2
       const result = checkDoorPassable(state, 'right');
       expect(result.passable).toBe(true);
     });

@@ -37,7 +37,6 @@ export function createInitialState() {
   const snake = [
     { x: centerX, y: 10 },
     { x: centerX - 1, y: 10 },
-    { x: centerX - 2, y: 10 },
   ];
   return {
     gameState: 'idle',
