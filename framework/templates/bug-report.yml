@@ -44,6 +44,16 @@ body:
     validations:
       required: true
 
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: 如果这个 Bug 的修复依赖其他 Issue 先完成，在这里列出
+      placeholder: "Depends on: #42\nDepends on (design): #49"
+      value: "Depends on: #"
+    validations:
+      required: false
+
   - type: checkboxes
     id: research-options
     attributes:
