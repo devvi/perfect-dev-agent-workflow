@@ -1,9 +1,10 @@
 // FILE: public/src/engine/ai.js
 // Enemy AI (pathfinding, chasing, food stealing, boss AI)
 
-import { ROOM_SIZE, ROOM_TYPE, CELL, BOSS_ROOM_SIZE, BOSS_CHARGE_WINDUP, BOSS_STUFFED_TICKS, BOSS_CHARGE_COOLDOWN, FOOD_BLINK_START, FOOD_DESPAWN_TOTAL } from './constants.js';
+import { ROOM_SIZE, ROOM_TYPE, CELL, BOSS_ROOM_SIZE, BOSS_CHARGE_WINDUP, BOSS_STUFFED_TICKS, BOSS_CHARGE_COOLDOWN, FOOD_BLINK_START, FOOD_DESPAWN_TOTAL, COMBAT_FOOD_SPAWN_INTERVAL } from './constants.js';
 import { getRoomAt, worldToRoomCoords, getCellAt } from './world.js';
 import { buildBossSegments, createBounceFood } from './entities.js';
+import { findEmptyFloorCell, isNearDoor } from './generator.js';
 
 /**
  * Update all enemies: chase, idle, or return to home
@@ -518,6 +519,100 @@ export function updateFoodBlinkDespawn(state) {
 /**
  * Periodic food spawn when both boss and player are low on HP
  */
+// ===================== COMBAT ROOM FUNCTIONS (Issue #224) =====================
+
+/**
+ * Spawn enemies in a combat room on first entry
+ * @param {Object} room — The combat room
+ * @param {Object} world — World map
+ * @param {Object} state — Current game state (for difficulty)
+ * @returns {Array} — Array of spawned enemy entities
+ */
+export function spawnCombatEnemies(room, world, state) {
+  const dist = Math.abs(room.x) + Math.abs(room.y);
+  const difficulty = Math.min(1 + Math.floor(dist * 0.3), 3);  // 1-3 difficulty
+  const enemyCount = 2 + difficulty;  // 3-5 enemies per combat room
+  const enemies = [];
+
+  for (let e = 0; e < enemyCount; e++) {
+    // Use spawnEnemyInRoom-like logic with margin from doors (COMBAT_ENEMY_MARGIN cells)
+    const enemy = spawnCombatEnemyInRoom(room, world);
+    if (enemy) {
+      // Boost HP based on distance from start
+      enemy.hp = 1 + Math.floor(dist * 0.3);
+      enemies.push(enemy);
+    }
+  }
+
+  room.entities.enemies.push(...enemies);
+  return enemies;
+}
+
+/**
+ * Spawn a single enemy in a combat room, avoiding door margins
+ */
+function spawnCombatEnemyInRoom(room, world) {
+  // Find a floor cell that's not near any door
+  for (let tries = 0; tries < 50; tries++) {
+    const cx = 1 + Math.floor(Math.random() * (ROOM_SIZE - 2));
+    const cy = 1 + Math.floor(Math.random() * (ROOM_SIZE - 2));
+    if (room.tiles[cy][cx] === CELL.FLOOR) {
+      // Check not near a door (COMBAT_ENEMY_MARGIN cells away)
+      const nearDoor = isNearDoor(cx, cy, room);
+      if (!nearDoor) {
+        const wx = room.x * ROOM_SIZE + cx;
+        const wy = room.y * ROOM_SIZE + cy;
+        // Check no entity on this cell
+        const hasEnemy = room.entities.enemies.some(e => Math.abs(e.x - wx) + Math.abs(e.y - wy) < 2);
+        const hasFood = room.entities.food.some(f => f.x === wx && f.y === wy);
+        if (!hasEnemy && !hasFood) {
+          const hp = 1 + Math.floor(Math.random() * 3); // 1-3 HP
+          const segments = [];
+          for (let i = 0; i < hp; i++) {
+            segments.push({ x: wx - i, y: wy });
+          }
+          return {
+            id: generateCombatEnemyId(),
+            x: wx,
+            y: wy,
+            segments,
+            hp,
+            speedTicks: 2,
+            tickCounter: 0,
+            roomX: room.x,
+            roomY: room.y,
+            chaseRange: 20,
+            aiState: 'idle',
+            returnCount: 0,
+          };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+let _combatEnemyIdCounter = 2000;
+function generateCombatEnemyId() {
+  return _combatEnemyIdCounter++;
+}
+
+/**
+ * Periodic food spawn for active combat rooms
+ * Spawns 1 food every COMBAT_FOOD_SPAWN_INTERVAL ticks when room has no food
+ */
+export function spawnCombatFood(room, state) {
+  if (room.entities.food.length > 0) return;
+  if (state.tickCount % COMBAT_FOOD_SPAWN_INTERVAL !== 0) return;
+
+  const pos = findEmptyFloorCell(room, state.world);
+  if (pos) {
+    room.entities.food.push({ x: pos.wx, y: pos.wy, combatFood: true });
+  }
+}
+
+// Re-export findEmptyFloorCell from generator for use here
+
 export function trySpawnPeriodicFood(state, room) {
   const boss = room.entities.enemies.find(e => e.boss);
   const playerLen = state.snake.length;

@@ -115,3 +115,73 @@ stuckCounter = STUCK_TICKS、pendingReverse = true、屏幕震动、扣分 −5
 | 撞敌人 | 无敌帧触发（§3.4） | — |
 
 撞墙是惩罚（伤害）但附带弹跳食物作为补偿，形成「受伤但有恢复机会」的设计模式。
+
+## 3.7 战斗房间（Arena / COMBAT Room）
+
+战斗房间（`ROOM_TYPE.COMBAT`）是为玩家提供结构化战斗遭遇的独立房间。
+
+### 核心机制
+
+| 特性 | 说明 |
+|------|------|
+| 触发方式 | 玩家进入房间后自动触发 |
+| 门锁机制 | 进入后所有门立即锁定，全部敌人消灭后解锁 |
+| 敌人生成 | 首次进入时生成（非世界生成时），数量 3-5 |
+| 周期食物 | 每 20 帧（`COMBAT_FOOD_SPAWN_INTERVAL`）在房间无食物时生成 1 个 |
+| 重置 | 存档读档后重置战斗状态（允许公平重试） |
+
+### 房间生成
+
+- 每张地图 2-4 个战斗房间
+- 距离起点至少 2 格（避免开局即陷入战斗）
+- 使用 `assignRoomTypes()` 将 NORMAL 房间提升为 COMBAT 类型
+
+### 进入流程
+
+```
+玩家穿过门进入 COMBAT 房间
+  ↓
+checkDoorPassable() 先检查可通过（刚进入时 combatActive = false）
+  ↓
+tick() 检测到 roomTransition + newRoom.type === COMBAT
+  ↓
+首次进入（!combatActive）：
+  combatActive = true
+  spawnCombatEnemies() — 生成 3-5 个敌人
+  门锁定（所有方向 → passable: false, reason: 'combat_locked'）
+  ↓
+每帧检查存活敌人：
+  alive > 0 → spawnCombatFood()（周期食物补充）
+  alive = 0 → combatActive = false → 门解锁
+```
+
+### 门锁机制
+
+```javascript
+// collision.js - checkDoorPassable()
+if (room.type === ROOM_TYPE.COMBAT && room.combatActive) {
+  return { passable: false, reason: 'combat_locked' };
+}
+```
+
+与 BOSS 门不同，战斗房间锁定**所有方向**的出口，而非仅某一扇门。玩家必须击败所有敌人才能离开。
+
+### 敌人强度
+
+```javascript
+const dist = Math.abs(room.x) + Math.abs(room.y);  // 距起点距离
+const difficulty = Math.min(1 + Math.floor(dist * 0.3), 3);
+const enemyCount = 2 + difficulty;  // 3-5 个敌人
+// 每个敌人 HP = 1 + floor(dist * 0.3)
+```
+
+距离起点越远，敌人数量和 HP 越高（自然难度曲线）。
+
+### 设计意图
+
+| 决策 | 选择 | 理由 |
+|------|------|------|
+| 生成时机 | 首次进入时 | 避免世界生成时敌人从门缝泄漏；存档边界清晰 |
+| 门锁类型 | 锁定全部方向 | 强制玩家完成战斗，无法「探门就逃」 |
+| 周期食物 | 房间无食物时每 20 帧生成 | 持续作战的续航保障；已有 boss 食物定时器模式复用 |
+| 房间数量 | 2-4 / 地图 | 占据适当比例（8 种类型竞争 25 格），不过度饱和 |
