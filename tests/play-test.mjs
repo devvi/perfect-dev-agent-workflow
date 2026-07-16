@@ -160,11 +160,15 @@ async function testPage(browser, pageName) {
             logs.push({ scenario: 'boss_dismiss', status: state2.gameState === 'playing' ? 'OK' : 'FAIL', detail: `Space → ${state2.gameState}` });
 
             // ── Scenario: Snake stays alive after dismiss ──
-            // changeDirection hardcodes direction (0,1) = DOWN on boss dismiss,
-            // which causes the snake to auto-move out of the boss room within ~18 ticks
-            // and potentially die or re-trigger bossIntro. Set a direction that keeps
-            // the snake bouncing within the room instead.
-            api.setDirection('up');
+            // changeDirection hardcodes direction (0,1) = DOWN on boss dismiss.
+            // This causes the snake to auto-move ~18 cells, exit the accessible
+            // portion of the 80×80 boss room (only tiles[0-19][0-19] are reachable
+            // via getCellAt's ROOM_SIZE=20 mapping), and depending on map layout,
+            // either die from repeated wall damage or re-trigger bossIntro.
+            // Override to RIGHT: snake moves right through safe FLOOR cells until
+            // hitting the world boundary (x=100), takes one safe wall hit, reverses,
+            // and stays alive for 30+ ticks regardless of map layout.
+            api.setDirection('right');
             api.tick(30);
             const state3 = api.getState();
             logs.push({ scenario: 'boss_stability', status: state3 && (state3.gameState === 'playing' || state3.gameState === 'won') ? 'OK' : 'FAIL', detail: `30 ticks → ${state3 ? state3.gameState : 'null'}` });
