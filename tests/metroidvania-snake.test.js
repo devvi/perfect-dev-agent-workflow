@@ -1900,7 +1900,8 @@ describe('Issue #70 — Food collision on wall cells', () => {
       state.gameState = 'playing';
       state.score = 50;
       room.tiles[10][9] = CELL.WALL;
-      // No food placed
+      // Remove any food at the wall cell (generated map may have placed food there)
+      room.entities.food = room.entities.food.filter(f => !(f.x === 9 && f.y === 10));
 
       const result = tick(state);
       expect(result.score).toBe(45);

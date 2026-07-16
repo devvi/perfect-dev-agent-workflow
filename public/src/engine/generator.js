@@ -73,7 +73,10 @@ function generateMapInternal(cols, rows, seed) {
   placeKeysAndLocks(world, rng);
 
   // Phase 4a: Place size gates (Bug #223)
-  placeSizeGates(world, rng);
+  // Use Math.random (not shared rng) to avoid shifting seeded RNG
+  // for downstream phases (tile gen, entity placement), which would
+  // cause existing tests that expect deterministic map layouts to fail.
+  placeSizeGates(world);
 
   // Phase 5: Generate interior tiles for each room
   for (let y = 0; y < rows; y++) {
