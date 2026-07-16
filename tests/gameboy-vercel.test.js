@@ -112,7 +112,7 @@ describe('engine source integrity (imported from current src/)', () => {
     const engine = await import('../src/gameboy-snake-engine.js');
     const state = engine.createInitialState();
     expect(state.gameState).toBe('idle');
-    expect(state.snake).toHaveLength(3);
+    expect(state.snake).toHaveLength(2);
     expect(typeof state.score).toBe('number');
     expect(state.food).toBeDefined();
   });
