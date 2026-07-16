@@ -37,9 +37,9 @@ The framework treats the game maker's existing knowledge (Obsidian vault, design
 │research  │       │  plan    │       │  implement   │
 │ agent    │       │  agent   │       │  agent       │
 │          │       │          │       │              │
-│ PRD      │       │ DESIGN   │       │ OpenCode     │
-│ Obsidian │       │ tests    │       │ layered impl │
-│ search   │       │          │       │              │
+│ PRD      │       │ DESIGN   │       │ code + tests │
+│ Obsidian │       │ test     │       │ OpenCode     │
+│ search   │       │ descs    │       │ layered impl │
 └──────────┘       └──────────┘       └──────────────┘
      │                   │                    │
      └───────────────────┼────────────────────┘
@@ -71,8 +71,8 @@ The framework treats the game maker's existing knowledge (Obsidian vault, design
 ```
 game-research-agent       — generates PRD from Issue + Obsidian knowledge
   └─ obsidian-knowledge-search  — searches wiki, extracts patterns, caches to REFERENCE/
-game-plan-agent           — generates DESIGN doc + test cases
-game-implement-agent      — delegates coding to OpenCode (layered pattern)
+game-plan-agent           — generates DESIGN doc + test case descriptions (not runnable files)
+game-implement-agent      — generates code + test files via OpenCode (layered pattern)
   └─ OpenCode Serve (:18765)  — LLM-powered code generation
 game-review-agent         — reviews code against DESIGN before merge
 ```
