@@ -46,8 +46,8 @@ auto
 
 ```
 1. research → 爬代码 + 搜 Obsidian → 出 PRD → 开 PR
-2. plan → 架构设计 + 测试用例 → 开 PR
-3. implement → OpenCode 写代码 → 开 PR
+2. plan → 架构设计 + 测试描述 → 开 PR
+3. implement → OpenCode 写代码 + 测试 → 开 PR
 4. CI 跑测试 → review → 合并 → 部署
 ```
 
