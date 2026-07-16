@@ -127,4 +127,17 @@
 <What was learned>
 
 ### Impact on Approach
-<How does this change the recommendation?>
+|<How does this change the recommendation?>|
+
+---
+
+## 8. Continuation Context
+
+> *This section is the activeForm handoff to the next agent (plan → implement).
+> It captures the current state of the feature area so the next agent can pick up
+> without re-scanning all source files.*
+
+The <feature area> currently has <X> systems at state <Y>. The <specific component>
+uses <data structure> with <constraints>. The proposed approach builds on <existing
+pattern> and adds <new behavior>. The main risk is <specific boundary condition>
+because <reason>.
