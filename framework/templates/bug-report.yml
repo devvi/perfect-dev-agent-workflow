@@ -1,7 +1,7 @@
 name: Bug Report
 description: 提交一个 Bug
 title: "[Bug] "
-labels: ["bug", "workflow/available"]
+labels: ["bug"]
 body:
   - type: markdown
     attributes:
