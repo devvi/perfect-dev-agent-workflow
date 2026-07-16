@@ -3526,6 +3526,15 @@ describe('Issue #224 — Combat Rooms', () => {
       combatRoom.combatActive = false;
       combatRoom.doors.right = { connectedTo: { roomX: combatRoom.x + 1, roomY: combatRoom.y }, locked: false, keyId: null };
 
+      // Clear any lock/size gate on the next room's left door (compat with #223 bidirectional checks)
+      const nextRoom = world.rooms.flat().find(r => r.x === combatRoom.x + 1 && r.y === combatRoom.y);
+      if (nextRoom && nextRoom.doors && nextRoom.doors.left) {
+        nextRoom.doors.left.locked = false;
+      }
+      if (nextRoom && nextRoom.sizeGate && nextRoom.sizeGate.doorDir === 'left') {
+        delete nextRoom.sizeGate;
+      }
+
       const state = createInitialState(world);
       state.currentRoom = { x: combatRoom.x, y: combatRoom.y };
 
@@ -3539,6 +3548,15 @@ describe('Issue #224 — Combat Rooms', () => {
       if (!normalRoom) return;
 
       normalRoom.doors.right = { connectedTo: { roomX: normalRoom.x + 1, roomY: normalRoom.y }, locked: false, keyId: null };
+
+      // Clear any lock/size gate on the next room's left door (compat with #223 bidirectional checks)
+      const nextRoom = world.rooms.flat().find(r => r.x === normalRoom.x + 1 && r.y === normalRoom.y);
+      if (nextRoom && nextRoom.doors && nextRoom.doors.left) {
+        nextRoom.doors.left.locked = false;
+      }
+      if (nextRoom && nextRoom.sizeGate && nextRoom.sizeGate.doorDir === 'left') {
+        delete nextRoom.sizeGate;
+      }
 
       const state = createInitialState(world);
       state.currentRoom = { x: normalRoom.x, y: normalRoom.y };
