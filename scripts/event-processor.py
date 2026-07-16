@@ -381,7 +381,7 @@ ACTIVE_STAGE_LABELS = [
     "workflow/research", "workflow/plan", "workflow/implement",
     "workflow/self-correct",
 ]
-WORKFLOW_LABELS = set(ACTIVE_STAGE_LABELS + ["workflow/available", "status/done"])
+WORKFLOW_LABELS = set(ACTIVE_STAGE_LABELS + ["workflow/available", "workflow/backlog", "status/done"])
 
 
 def current_workflow_count() -> int:
@@ -474,14 +474,14 @@ def _pick_candidate() -> int | None:
     except json.JSONDecodeError:
         return None
     
-    # Filter out issues that already have workflow labels
+    # Filter: only pick from workflow/backlog
     candidates = []
     for iss in issues:
         label_names = [l.get("name", "") for l in iss.get("labels", [])]
-        if any(lbl in WORKFLOW_LABELS for lbl in label_names):
+        if "workflow/backlog" not in label_names:
             continue
         if "bug" not in label_names and "enhancement" not in label_names:
-            continue  # only feature + bug issues
+            continue
         candidates.append(iss)
     
     if not candidates:
