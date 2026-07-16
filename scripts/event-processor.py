@@ -356,7 +356,7 @@ def _pr_exists_for_issue(stage: str, issue: int) -> bool:
     try:
         result = subprocess.run(
             ["gh", "pr", "list",
-             "--search", f"{branch} in:headRefName",
+             "--search", f"head:{branch}",
              "--json", "number",
              "--jq", "length",
              "--limit", "1"],
@@ -730,6 +730,10 @@ def preprocess():
                     f"P2: issues.labeled,issue={issue},label={label}"
                 )
 
+    # SPAWN lines must come first — LLM reads top-to-bottom
+    output_lines.sort(key=lambda l: (0 if l.startswith("SPAWN:") else 1,
+                                     0 if "review" in l or "self-correct" in l else
+                                     1 if l.startswith("SPAWN:") else 2))
     return output_lines
 
 
