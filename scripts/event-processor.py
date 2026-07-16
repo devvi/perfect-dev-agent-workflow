@@ -138,6 +138,103 @@ STAGE_BRANCH_PREFIX = {
 }
 
 
+def gh(*args: str) -> str:
+    """Run gh command, return stdout. Returns empty string on error."""
+    try:
+        result = subprocess.run(['gh'] + list(args),
+                                capture_output=True, text=True, timeout=10)
+        return result.stdout.strip() if result.returncode == 0 else ""
+    except (subprocess.TimeoutExpired, OSError):
+        return ""
+
+
+def get_issue_body(issue_num: int) -> str:
+    """Fetch issue body via gh CLI."""
+    return gh("issue", "view", str(issue_num), "--json", "body", "--jq", ".body")
+
+
+def parse_dependencies(body: str) -> list[dict]:
+    """Parse ## Dependencies section from issue body.
+
+    Matches:
+      Depends on: #42              → full dependency
+      Depends on (design): #49     → design-only dependency
+
+    Returns [{"issue": 42, "type": "full"}, {"issue": 49, "type": "design"}]
+    """
+    deps = []
+    in_deps_section = False
+    for line in body.split("\n"):
+        stripped = line.strip()
+        # Detect ## Dependencies heading (case-insensitive)
+        if re.match(r'^#{2,3}\s+Dependencies', stripped, re.IGNORECASE):
+            in_deps_section = True
+            continue
+        # Exit section at next heading (## or deeper)
+        if in_deps_section and re.match(r'^#{2,}\s', stripped):
+            break
+        if not in_deps_section:
+            continue
+        # Match: Depends on: #42  or  Depends on (design): #49
+        m = re.match(
+            r'Depends on\s*(?:\((\w+)\))?\s*:\s*#(\d+)',
+            stripped, re.IGNORECASE
+        )
+        if m:
+            dep_type = m.group(1).lower() if m.group(1) else "full"
+            if dep_type not in ("full", "design"):
+                dep_type = "full"  # unknown type → treat as full
+            deps.append({"issue": int(m.group(2)), "type": dep_type})
+    return deps
+
+
+def check_dependency_resolved(dep: dict) -> bool:
+    """Check if a single dependency is satisfied.
+
+    full: target issue has status/done or is CLOSED
+    design: target issue is at workflow/plan stage or beyond
+    """
+    raw = gh("issue", "view", str(dep["issue"]),
+             "--json", "state,labels")
+    if not raw:
+        return False  # conservative: treat as unresolved
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return False
+
+    # Closed issue = always resolved
+    if data.get("state", "").lower() == "closed":
+        return True
+
+    labels = [l.get("name", "") for l in data.get("labels", [])]
+
+    if dep["type"] == "full":
+        return "status/done" in labels
+
+    if dep["type"] == "design":
+        for wf in ("workflow/plan", "workflow/implement", "workflow/self-correct"):
+            if wf in labels:
+                return True
+        return False
+
+    return False
+
+
+def _has_unresolved_dependencies(issue_num: int) -> list[dict]:
+    """Check if an issue has unresolved dependencies.
+    Returns list of unresolved deps, or empty list if none.
+    """
+    body = get_issue_body(issue_num)
+    if not body:
+        return []
+    deps = parse_dependencies(body)
+    if not deps:
+        return []
+    unresolved = [d for d in deps if not check_dependency_resolved(d)]
+    return unresolved
+
+
 def _pr_exists_for_issue(stage: str, issue: int) -> bool:
     """Check if a GitHub PR already exists for this stage+issue combination.
     Returns True if a PR exists (SPAWN should be skipped).
@@ -283,6 +380,20 @@ def preprocess():
             }
             stage = stage_map.get(label)
             if stage:
+                # ── Dependency check ──
+                # For workflow/available, check if the issue has unresolved
+                # dependencies before allowing research phase to start.
+                if label == "workflow/available":
+                    issue_int = int(issue) if not isinstance(issue, int) else issue
+                    unresolved = _has_unresolved_dependencies(issue_int)
+                    if unresolved:
+                        dep_str = ",".join(
+                            f"#{d['issue']}({d['type']})" for d in unresolved
+                        )
+                        output_lines.append(
+                            f"BLOCKED: issue={issue_int},depends-on={dep_str}"
+                        )
+                        continue
                 # Dedup: check if a PR already exists for this stage+issue
                 # before generating SPAWN (prevents redundant re-spawns).
                 issue_int = int(issue) if not isinstance(issue, int) else issue
