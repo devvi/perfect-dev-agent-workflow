@@ -101,13 +101,7 @@ jobs:
           echo "E2E Play Test failed - runtime errors found."
           exit 1
 
-  # Dummy gate for non-impl branches (research/plan) — always succeeds
-  # Same job name as the real gate so branch protection sees a passing check
-  test-and-report:
-    if: "!startsWith(github.event.pull_request.head.ref, 'impl/')"
-    runs-on: ubuntu-latest
-    steps:
-      - name: CI not required for this branch type
-        run: |
-          echo "Branch type: ${{ github.event.pull_request.head.ref }}"
-          echo "CI is not required for research/plan branches. Reporting success."
+  # NOTE: The real test-and-report job (above) already handles both impl/ and
+  # non-impl branches via conditional steps. The dummy gate below was a duplicate
+  # YAML key that overrode the real job, causing ALL CI runs to silently pass
+  # without running anything. REMOVED — the single job above works correctly.
