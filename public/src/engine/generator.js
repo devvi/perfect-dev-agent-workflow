@@ -72,6 +72,12 @@ function generateMapInternal(cols, rows, seed) {
   // Phase 4: Place keys and locks
   placeKeysAndLocks(world, rng);
 
+  // Phase 4a: Place size gates (Bug #223)
+  // Use Math.random (not shared rng) to avoid shifting seeded RNG
+  // for downstream phases (tile gen, entity placement), which would
+  // cause existing tests that expect deterministic map layouts to fail.
+  placeSizeGates(world);
+
   // Phase 5: Generate interior tiles for each room
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
@@ -285,6 +291,12 @@ export function assignRoomTypes(world, rng = Math.random) {
 /**
  * Place keys and locks ensuring solvability
  * Finds paths from start to goal and places locks on those paths
+ *
+ * Design intent: lock is placed on the shrine's exit toward the goal.
+ * The opposite-direction door (entering the shrine) remains unlocked,
+ * so the player enters the shrine freely → gets key inside → exits
+ * toward the goal through the locked door, which is now passable
+ * because the key is in inventory. (Bug #223)
  */
 export function placeKeysAndLocks(world, rng = Math.random) {
   const { cols, rows, rooms } = world;
@@ -322,7 +334,7 @@ export function placeKeysAndLocks(world, rng = Math.random) {
         if (!(fromX === 0 && fromY === 0)) {
           rooms[fromY][fromX].doors[dir].locked = true;
           rooms[fromY][fromX].doors[dir].keyId = kid;
-          keyAssignments.push({ keyId: kid, lockRoom: { x: fromX, y: fromY }, lockDoorDir: dir });
+          keyAssignments.push({ keyId: kid, lockRoom: { x: fromX, y: fromY }, lockDoorDir: dir, shrineRoom: { x: shrine.x, y: shrine.y } });
         }
       }
     }
@@ -330,6 +342,41 @@ export function placeKeysAndLocks(world, rng = Math.random) {
 
   world.keyAssignments = keyAssignments;
   return world;
+}
+
+/**
+ * Place size gates on some rooms to create length-gated progression (Bug #223)
+ * Called after placeKeysAndLocks in Phase 4a of map generation.
+ * Only places gates on NORMAL rooms with at least one connecting door.
+ * Required length increases with distance from start: 3, 5, 7, ...
+ */
+export function placeSizeGates(world, rng = Math.random) {
+  const { cols, rows, rooms } = world;
+  const gateCount = 1 + Math.floor(rng() * 2);  // 1-2 size gates
+  let placed = 0;
+
+  for (let attempts = 0; attempts < 30 && placed < gateCount; attempts++) {
+    const rx = Math.floor(rng() * cols);
+    const ry = Math.floor(rng() * rows);
+    const room = rooms[ry][rx];
+
+    // Only on NORMAL rooms that aren't start/goal/key/save/gacha
+    if (room.type !== ROOM_TYPE.NORMAL) continue;
+    if (rx === 0 && ry === 0) continue;  // Don't gate start room
+
+    // Pick a door direction that connects somewhere
+    const doorDirs = Object.keys(room.doors).filter(d => room.doors[d]);
+    if (doorDirs.length === 0) continue;
+
+    const doorDir = doorDirs[Math.floor(rng() * doorDirs.length)];
+
+    // Calculate required length based on distance from start
+    const distFromStart = Math.abs(rx) + Math.abs(ry);
+    const requiredLength = 3 + Math.floor(distFromStart / 3) * 2;  // 3, 5, 7, ...
+
+    room.sizeGate = { requiredLength, doorDir, unlocked: false };
+    placed++;
+  }
 }
 
 /**

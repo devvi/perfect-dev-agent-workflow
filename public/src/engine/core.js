@@ -204,6 +204,7 @@ export function tick(state) {
       s.gameState = 'bossIntro';
       s.bossIntroData = { bossName: 'Blue Hammer', dialog: 'Snake tasts GOOD !' };
       s.bossDefeated = false;
+      s.bossIntroShown = true;
       return s;
     }
 
@@ -213,8 +214,25 @@ export function tick(state) {
       saveGame(s, s.world);
     }
 
+    // Check if entering key shrine → collect key (Bug #223)
+    if (newRoom.type === ROOM_TYPE.KEY_SHRINE) {
+      const keyAssignment = s.world.keyAssignments.find(ka =>
+        ka.shrineRoom && ka.shrineRoom.x === newRoom.x && ka.shrineRoom.y === newRoom.y
+      );
+      if (keyAssignment && !s.keysFound.has(keyAssignment.keyId)) {
+        s.keysFound.add(keyAssignment.keyId);
+        s.inventory.keys.add(keyAssignment.keyId);
+        s.doorMessage = '🔑 KEY ACQUIRED!';
+      }
+    }
+
     // Ensure tile consistency after room transition (Issue #113)
     ensureTileConsistency(newRoom);
+
+    // If the new room has a size gate, mark it as unlocked (Bug #223)
+    if (newRoom.sizeGate && !newRoom.sizeGate.unlocked) {
+      newRoom.sizeGate.unlocked = true;
+    }
   }
 
   // Check collision (now in correct room context after transition)

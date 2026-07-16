@@ -1,7 +1,7 @@
 // Collision detection (world coordinates)
 
 import { ROOM_SIZE, CELL, ROOM_TYPE } from './constants.js';
-import { getRoomAt, getCellAt, worldToRoomCoords } from './world.js';
+import { getRoomAt, getCellAt, worldToRoomCoords, oppositeDir } from './world.js';
 
 /**
  * Check if a room-local cell position is part of a door passage.
@@ -276,11 +276,31 @@ export function checkDoorPassable(state, doorDir) {
     }
   }
 
-  if (room.sizeGate && room.sizeGate.doorDir === doorDir) {
-    const required = room.sizeGate.requiredLength;
-    if (state.snake.length < required) {
-      return { passable: false, reason: 'size_gate' };
+  // Also check the next room's opposite-facing door for locks (Bug #223)
+  // Locks may be placed on either side of a bidirectional door
+  const nextRx = currentRoom.x + (doorDir === 'right' ? 1 : doorDir === 'left' ? -1 : 0);
+  const nextRy = currentRoom.y + (doorDir === 'down' ? 1 : doorDir === 'up' ? -1 : 0);
+  const nextRoom = getRoomAt(world, nextRx, nextRy);
+  if (nextRoom && nextRoom.doors) {
+    const oppDoor = nextRoom.doors[oppositeDir(doorDir)];
+    if (oppDoor && oppDoor.locked && oppDoor.keyId) {
+      if (!state.inventory || !state.inventory.keys || !state.inventory.keys.has(oppDoor.keyId)) {
+        return { passable: false, reason: 'locked' };
+      }
     }
+  }
+
+  // Check size gate on the NEXT room (entry gate — blocks entering the gated room)
+  if (nextRoom && nextRoom.sizeGate) {
+    const oppDir = oppositeDir(doorDir);  // direction from next room back to current
+    if (nextRoom.sizeGate.doorDir === oppDir) {
+      // Player is ENTERING the gated room
+      if (!nextRoom.sizeGate.unlocked && state.snake.length < nextRoom.sizeGate.requiredLength) {
+        return { passable: false, reason: 'size_gate' };
+      }
+    }
+    // If gate direction doesn't match → not the gated door → passable
+    // If already unlocked → always passable
   }
 
   return { passable: true };

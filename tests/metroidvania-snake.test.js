@@ -16,14 +16,14 @@ import {
 // World / map structures
 import {
   createRoom, getRoomAt,
-  worldToRoomCoords, roomToWorldCoords, getCellAt,
+  worldToRoomCoords, roomToWorldCoords, getCellAt, oppositeDir,
 } from '../public/src/engine/world.js';
 
 // Map generator
 import {
   generateWorldMap, buildSpanningTree, addRandomDoors,
   assignRoomTypes, placeKeysAndLocks, generateRoomTiles,
-  placeEnemiesAndItems, verifySolvability,
+  placeEnemiesAndItems, verifySolvability, placeSizeGates,
 } from '../public/src/engine/generator.js';
 
 // Core game loop & state
@@ -1900,7 +1900,8 @@ describe('Issue #70 — Food collision on wall cells', () => {
       state.gameState = 'playing';
       state.score = 50;
       room.tiles[10][9] = CELL.WALL;
-      // No food placed
+      // Remove any food at the wall cell (generated map may have placed food there)
+      room.entities.food = room.entities.food.filter(f => !(f.x === 9 && f.y === 10));
 
       const result = tick(state);
       expect(result.score).toBe(45);
@@ -3026,7 +3027,396 @@ describe('Issue #180 — ABOUT screen label "Msg:" → "Message:"', () => {
 });
 
 // =====================================================================
-// Issue #224 — Combat Rooms (增加战斗房间)
+// Issue #223 — Locked Rooms / Size Gates (带锁的房间不工作)
+// =====================================================================
+
+describe('Issue #223 — Locked Rooms / Size Gates', () => {
+  describe('TC1: Key collected on KEY_SHRINE entry (Bug A)', () => {
+    it('adds key to inventory on entering a KEY_SHRINE room', () => {
+      // Build a 2-room world: room A (0,0) → room B (1,0) is the shrine
+      const roomA = createRoom(0, 0, ROOM_TYPE.NORMAL, {
+        right: { connectedTo: { roomX: 1, roomY: 0 }, locked: false, keyId: null }
+      });
+      const roomB = createRoom(1, 0, ROOM_TYPE.KEY_SHRINE, {
+        left: { connectedTo: { roomX: 0, roomY: 0 }, locked: false, keyId: null }
+      });
+      // Clear door passages so snake doesn't hit walls on entry
+      for (let cy = 8; cy <= 12; cy++) {
+        roomA.tiles[cy][ROOM_SIZE - 1] = CELL.DOOR;  // right edge door passage
+        roomB.tiles[cy][0] = CELL.DOOR;              // left edge door passage
+      }
+
+      const world = {
+        cols: 2, rows: 1,
+        rooms: [[roomA, roomB]],
+        playerStart: { roomX: 0, roomY: 0 },
+        keyAssignments: [{ keyId: 'test_key_0', shrineRoom: { x: 1, y: 0 }, lockRoom: { x: 0, y: 0 }, lockDoorDir: 'right' }],
+      };
+
+      const state = createInitialState(world);
+      // Place snake head at the door cell of room A, moving right → next tick enters room B
+      state.snake = [
+        { x: 19, y: 10 },
+        { x: 18, y: 10 },
+        { x: 17, y: 10 },
+      ];
+      state.direction = { x: 1, y: 0 };
+      state.nextDirection = { x: 1, y: 0 };
+      state.currentRoom = { x: 0, y: 0 };
+      state.previousRoom = { x: 0, y: 0 };
+      state.gameState = 'playing';
+
+      const result = tick(state);
+
+      expect(result.keysFound.has('test_key_0')).toBe(true);
+      expect(result.inventory.keys.has('test_key_0')).toBe(true);
+      expect(result.doorMessage).toBe('🔑 KEY ACQUIRED!');
+    });
+
+    it('does not add duplicate key on re-entering shrine', () => {
+      const world = generateWorldMap(5, 5);
+      const state = createInitialState(world);
+
+      const shrineRoom = world.rooms.flat().find(r => r.type === ROOM_TYPE.KEY_SHRINE);
+      if (!shrineRoom) return;
+      const keyAssignment = world.keyAssignments.find(ka =>
+        ka.lockRoom.x === shrineRoom.x && ka.lockRoom.y === shrineRoom.y
+      );
+      if (!keyAssignment) return;
+
+      // Pre-add key (simulating first visit)
+      state.keysFound.add(keyAssignment.keyId);
+      state.inventory.keys.add(keyAssignment.keyId);
+
+      state.currentRoom = { x: shrineRoom.x, y: shrineRoom.y };
+      state.previousRoom = { x: shrineRoom.x, y: shrineRoom.y };
+
+      const result = tick(state);
+
+      // Should still have exactly 1 instance of the key
+      expect(result.keysFound.has(keyAssignment.keyId)).toBe(true);
+      expect(result.inventory.keys.has(keyAssignment.keyId)).toBe(true);
+      // doorMessage should NOT be '🔑 KEY ACQUIRED!' (no duplicate message)
+      expect(result.doorMessage).not.toBe('🔑 KEY ACQUIRED!');
+    });
+
+    it('handles shrine with no matching keyAssignment gracefully', () => {
+      const world = generateWorldMap(5, 5);
+      const state = createInitialState(world);
+
+      // Set up a KEY_SHRINE room that has no matching keyAssignment
+      const normalRoom = world.rooms.flat().find(r => r.type === ROOM_TYPE.NORMAL);
+      if (!normalRoom) return;
+      normalRoom.type = ROOM_TYPE.KEY_SHRINE;
+
+      state.currentRoom = { x: normalRoom.x, y: normalRoom.y };
+      state.previousRoom = { x: normalRoom.x, y: normalRoom.y };
+
+      // Should not crash
+      expect(() => tick(state)).not.toThrow();
+    });
+  });
+
+  describe('TC2: Locked door passable with correct key', () => {
+    it('returns passable: true for locked door with key in inventory', () => {
+      const world = generateWorldMap(5, 5);
+      const keyed = placeKeysAndLocks(world);
+
+      // Find a locked door
+      let lockDoor = null;
+      let lockRoom = null;
+      let lockKeyId = null;
+      for (const room of keyed.rooms.flat()) {
+        for (const dir of Object.keys(room.doors)) {
+          if (room.doors[dir]?.locked) {
+            lockDoor = room.doors[dir];
+            lockRoom = room;
+            lockKeyId = lockDoor.keyId;
+            break;
+          }
+        }
+        if (lockDoor) break;
+      }
+      if (!lockDoor) return;
+
+      const state = createInitialState(keyed);
+      state.currentRoom = { x: lockRoom.x, y: lockRoom.y };
+      state.inventory.keys.add(lockKeyId);
+
+      // Find which direction the locked door faces
+      let lockDir = null;
+      for (const dir of Object.keys(lockRoom.doors)) {
+        if (lockRoom.doors[dir] === lockDoor) {
+          lockDir = dir;
+          break;
+        }
+      }
+      if (!lockDir) return;
+
+      const result = checkDoorPassable(state, lockDir);
+      expect(result.passable).toBe(true);
+    });
+  });
+
+  describe('TC3: Locked door blocked without key (regression)', () => {
+    it('returns passable: false, reason: locked for locked door without key', () => {
+      const world = generateWorldMap(5, 5);
+      const keyed = placeKeysAndLocks(world);
+
+      let lockDoor = null;
+      let lockRoom = null;
+      for (const room of keyed.rooms.flat()) {
+        for (const dir of Object.keys(room.doors)) {
+          if (room.doors[dir]?.locked) {
+            lockDoor = room.doors[dir];
+            lockRoom = room;
+            break;
+          }
+        }
+        if (lockDoor) break;
+      }
+      if (!lockDoor) return;
+
+      const state = createInitialState(keyed);
+      state.currentRoom = { x: lockRoom.x, y: lockRoom.y };
+      // No key in inventory
+
+      let lockDir = null;
+      for (const dir of Object.keys(lockRoom.doors)) {
+        if (lockRoom.doors[dir] === lockDoor) {
+          lockDir = dir;
+          break;
+        }
+      }
+      if (!lockDir) return;
+
+      const result = checkDoorPassable(state, lockDir);
+      expect(result.passable).toBe(false);
+      expect(result.reason).toBe('locked');
+    });
+  });
+
+  describe('TC4: Size gate blocks entry for too-short snake (Bug C + D)', () => {
+    it('blocks entry when snake is too short', () => {
+      const world = generateWorldMap(5, 5);
+      // Build a 2-room setup: room A at (0,0) and room B at (1,0)
+      // Size gate on room B's left door (entry from A into B)
+      const roomA = world.rooms[0][0];
+      const roomB = world.rooms[0][1];
+
+      // Ensure doors exist between A→B (right from A, left from B)
+      roomA.doors.right = { connectedTo: { roomX: 1, roomY: 0 }, locked: false, keyId: null };
+      roomB.doors.left = { connectedTo: { roomX: 0, roomY: 0 }, locked: false, keyId: null };
+
+      // Place a size gate on room B's left door (the door entering B from A)
+      roomB.sizeGate = { requiredLength: 100, doorDir: 'left', unlocked: false };
+
+      const state = createInitialState(world);
+      // Snake starts at (0,0), length = 3
+      state.currentRoom = { x: 0, y: 0 };
+      // Moving right → entering room B through its left door
+      // checkDoorPassable(state, 'right') should check room B's size gate
+      const result = checkDoorPassable(state, 'right');
+      expect(result.passable).toBe(false);
+      expect(result.reason).toBe('size_gate');
+    });
+
+    it('allows exit from gated room even when too short', () => {
+      const world = generateWorldMap(5, 5);
+      const roomA = world.rooms[0][0];
+      const roomB = world.rooms[0][1];
+
+      roomA.doors.right = { connectedTo: { roomX: 1, roomY: 0 }, locked: false, keyId: null };
+      roomB.doors.left = { connectedTo: { roomX: 0, roomY: 0 }, locked: false, keyId: null };
+      roomB.sizeGate = { requiredLength: 100, doorDir: 'left', unlocked: false };
+
+      const state = createInitialState(world);
+      // Snake is in room B (the gated room), moving left
+      state.currentRoom = { x: 1, y: 0 };
+      // Moving left → exiting room B through its left door (which is the gate)
+      // Should always allow exit regardless of length
+      const result = checkDoorPassable(state, 'left');
+      expect(result.passable).toBe(true);
+    });
+  });
+
+  describe('TC5: Size gate allows entry when length meets requirement', () => {
+    it('passes when snake length meets requirement', () => {
+      const world = generateWorldMap(5, 5);
+      const roomA = world.rooms[0][0];
+      const roomB = world.rooms[0][1];
+
+      roomA.doors.right = { connectedTo: { roomX: 1, roomY: 0 }, locked: false, keyId: null };
+      roomB.doors.left = { connectedTo: { roomX: 0, roomY: 0 }, locked: false, keyId: null };
+      roomB.sizeGate = { requiredLength: 2, doorDir: 'left', unlocked: false };
+
+      const state = createInitialState(world);
+      state.currentRoom = { x: 0, y: 0 };
+      // Snake length = 3 ≥ 2
+      const result = checkDoorPassable(state, 'right');
+      expect(result.passable).toBe(true);
+    });
+  });
+
+  describe('TC6: Size gate exactly equal length passes (boundary)', () => {
+    it('passes when snake length exactly equals requirement', () => {
+      const world = generateWorldMap(5, 5);
+      const roomA = world.rooms[0][0];
+      const roomB = world.rooms[0][1];
+
+      roomA.doors.right = { connectedTo: { roomX: 1, roomY: 0 }, locked: false, keyId: null };
+      roomB.doors.left = { connectedTo: { roomX: 0, roomY: 0 }, locked: false, keyId: null };
+      roomB.sizeGate = { requiredLength: 3, doorDir: 'left', unlocked: false };
+
+      const state = createInitialState(world);
+      state.currentRoom = { x: 0, y: 0 };
+      // Snake length = 3 === 3
+      const result = checkDoorPassable(state, 'right');
+      expect(result.passable).toBe(true);
+    });
+  });
+
+  describe('TC7: Size gate permanently unlocked after entry (Bug D)', () => {
+    it('allows exit when unlocked even if length drops below requirement', () => {
+      const world = generateWorldMap(5, 5);
+      const roomA = world.rooms[0][0];
+      const roomB = world.rooms[0][1];
+
+      roomA.doors.right = { connectedTo: { roomX: 1, roomY: 0 }, locked: false, keyId: null };
+      roomB.doors.left = { connectedTo: { roomX: 0, roomY: 0 }, locked: false, keyId: null };
+      roomB.sizeGate = { requiredLength: 100, doorDir: 'left', unlocked: true };
+
+      const state = createInitialState(world);
+      // Snake is in room B, moving left (exiting through gated door)
+      state.currentRoom = { x: 1, y: 0 };
+
+      // Even though snake length (3) < 100, unlocked=true allows exit
+      const result = checkDoorPassable(state, 'left');
+      expect(result.passable).toBe(true);
+    });
+  });
+
+  describe('TC8: Size gate generation produces valid data (Bug C)', () => {
+    it('generates at least one size gate in some worlds', () => {
+      let hasSizeGate = false;
+      for (let i = 0; i < 10; i++) {
+        const world = generateWorldMap(5, 5);
+        for (const room of world.rooms.flat()) {
+          if (room.sizeGate) {
+            hasSizeGate = true;
+            break;
+          }
+        }
+        if (hasSizeGate) break;
+      }
+      expect(hasSizeGate).toBe(true);
+    });
+
+    it('every sizeGate has correct structure', () => {
+      const world = generateWorldMap(5, 5);
+      for (const room of world.rooms.flat()) {
+        if (room.sizeGate) {
+          expect(typeof room.sizeGate.requiredLength).toBe('number');
+          expect(room.sizeGate.requiredLength).toBeGreaterThanOrEqual(3);
+          expect(typeof room.sizeGate.doorDir).toBe('string');
+          expect(['up', 'down', 'left', 'right']).toContain(room.sizeGate.doorDir);
+          expect(room.sizeGate.unlocked).toBe(false);
+        }
+      }
+    });
+
+    it('no size gate on start room (0,0)', () => {
+      const world = generateWorldMap(5, 5);
+      expect(world.rooms[0][0].sizeGate).toBeNull();
+    });
+
+    it('no size gate on non-NORMAL rooms', () => {
+      const world = generateWorldMap(5, 5);
+      for (const room of world.rooms.flat()) {
+        if (room.type !== ROOM_TYPE.NORMAL && room.sizeGate) {
+          // Fail: non-NORMAL room has a size gate
+          expect(room.type).toBe(ROOM_TYPE.NORMAL);
+        }
+      }
+    });
+  });
+
+  describe('TC9: Lock + size gate on same door (interaction)', () => {
+    it('returns locked when no key (lock checked first)', () => {
+      const world = generateWorldMap(5, 5);
+      const roomA = world.rooms[0][0];
+      const roomB = world.rooms[0][1];
+
+      roomA.doors.right = { connectedTo: { roomX: 1, roomY: 0 }, locked: false, keyId: null };
+      roomB.doors.left = { connectedTo: { roomX: 0, roomY: 0 }, locked: true, keyId: 'test_key' };
+      roomB.sizeGate = { requiredLength: 100, doorDir: 'left', unlocked: false };
+
+      const state = createInitialState(world);
+      state.currentRoom = { x: 0, y: 0 };
+
+      // No key → lock check first → 'locked'
+      const result = checkDoorPassable(state, 'right');
+      expect(result.passable).toBe(false);
+      expect(result.reason).toBe('locked');
+    });
+
+    it('returns size_gate when has key but too short', () => {
+      const world = generateWorldMap(5, 5);
+      const roomA = world.rooms[0][0];
+      const roomB = world.rooms[0][1];
+
+      roomA.doors.right = { connectedTo: { roomX: 1, roomY: 0 }, locked: false, keyId: null };
+      roomB.doors.left = { connectedTo: { roomX: 0, roomY: 0 }, locked: true, keyId: 'test_key' };
+      roomB.sizeGate = { requiredLength: 100, doorDir: 'left', unlocked: false };
+
+      const state = createInitialState(world);
+      state.currentRoom = { x: 0, y: 0 };
+      state.inventory.keys.add('test_key');
+
+      // Has key but too short → size_gate
+      const result = checkDoorPassable(state, 'right');
+      expect(result.passable).toBe(false);
+      expect(result.reason).toBe('size_gate');
+    });
+
+    it('passes when has key and sufficient length', () => {
+      const world = generateWorldMap(5, 5);
+      const roomA = world.rooms[0][0];
+      const roomB = world.rooms[0][1];
+
+      roomA.doors.right = { connectedTo: { roomX: 1, roomY: 0 }, locked: false, keyId: null };
+      roomB.doors.left = { connectedTo: { roomX: 0, roomY: 0 }, locked: true, keyId: 'test_key' };
+      roomB.sizeGate = { requiredLength: 2, doorDir: 'left', unlocked: false };
+
+      const state = createInitialState(world);
+      state.currentRoom = { x: 0, y: 0 };
+      state.inventory.keys.add('test_key');
+      // Snake length = 3 ≥ 2
+
+      const result = checkDoorPassable(state, 'right');
+      expect(result.passable).toBe(true);
+    });
+  });
+
+  describe('TC10: Save/load preserves sizeGate.unlocked', () => {
+    it('preserves all sizeGate fields after serialize/deserialize', () => {
+      const world = generateWorldMap(5, 5);
+      // Set a size gate with unlocked=true
+      const normalRoom = world.rooms.flat().find(r => r.type === ROOM_TYPE.NORMAL);
+      if (!normalRoom) return;
+      normalRoom.sizeGate = { requiredLength: 5, doorDir: 'right', unlocked: true };
+
+      // Simulate serialization (JSON roundtrip)
+      const serialized = JSON.stringify(normalRoom.sizeGate);
+      const deserialized = JSON.parse(serialized);
+
+      expect(deserialized.requiredLength).toBe(5);
+      expect(deserialized.doorDir).toBe('right');
+      expect(deserialized.unlocked).toBe(true);
+    });
+  });
+});
+
 // =====================================================================
 
 describe('Issue #224 — Combat Rooms', () => {
@@ -3136,6 +3526,15 @@ describe('Issue #224 — Combat Rooms', () => {
       combatRoom.combatActive = false;
       combatRoom.doors.right = { connectedTo: { roomX: combatRoom.x + 1, roomY: combatRoom.y }, locked: false, keyId: null };
 
+      // Clear any lock/size gate on the next room's left door (compat with #223 bidirectional checks)
+      const nextRoom = world.rooms.flat().find(r => r.x === combatRoom.x + 1 && r.y === combatRoom.y);
+      if (nextRoom && nextRoom.doors && nextRoom.doors.left) {
+        nextRoom.doors.left.locked = false;
+      }
+      if (nextRoom && nextRoom.sizeGate && nextRoom.sizeGate.doorDir === 'left') {
+        delete nextRoom.sizeGate;
+      }
+
       const state = createInitialState(world);
       state.currentRoom = { x: combatRoom.x, y: combatRoom.y };
 
@@ -3149,6 +3548,15 @@ describe('Issue #224 — Combat Rooms', () => {
       if (!normalRoom) return;
 
       normalRoom.doors.right = { connectedTo: { roomX: normalRoom.x + 1, roomY: normalRoom.y }, locked: false, keyId: null };
+
+      // Clear any lock/size gate on the next room's left door (compat with #223 bidirectional checks)
+      const nextRoom = world.rooms.flat().find(r => r.x === normalRoom.x + 1 && r.y === normalRoom.y);
+      if (nextRoom && nextRoom.doors && nextRoom.doors.left) {
+        nextRoom.doors.left.locked = false;
+      }
+      if (nextRoom && nextRoom.sizeGate && nextRoom.sizeGate.doorDir === 'left') {
+        delete nextRoom.sizeGate;
+      }
 
       const state = createInitialState(world);
       state.currentRoom = { x: normalRoom.x, y: normalRoom.y };
@@ -3386,5 +3794,4 @@ describe('Issue #224 — Combat Rooms', () => {
       expect(combatFound).toBe(true);
     });
   });
-
 });

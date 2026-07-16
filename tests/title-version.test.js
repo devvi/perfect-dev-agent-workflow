@@ -197,7 +197,7 @@ describe('Title screen version label (Issue #200)', () => {
             Array.from({ length: 5 }, () => ({
               explored: false, type: 'normal',
               doors: { up: false, down: false, left: false, right: false },
-              sizeGate: false,
+              sizeGate: null,
             }))
           ),
         },
