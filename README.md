@@ -100,6 +100,8 @@ Total: 4 (config.yaml max_concurrent_children: 4)
 | `workflow/plan` | Design agent running (phase slot) |
 | `workflow/implement` | Implementation agent running (phase slot) |
 | `workflow/self-correct` | CI failure — self-healing (reserved slot) |
+| `workflow/lock-pi` | Distributed lock held by Pi instance |
+| `workflow/lock-mbot` | Distributed lock held by Mbot instance |
 | `status/blocked` | Waiting for dependency to resolve (auto-managed) |
 | `status/done` | Issue resolved |
 | `priority/critical` | Must handle immediately |
@@ -121,6 +123,7 @@ Total: 4 (config.yaml max_concurrent_children: 4)
 - **Issue picker:** `pick_next_issue()` runs inside event-processor. Fills available phase slots from backlog (workflow/backlog). Triggers on window open + status/done.
 - **Crash recovery:** `reconcile()` on window entry — syncs GitHub labels with pending state, regenerates missing events.
 - **Workflow control:** `/workflow pause|resume|status|hours` (slash command) or `touch ~/.hermes/workflow-pause`. Config change takes effect next cron tick.
+- **Distributed lock:** Multi-instance coordination via GitHub labels (`workflow/lock-pi`, `workflow/lock-mbot`). Set `WORKFLOW_INSTANCE_ID=mbot` for second instance. Lock TTL=5min. Acquired before SPAWN, released by spawned agent.
 - **activeForm:** PRD Section 8 (Continuation Context) → plan agent reads → implement agent writes `docs/PROGRESS/<N>.md` → review agent archives to GDD. Three-layer handoff chain.
 - **Self-heal:** CI failure on `impl/*` branch triggers self-correct agent (reserved slot), which diagnoses and pushes fixes automatically
 - **Review:** CI success on `impl/*` branch triggers review agent (reserved slot). Reads DESIGN → runs quality checklist → approves/merges → updates GDD.

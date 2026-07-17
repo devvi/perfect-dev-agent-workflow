@@ -109,6 +109,7 @@ http://192.168.31.213:8080/dashboard.html
 | `~/.hermes/config.yaml` | Provider, toolsets, delegation (max_async_children=4) |
 | `~/.hermes/workflow-config.json` | Work hours, preset, enabled flag |
 | `~/.hermes/workflow-pending.json` | Pending webhook events (read/write by route script) |
+| `~/.hermes/lock-state.json` | Distributed lock timestamps (multi-instance) |
 | `~/.hermes/skills/*/SKILL.md` | Skill definitions |
 | `~/.hermes/cron/jobs.json` | Cron jobs (persistent schedule) |
 
