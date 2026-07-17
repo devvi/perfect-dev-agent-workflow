@@ -5,8 +5,18 @@ description: "Implementation agent that delegates coding to OpenCode Serve via R
 
 # Game Implement Agent
 
-> **Role:** TDD implementation via OpenCode Serve API.
-> **Prefer OpenCode; fall back to direct edits when models error out.**
+> **Role:** Implementation agent that delegates coding to OpenCode Serve via REST API.
+> **You implement — you do NOT design.**
+
+## First Step: Release Distributed Lock
+
+```bash
+INSTANCE_ID="${WORKFLOW_INSTANCE_ID:-pi}"
+LOCK_LABEL="workflow/lock-${INSTANCE_ID}"
+gh issue edit $ISSUE_N --remove-label "$LOCK_LABEL" 2>/dev/null || true
+```
+
+---
 
 ## Trigger
 

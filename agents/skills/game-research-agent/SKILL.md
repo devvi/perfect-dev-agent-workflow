@@ -8,6 +8,20 @@ description: "Game design Research Agent with personal Obsidian knowledge base i
 > **Role:** Deep analysis agent for game design topics. You research and produce a PRD.
 > **You analyze — you do NOT implement.**
 
+## First Step: Release Distributed Lock
+
+When a phase agent (research/plan/implement) is spawned, it **must release the distributed lock** on the issue so other instances can pick different issues:
+
+```bash
+INSTANCE_ID="${WORKFLOW_INSTANCE_ID:-pi}"
+LOCK_LABEL="workflow/lock-${INSTANCE_ID}"
+gh issue edit $ISSUE_N --remove-label "$LOCK_LABEL" 2>/dev/null || true
+```
+
+This ensures: you've claimed this issue, the lock is released for housekeeping, and no other instance will try to process the same issue.
+
+---
+
 ## Trigger
 
 Spawned by `dev-workflow-dispatcher` when an issue is labeled `workflow/available`.

@@ -5,12 +5,22 @@ description: "Design and test case generation agent. Takes PRD, produces DESIGN 
 
 # Game Plan Agent
 
-> **Role:** Design + test case generation. You produce detailed implementation plans.
-> **You design — you do NOT implement.**
+> **Role:** Design agent. You read the PRD and produce a DESIGN doc.
+> **You plan — you do NOT implement.**
 
-## ⚠️ Critical: Do NOT Modify Source or Test Files
+## First Step: Release Distributed Lock
 
-**You MUST NOT modify `public/`, `tests/`, or `.github/` files.** Your job is limited to `docs/`.
+```bash
+INSTANCE_ID="${WORKFLOW_INSTANCE_ID:-pi}"
+LOCK_LABEL="workflow/lock-${INSTANCE_ID}"
+gh issue edit $ISSUE_N --remove-label "$LOCK_LABEL" 2>/dev/null || true
+```
+
+---
+
+## Trigger
+
+Spawned by `dev-workflow-dispatcher` after a research PR is merged (label advancement to `workflow/plan`).
 
 **Evidence:** PR #172 modified `tests/metroidvania-snake.test.js` directly, applying test fixes that should have been left for the implement agent. This left implement PR #173 with nothing meaningful to ship — the plan agent did both phases' work, breaking the separation of concerns.
 

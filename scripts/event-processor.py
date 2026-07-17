@@ -379,6 +379,122 @@ MAX_PHASE_SLOTS = int(os.environ.get("MAX_PHASE_SLOTS", "2"))
 # Phase agents (research/plan/implement) capped at MAX_PHASE_SLOTS.
 # Review and self-correct don't count toward this cap (reserved slots).
 
+# ── Distributed lock (multi-agent coordination) ────────────────────
+# Each cron instance has a unique label (workflow/lock-{id}).
+# Lock is acquired before SPAWN, released by the spawned agent.
+# TTL = 300s; expired locks are cleaned by reconcile().
+INSTANCE_ID = os.environ.get("WORKFLOW_INSTANCE_ID", "pi").lower()
+LOCK_LABEL = f"workflow/lock-{INSTANCE_ID}"
+OTHER_LOCK_LABEL = "workflow/lock-pi" if INSTANCE_ID == "mbot" else "workflow/lock-mbot"
+LOCK_TTL = 300  # 5 minutes
+LOCK_STATE_FILE = os.path.expanduser("~/.hermes/lock-state.json")
+
+def _read_lock_state() -> dict:
+    if os.path.exists(LOCK_STATE_FILE):
+        try:
+            with open(LOCK_STATE_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return {}
+    return {}
+
+def _write_lock_state(state: dict):
+    with open(LOCK_STATE_FILE, "w") as f:
+        json.dump(state, f)
+
+def _try_acquire_lock(issue_num: int) -> bool:
+    """Try to acquire a distributed lock on the given issue.
+    Returns True if lock acquired, False if held by another instance.
+    """
+    now = time.time()
+    
+    # Fetch current issue labels
+    raw = gh("issue", "view", str(issue_num), "--json", "labels")
+    if not raw:
+        return False
+    try:
+        labels = [l["name"] for l in json.loads(raw).get("labels", [])]
+    except (json.JSONDecodeError, KeyError):
+        return False
+    
+    state = _read_lock_state()
+    locked_at = state.get(str(issue_num), 0)
+    
+    # Check if other instance holds a live lock
+    if OTHER_LOCK_LABEL in labels:
+        if locked_at and (now - locked_at) < LOCK_TTL:
+            return False  # Other instance holds a valid lock
+        # Lock expired — clean it
+        try:
+            subprocess.run(
+                ["gh", "issue", "edit", str(issue_num),
+                 "--remove-label", OTHER_LOCK_LABEL],
+                check=True, capture_output=True, timeout=10
+            )
+        except: pass
+        del state[str(issue_num)]
+    
+    # Add our own lock label
+    try:
+        subprocess.run(
+            ["gh", "issue", "edit", str(issue_num),
+             "--add-label", LOCK_LABEL],
+            check=True, capture_output=True, timeout=10
+        )
+    except subprocess.CalledProcessError:
+        return False
+    
+    # Post-lock confirmation: if both locks exist (race), keep ours — the lock
+    # state file on our side is authoritative. If we already proceeded to SPAWN,
+    # duplicate output is handled by downstream dedup.
+    # The other instance's reconcile() will clean up its redundant lock later.
+    
+    # Record lock time
+    state[str(issue_num)] = now
+    _write_lock_state(state)
+    return True
+
+def _release_lock(issue_num: int):
+    """Release the distributed lock for this issue."""
+    state = _read_lock_state()
+    if str(issue_num) in state:
+        del state[str(issue_num)]
+        _write_lock_state(state)
+    try:
+        subprocess.run(
+            ["gh", "issue", "edit", str(issue_num),
+             "--remove-label", LOCK_LABEL],
+            check=True, capture_output=True, timeout=10
+        )
+    except: pass
+
+def _clean_expired_locks():
+    """Remove expired lock labels and state (called by reconcile)."""
+    raw = gh("issue", "list", "--state", "open", "--label", LOCK_LABEL, "--json", "number")
+    if not raw:
+        return
+    try:
+        locked_issues = json.loads(raw)
+    except json.JSONDecodeError:
+        return
+    state = _read_lock_state()
+    changed = False
+    for iss in locked_issues:
+        n = str(iss["number"])
+        locked_at = state.get(n, 0)
+        if locked_at and (time.time() - locked_at) >= LOCK_TTL:
+            try:
+                subprocess.run(
+                    ["gh", "issue", "edit", n, "--remove-label", LOCK_LABEL],
+                    check=True, capture_output=True, timeout=10
+                )
+            except: pass
+            if n in state:
+                del state[n]
+                changed = True
+    if changed:
+        _write_lock_state(state)
+
 # Stage labels that count toward concurrency limit
 ACTIVE_STAGE_LABELS = [
     "workflow/research", "workflow/plan", "workflow/implement",
@@ -590,6 +706,9 @@ def reconcile():
     
     if events:
         write_pending(events)
+    
+    # Clean expired locks
+    _clean_expired_locks()
 
 
 def preprocess():
@@ -840,6 +959,27 @@ def main():
             else:
                 capped.append(line)
         lines = capped
+        
+        # Acquire distributed locks for phase SPAWN lines
+        # (review/self-correct don't need locks — they're fast operations)
+        locked_lines = []
+        for line in lines:
+            if line.startswith("SPAWN: review") or line.startswith("SPAWN: self-correct"):
+                locked_lines.append(line)
+                continue
+            if line.startswith("SPAWN:"):
+                # Extract issue number from SPAWN
+                m = re.search(r'issue=(\d+)', line)
+                if m:
+                    issue_num = int(m.group(1))
+                    if _try_acquire_lock(issue_num):
+                        locked_lines.append(line)
+                    # else: skip — other instance processing this issue
+                else:
+                    locked_lines.append(line)
+            else:
+                locked_lines.append(line)
+        lines = locked_lines
         
         if lines:
             print("\n".join(lines))
