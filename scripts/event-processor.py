@@ -375,6 +375,9 @@ def _pr_exists_for_issue(stage: str, issue: int) -> bool:
 
 MAX_CONCURRENT = int(os.environ.get("MAX_CONCURRENT_ISSUES", "3"))
 MAX_SPAWN_PER_TICK = int(os.environ.get("MAX_SPAWN_PER_TICK", "3"))
+MAX_PHASE_SLOTS = int(os.environ.get("MAX_PHASE_SLOTS", "2"))
+# Phase agents (research/plan/implement) capped at MAX_PHASE_SLOTS.
+# Review and self-correct don't count toward this cap (reserved slots).
 
 # Stage labels that count toward concurrency limit
 ACTIVE_STAGE_LABELS = [
@@ -436,6 +439,23 @@ def _get_active_issue_target_files() -> set:
                 except ValueError:
                     pass
     return all_files
+
+
+def _count_active_phase_agents() -> int:
+    """Count how many phase agents (research/plan/implement) are currently
+    running on GitHub by checking issue labels. Returns count of issues
+    in any active phase stage."""
+    phase_labels = ["workflow/research", "workflow/plan", "workflow/implement"]
+    total = 0
+    for label in phase_labels:
+        raw = gh("issue", "list", "--state", "open",
+                 "--label", label,
+                 "--json", "number",
+                 "--jq", "length",
+                 "--limit", "50")
+        if raw and raw.strip().isdigit():
+            total += int(raw.strip())
+    return total
 
 
 def _has_file_conflict(issue_num: int, active_files: set) -> bool:
@@ -791,16 +811,34 @@ def main():
                     filtered.append(line)
             lines = filtered
         
-        # Cap spawns per tick
-        spawn_count = 0
+        # Cap: phase agents (research/plan/implement) at MAX_PHASE_SLOTS
+        # Review and self-correct don't count (reserved slots).
+        # First count what's already running on GitHub.
+        active_phase = _count_active_phase_agents()
+        available_phase_slots = max(0, MAX_PHASE_SLOTS - active_phase)
+        
+        phase_count = 0
         capped = []
         for line in lines:
-            if line.startswith("SPAWN:"):
-                if spawn_count >= MAX_SPAWN_PER_TICK:
-                    # Silently drop excess spawns (they'll be processed next tick)
-                    continue
-                spawn_count += 1
-            capped.append(line)
+            if line.startswith("SPAWN: review") or line.startswith("SPAWN: self-correct"):
+                # Reserved slots — always pass
+                capped.append(line)
+            elif line.startswith("SPAWN:"):
+                # Phase agent — count against available phase slots
+                is_phase = False
+                for ph in ("research", "plan", "implement"):
+                    if line.startswith(f"SPAWN: {ph}"):
+                        is_phase = True
+                        if phase_count < available_phase_slots:
+                            phase_count += 1
+                            capped.append(line)
+                        # else: silently drop, no slot available
+                        break
+                if not is_phase:
+                    # Unknown SPAWN type — let through
+                    capped.append(line)
+            else:
+                capped.append(line)
         lines = capped
         
         if lines:
