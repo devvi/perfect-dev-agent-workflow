@@ -128,9 +128,13 @@ def get_gateway_status():
 
 
 def get_cron():
+    """Parse `hermes cron list` output."""
     try:
         result = subprocess.run(["hermes", "cron", "list"],
                                 capture_output=True, text=True, timeout=10)
+        if result.returncode != 0:
+            print(f"[dashboard] cron error: rc={result.returncode} stderr={result.stderr!r}")
+            return []
         lines = result.stdout.strip().split("\n")
         jobs = []
         current = {}
@@ -155,7 +159,14 @@ def get_cron():
         if current:
             jobs.append(current)
         return jobs
-    except Exception:
+    except FileNotFoundError:
+        print("[dashboard] cron: hermes CLI not found")
+        return []
+    except subprocess.TimeoutExpired:
+        print("[dashboard] cron: hermes timed out")
+        return []
+    except Exception as e:
+        print(f"[dashboard] cron error: {e}")
         return []
 
 

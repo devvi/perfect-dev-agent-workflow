@@ -8,7 +8,8 @@ StartLimitIntervalSec=0
 Type=simple
 ExecStart=/usr/bin/python3 /home/pi/workspace/.pda/perfect-dev-agent-workflow/server.py
 WorkingDirectory=/home/pi/workspace/.pda/perfect-dev-agent-workflow
-Environment="PATH=/usr/bin:/home/pi/.local/bin:/home/pi/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PATH=/usr/bin:/home/pi/.local/bin:/home/pi/go/bin:/home/pi/.hermes/hermes-agent/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="HERMES_HOME=/home/pi/.hermes"
 Environment="DASHBOARD_PORT=8080"
 Restart=always
 RestartSec=5
