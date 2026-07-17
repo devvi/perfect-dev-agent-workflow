@@ -1,0 +1,22 @@
+[Unit]
+Description=Workflow Observability Dashboard - Pipeline Status Viewer
+After=network-online.target hermes-gateway.service
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /home/pi/workspace/.pda/perfect-dev-agent-workflow/server.py
+WorkingDirectory=/home/pi/workspace/.pda/perfect-dev-agent-workflow
+Environment="PATH=/usr/bin:/home/pi/.local/bin:/home/pi/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="DASHBOARD_PORT=8080"
+Restart=always
+RestartSec=5
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
