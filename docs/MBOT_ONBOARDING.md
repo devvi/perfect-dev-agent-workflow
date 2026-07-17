@@ -254,22 +254,32 @@ systemctl --user enable --now workflow-dashboard
 
 ## Step 12：配置 GitHub webhook
 
-在内网环境下，ngrok 可能不适用。Mbot 需要确保：
+当前用 **ngrok** 暴露 webhook：
 
 ```
-GitHub repo Settings → Webhooks → 添加:
-  Payload URL: http://[内网IP或域名]:8644/webhooks/dev-workflow
-  Content type: application/json
-  Secret: (查 ~/.hermes/env.yaml 里的 secret)
-  Events: Issues, Pull requests, Check runs
+ngrok（:4040）→ 隧道 → GitHub webhook → Hermes gateway（:8644）
 ```
-
-验证 webhook 连通性：
 
 ```bash
-curl -s http://localhost:8644/webhooks/github-dev-workflow -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"action":"ping"}' | head -2
+# 检查 ngrok 状态
+ss -tlnp | grep 4040
+curl -s http://127.0.0.1:4040/api/tunnels | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+for t in d.get('tunnels',[]):
+    print(t['public_url'])
+"
+
+# webhook 自动同步脚本每 15 分钟自动更新 GitHub webhook URL
+# 不需要手动干预
+```
+
+如果 ngrok 没装：
+
+```bash
+sudo apt install ngrok
+ngrok config add-authtoken <your-token>
+ngrok http 8644 --domain=your-static-domain.ngrok-free.app
 ```
 
 ---
