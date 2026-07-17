@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Workflow Dashboard</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0,200">
+<style>
+:root {
+  --bg-base: #0b0b0e;
+  --bg-surface: #141417;
+  --bg-card: #1c1c21;
+  --bg-card-hover: #24242b;
+  --border: #2a2a32;
+  --text-primary: #f0f0f4;
+  --text-secondary: #9696a6;
+  --text-tertiary: #6b6b7b;
+  --accent-indigo: #6366f1;
+  --accent-blue: #3b82f6;
+  --accent-amber: #f59e0b;
+  --accent-green: #22c55e;
+  --accent-red: #ef4444;
+  --accent-purple: #a855f7;
+  --accent-pink: #ec4899;
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  min-height: 100vh;
+  padding: 24px;
+}
+
+/* ── Header ── */
+.dashboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.header-icon {
+  width: 40px; height: 40px;
+  background: linear-gradient(135deg, var(--accent-indigo), var(--accent-purple));
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  color: white;
+  font-size: 22px;
+}
+
+.header-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+
+.header-subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-refresh {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.header-refresh:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+}
+
+.header-refresh .material-symbols-rounded {
+  font-size: 18px;
+}
+
+.header-updated {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* ── Layout ── */
+.layout-main {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.layout-full {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 900px) {
+  .layout-main { grid-template-columns: 1fr; }
+  body { padding: 16px; }
+}
+
+/* ── Cards ── */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+
+.card:hover {
+  border-color: #3a3a45;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.card-title .material-symbols-rounded {
+  font-size: 18px;
+  color: var(--accent-indigo);
+}
+
+.card-count {
+  background: var(--bg-base);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.card-body {
+  padding: 16px 20px;
+}
+
+.card-empty {
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+.card-empty .material-symbols-rounded {
+  font-size: 32px;
+  margin-bottom: 8px;
+  opacity: 0.4;
+}
+
+/* ── Pipeline Stage Labels ── */
+.issue-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+}
+
+.issue-card:last-child { border-bottom: none; }
+
+.issue-icon {
+  font-size: 18px;
+  width: 28px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.issue-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.issue-title {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.issue-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.issue-number {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.issue-stage {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.stage-available { background: #1a1a2e; color: #818cf8; }
+.stage-research { background: #0f2937; color: #38bdf8; }
+.stage-plan { background: #1f2e0f; color: #facc15; }
+.stage-implement { background: #0f2915; color: #4ade80; }
+.stage-self-correct { background: #2e1a0f; color: #fb923c; }
+.stage-done { background: #0f1a2e; color: #60a5fa; }
+
+/* ── Agent Cards ── */
+.agent-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.agent-item:last-child { border-bottom: none; }
+
+.pulse-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.9); }
+}
+
+.agent-body { flex: 1; min-width: 0; }
+
+.agent-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.agent-title {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-phase-tag {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.agent-phase-research { background: rgba(56,189,248,0.15); color: #38bdf8; }
+.agent-phase-plan { background: rgba(250,204,21,0.15); color: #facc15; }
+.agent-phase-implement { background: rgba(74,222,128,0.15); color: #4ade80; }
+.agent-phase-review { background: rgba(168,85,247,0.15); color: #a855f7; }
+.agent-phase-self-correct { background: rgba(251,146,60,0.15); color: #fb923c; }
+.agent-phase-agent { background: rgba(99,102,241,0.15); color: #818cf8; }
+
+.agent-meta {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.agent-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.agent-meta-item .material-symbols-rounded {
+  font-size: 14px;
+}
+
+.agent-parent {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-parent::before {
+  content: '← ';
+  opacity: 0.5;
+}
+
+/* ── Kanban Tasks ── */
+.kanban-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.kanban-item:last-child { border-bottom: none; }
+
+.kanban-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.kanban-dot-running { background: var(--accent-green); }
+.kanban-dot-blocked { background: var(--accent-red); }
+.kanban-dot-stale { background: var(--accent-amber); animation: pulse 1.5s infinite; }
+
+.kanban-body { flex: 1; min-width: 0; }
+
+.kanban-title {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.kanban-meta {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+/* ── Tech Stack ── */
+.tech-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 600px) {
+  .tech-grid { grid-template-columns: 1fr; }
+}
+
+.tech-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+}
+
+.tech-icon {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.tech-icon-gateway { background: rgba(99,102,241,0.15); }
+.tech-icon-feishu { background: rgba(56,189,248,0.15); }
+.tech-icon-discord { background: rgba(114,137,218,0.15); }
+.tech-icon-opencode { background: rgba(74,222,128,0.15); }
+.tech-icon-webhook { background: rgba(168,85,247,0.15); }
+.tech-icon-cron { background: rgba(251,191,36,0.15); }
+
+.tech-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.tech-status {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 1px;
+}
+
+.tech-status-ok { color: var(--accent-green); }
+.tech-status-err { color: var(--accent-red); }
+
+/* ── Cron Jobs ── */
+.cron-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.cron-item:last-child { border-bottom: none; }
+
+.cron-icon {
+  font-size: 18px;
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.cron-body { flex: 1; min-width: 0; }
+
+.cron-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.cron-schedule {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+.cron-last-run {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ── Error Card ── */
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.2);
+  border-radius: var(--radius-sm);
+  margin-top: 8px;
+  font-size: 12px;
+  color: #fca5a5;
+}
+
+.error-banner .material-symbols-rounded {
+  font-size: 16px;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- ──── Header ──── -->
+<div class="dashboard-header">
+  <div class="header-left">
+    <div class="header-icon">
+      <span class="material-symbols-rounded">dashboard</span>
+    </div>
+    <div>
+      <div class="header-title">Workflow Dashboard</div>
+      <div class="header-subtitle">Perfect Dev Agent Pipeline</div>
+    </div>
+  </div>
+  <div class="header-controls">
+    <span class="header-updated" id="updatedTime">—</span>
+    <button class="header-refresh" onclick="refreshAll()">
+      <span class="material-symbols-rounded">refresh</span>
+      Refresh
+    </button>
+  </div>
+</div>
+
+<!-- ──── Main Layout ──── -->
+<div class="layout-main">
+
+  <!-- ── Left Column Top: Pipeline ── -->
+  <div>
+    <div class="card" id="pipelineCard">
+      <div class="card-header">
+        <div class="card-title">
+          <span class="material-symbols-rounded">account_tree</span>
+          Pipeline
+          <span class="card-count" id="pipelineCount">0</span>
+        </div>
+      </div>
+      <div class="card-body" id="pipelineBody">
+        <div class="card-empty">
+          <div class="material-symbols-rounded">account_tree</div>
+          No active pipeline issues
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Right Column Top: Running Agents ── -->
+  <div>
+    <div class="card" id="agentCard">
+      <div class="card-header">
+        <div class="card-title">
+          <span class="material-symbols-rounded">smart_toy</span>
+          Running Agents
+          <span class="card-count" id="agentCount">0</span>
+        </div>
+      </div>
+      <div class="card-body" id="agentBody">
+        <div class="card-empty">
+          <div class="material-symbols-rounded">smart_toy</div>
+          No active agents
+        </div>
+      </div>
+    </div>
+
+    <!-- Kanban Tasks (sub-card) -->
+    <div class="card" style="margin-top:16px" id="kanbanCard">
+      <div class="card-header">
+        <div class="card-title">
+          <span class="material-symbols-rounded">assignment</span>
+          Kanban Tasks
+          <span class="card-count" id="kanbanCount">0</span>
+        </div>
+      </div>
+      <div class="card-body" id="kanbanBody">
+        <div class="card-empty">
+          <div class="material-symbols-rounded">assignment</div>
+          No kanban tasks
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Full Width: Tech Stack ── -->
+  <div class="layout-full">
+    <div class="card" id="techCard">
+      <div class="card-header">
+        <div class="card-title">
+          <span class="material-symbols-rounded">hub</span>
+          Tech Stack Status
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="tech-grid" id="techGrid">
+          <!-- Rendered by JS -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Full Width: Cron Jobs ── -->
+  <div class="layout-full">
+    <div class="card" id="cronCard">
+      <div class="card-header">
+        <div class="card-title">
+          <span class="material-symbols-rounded">schedule</span>
+          Cron Jobs
+          <span class="card-count" id="cronCount">0</span>
+        </div>
+      </div>
+      <div class="card-body" id="cronBody">
+        <div class="card-empty">
+          <div class="material-symbols-rounded">schedule</div>
+          No cron jobs
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Helpers ──
+function $(sel) { return document.querySelector(sel); }
+function $$(sel) { return document.querySelectorAll(sel); }
+
+function fmtDuration(seconds) {
+  if (seconds < 60) return seconds + 's';
+  if (seconds < 3600) return Math.floor(seconds/60) + 'm ' + (seconds%60) + 's';
+  return Math.floor(seconds/3600) + 'h ' + Math.floor((seconds%3600)/60) + 'm';
+}
+
+function fmtTime(ts) {
+  const d = new Date(ts * 1000);
+  const pad = (n) => String(n).padStart(2, '0');
+  return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+}
+
+function phaseColor(phase) {
+  const m = { research:'#38bdf8', plan:'#facc15', implement:'#4ade80', review:'#a855f7', 'self-correct':'#fb923c' };
+  return m[phase] || '#818cf8';
+}
+
+function phaseTagClass(phase) {
+  return 'agent-phase-' + (phase || 'agent');
+}
+
+// ── Renderers ──
+
+function renderPipeline(issues, error) {
+  const body = $('#pipelineBody');
+  const count = $('#pipelineCount');
+  count.textContent = issues.length;
+
+  if (error) {
+    body.innerHTML =
+      `<div class="error-banner">
+        <span class="material-symbols-rounded">error</span>
+        ${error}
+      </div>`;
+    return;
+  }
+
+  if (issues.length === 0) {
+    body.innerHTML =
+      `<div class="card-empty">
+        <div class="material-symbols-rounded">check_circle</div>
+        All clear — no open pipeline issues
+      </div>`;
+    return;
+  }
+
+  body.innerHTML = issues.map(iss =>
+    `<div class="issue-card">
+      <div class="issue-icon">${iss.icon}</div>
+      <div class="issue-info">
+        <div class="issue-title" title="${iss.title.replace(/"/g, '&quot;')}">${iss.title}</div>
+        <div class="issue-meta">
+          <span class="issue-number">#${iss.number}</span>
+          <span class="issue-stage stage-${iss.stage}">${iss.stage}</span>
+        </div>
+      </div>
+    </div>`
+  ).join('');
+}
+
+function renderAgents(agents, now) {
+  const body = $('#agentBody');
+  const count = $('#agentCount');
+  count.textContent = agents.length;
+
+  if (agents.length === 0) {
+    body.innerHTML =
+      `<div class="card-empty">
+        <div class="material-symbols-rounded">smart_toy</div>
+        No active sub-agents
+      </div>`;
+    return;
+  }
+
+  body.innerHTML = agents.map(a =>
+    `<div class="agent-item">
+      <div class="pulse-dot" style="background:${phaseColor(a.phase)}"></div>
+      <div class="agent-body">
+        <div class="agent-head">
+          <span class="agent-title" title="${a.title.replace(/"/g, '&quot;')}">${a.title}</span>
+          <span class="agent-phase-tag ${phaseTagClass(a.phase)}">${a.phase.toUpperCase()}</span>
+        </div>
+        <div class="agent-meta">
+          <span class="agent-meta-item"><span class="material-symbols-rounded">timer</span> ${fmtDuration(a.duration_seconds)}</span>
+          <span class="agent-meta-item"><span class="material-symbols-rounded">chat</span> ${a.message_count}</span>
+          <span class="agent-meta-item"><span class="material-symbols-rounded">build</span> ${a.tool_call_count}</span>
+          <span class="agent-meta-item"><span class="material-symbols-rounded">psychology</span> ${a.model}</span>
+        </div>
+        ${a.parent_title ? `<div class="agent-parent">${a.parent_title}</div>` : ''}
+      </div>
+    </div>`
+  ).join('');
+}
+
+function renderKanban(running, blocked) {
+  const body = $('#kanbanBody');
+  const count = $('#kanbanCount');
+  count.textContent = running.length + blocked.length;
+
+  const items = [];
+
+  running.forEach(t => {
+    items.push({
+      type: 'running',
+      title: t.title,
+      meta: t.current_step_key ? 'step: ' + t.current_step_key : 'PID: ' + (t.worker_pid || '—'),
+      stale: t.stale
+    });
+  });
+
+  blocked.forEach(t => {
+    items.push({
+      type: 'blocked',
+      title: t.title,
+      meta: t.current_step_key ? 'step: ' + t.current_step_key : (t.assignee ? 'assignee: ' + t.assignee : ''),
+      stale: t.stale
+    });
+  });
+
+  if (items.length === 0) {
+    body.innerHTML =
+      `<div class="card-empty">
+        <div class="material-symbols-rounded">assignment</div>
+        No running or blocked tasks
+      </div>`;
+    return;
+  }
+
+  body.innerHTML = items.map(t => {
+    const dotClass = t.stale ? 'kanban-dot-stale' : (t.type === 'running' ? 'kanban-dot-running' : 'kanban-dot-blocked');
+    const label = t.type === 'running' ? '🟢 Running' : '🔴 Blocked';
+    return `<div class="kanban-item">
+      <div class="kanban-dot ${dotClass}"></div>
+      <div class="kanban-body">
+        <div class="kanban-title">${t.title}</div>
+        <div class="kanban-meta">${label}${t.stale ? ' ⚠️ stale' : ''} · ${t.meta}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderTechStack(gateway, opencode) {
+  const grid = $('#techGrid');
+  const items = [];
+  const gw = gateway || {};
+  const platforms = gw.platforms || {};
+
+  items.push({
+    icon: 'dns',
+    label: 'Gateway',
+    status: gw.running ? 'Running' : 'Stopped',
+    statusClass: gw.running ? 'tech-status-ok' : 'tech-status-err',
+    iconClass: 'tech-icon-gateway'
+  });
+
+  for (const [name, info] of Object.entries(platforms || {})) {
+    const connected = (info.state === 'connected');
+    items.push({
+      icon: name === 'feishu' ? 'forum' : name === 'discord' ? 'smart_toy' : 'webhook',
+      label: name.charAt(0).toUpperCase() + name.slice(1),
+      status: connected ? 'Connected' : (info.error_message || 'Disconnected'),
+      statusClass: connected ? 'tech-status-ok' : 'tech-status-err',
+      iconClass: name === 'feishu' ? 'tech-icon-feishu' : name === 'discord' ? 'tech-icon-discord' : 'tech-icon-webhook'
+    });
+  }
+
+  items.push({
+    icon: 'code',
+    label: 'OpenCode',
+    status: opencode ? 'Running' : 'Stopped',
+    statusClass: opencode ? 'tech-status-ok' : 'tech-status-err',
+    iconClass: 'tech-icon-opencode'
+  });
+
+  grid.innerHTML = items.map(t =>
+    `<div class="tech-item">
+      <div class="tech-icon ${t.iconClass}">
+        <span class="material-symbols-rounded" style="font-size:18px">${t.icon}</span>
+      </div>
+      <div>
+        <div class="tech-name">${t.label}</div>
+        <div class="tech-status ${t.statusClass}">${t.status}</div>
+      </div>
+    </div>`
+  ).join('');
+}
+
+function renderCron(jobs, error) {
+  const body = $('#cronBody');
+  const count = $('#cronCount');
+  count.textContent = jobs.length;
+
+  if (error) {
+    body.innerHTML =
+      `<div class="error-banner">
+        <span class="material-symbols-rounded">error</span>
+        ${error}
+      </div>`;
+    return;
+  }
+
+  if (jobs.length === 0) {
+    body.innerHTML =
+      `<div class="card-empty">
+        <div class="material-symbols-rounded">schedule</div>
+        No scheduled cron jobs
+      </div>`;
+    return;
+  }
+
+  body.innerHTML = jobs.map(j => {
+    const statusIcon = (j.state === 'active' || j.status === 'active') ? '🟢'
+      : (j.state === 'paused' || j.status === 'paused') ? '⏸️'
+      : '🔴';
+    const name = j.name || j.id;
+    const schedule = j.schedule || '—';
+    const lastRun = j.last_run || '';
+    return `<div class="cron-item">
+      <div class="cron-icon">${statusIcon}</div>
+      <div class="cron-body">
+        <div class="cron-name">${name}</div>
+        <div class="cron-schedule">${schedule}</div>
+      </div>
+      ${lastRun ? `<div class="cron-last-run">${lastRun}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// ── Main Refresh ──
+async function refreshAll() {
+  try {
+    const res = await fetch('/api/dashboard');
+    const data = await res.json();
+    const now = data.now;
+
+    $('#updatedTime').textContent = 'Updated: ' + fmtTime(now);
+
+    renderPipeline(data.issues);
+    renderAgents(data.active_agents, now);
+    renderKanban(data.kanban_running || [], data.kanban_blocked || []);
+    renderTechStack(data.gateway, data.opencode);
+    renderCron(data.cron_jobs, data.cron_error);
+  } catch (err) {
+    console.error('Refresh failed:', err);
+    $('#updatedTime').textContent = '⚠️ Error loading data';
+  }
+}
+
+// ── Auto-refresh ──
+refreshAll();
+setInterval(refreshAll, 30000);
+</script>
+</body>
+</html>
