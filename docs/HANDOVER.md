@@ -53,9 +53,10 @@ journalctl --user -u hermes-gateway -n 50 --no-pager
 
 ### Webhook URL (ngrok)
 
-Ngrok tunnel changes on restart. Sync via cron:
-- `~/.hermes/scripts/webhook-sync.py` (runs every 15m, no_agent)
-- Webhook URL: `https://<ngrok-id>.ngrok-free.app/webhooks/dev-workflow`
+Ngrok tunnel changes on restart. Synced automatically via:
+- `~/.hermes/scripts/webhook-sync.py` (runs every 15m, no_agent=true)
+- Auto-updates GitHub webhook URL when ngrok URL changes
+- Check current URL: `curl -s http://127.0.0.1:4040/api/tunnels | python3 -c "import sys,json; [print(t['public_url']) for t in json.load(sys.stdin).get('tunnels',[])]"`
 
 ### Dashboard
 

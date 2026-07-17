@@ -254,23 +254,37 @@ systemctl --user enable --now workflow-dashboard
 
 ## Step 12：配置 GitHub webhook
 
-在内网环境下，ngrok 可能不适用。Mbot 需要确保：
+内网环境用 **ngrok** 暴露 webhook。当前架构：
 
 ```
-GitHub repo Settings → Webhooks → 添加:
-  Payload URL: http://[内网IP或域名]:8644/webhooks/dev-workflow
-  Content type: application/json
-  Secret: (查 ~/.hermes/env.yaml 里的 secret)
-  Events: Issues, Pull requests, Check runs
+ngrok（端口 4040）→ 隧道 → GitHub webhook → Hermes gateway（端口 8644）
 ```
 
-验证 webhook 连通性：
+设置步骤：
 
 ```bash
-curl -s http://localhost:8644/webhooks/github-dev-workflow -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"action":"ping"}' | head -2
+# 1. 启动 ngrok（如果还没装）
+#    从 https://ngrok.com/download 下载 arm64 版本
+#    或者用系统里的现有 ngrok
+
+# 2. 检查 ngrok 是否在跑
+ss -tlnp | grep 4040
+curl -s http://127.0.0.1:4040/api/tunnels | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+for t in d.get('tunnels',[]):
+    print(t['public_url'])
+"
+
+# 3. 更新 GitHub webhook URL（项目里有自动同步脚本）
+#    ~/.hermes/scripts/webhook-sync.py（每 15 分钟自动跑）
+#    或者手动设置：
+#    GitHub repo → Settings → Webhooks → 编辑
+#    Payload URL: https://<ngrok-id>.ngrok-free.app/webhooks/dev-workflow
+#    Secret: (查 ~/.hermes/env.yaml)
 ```
+
+ngrok 地址每次重启会变，所以 `webhook-sync.py` 会每 15 分钟自动更新 GitHub 上的 webhook URL。
 
 ---
 
