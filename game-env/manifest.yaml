@@ -1,0 +1,31 @@
+# Snake Game Manifest
+engine:
+  name: "web"
+  version: "ES2022"
+  runner: "node"
+
+source:
+  dir: "public/src/"
+  entry: "public/gameboy.html"
+
+test:
+  dir: "tests/"
+  framework: "vitest"
+  cmd: "npx vitest run"
+  e2e:
+    tool: "playwright"
+    entry: "public/gameboy.html"
+
+build:
+  cmd: "npm run build"
+
+deploy:
+  target: "vercel"
+  url: "https://perfect-dev-agent-workflow.vercel.app"
+
+code_gen:
+  language: "javascript"
+  style_guide: "vanilla-js"
+
+git:
+  default_branch: "master"

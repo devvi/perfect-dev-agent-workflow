@@ -370,6 +370,34 @@ def _pr_exists_for_issue(stage: str, issue: int) -> bool:
     return False  # on error, spawn anyway (cautious)
 
 
+WORKDIR = os.path.expanduser("~/workspace/.pda/perfect-dev-agent-workflow")
+
+# ── Game Environment ─────────────────────────────────────────
+MANIFEST_PATH = os.path.join(WORKDIR, "game-env", "manifest.yaml")
+
+def _load_manifest() -> dict:
+    """Load game environment manifest. Falls back to snake defaults."""
+    default = {
+        "engine": {"name": "web", "runner": "node"},
+        "source": {"dir": "public/src/"},
+        "test": {"dir": "tests/", "framework": "vitest"},
+        "code_gen": {"language": "javascript"},
+        "git": {"default_branch": "master"},
+    }
+    if not os.path.exists(MANIFEST_PATH):
+        return default
+    try:
+        with open(MANIFEST_PATH) as f:
+            import yaml
+            return {**default, **yaml.safe_load(f)}
+    except Exception:
+        return default
+
+MANIFEST = _load_manifest()
+SRC_DIR = MANIFEST.get("source", {}).get("dir", "public/src/")
+TEST_DIR = MANIFEST.get("test", {}).get("dir", "tests/")
+DEFAULT_BRANCH = MANIFEST.get("git", {}).get("default_branch", "master")
+
 # ── Issue Picker ─────────────────────────────────────────────────
 # Reads backlog, picks candidate, adds workflow/available label.
 
