@@ -76,6 +76,45 @@ Comment on any issue:
 - `/opencode plan` — re-run plan
 - `/opencode implement` — re-run implementation
 
+## Workflow Control (Hermes Runtime)
+
+When deployed with Hermes Agent, the workflow respects configurable work hours.
+
+### Configuration File
+
+`~/.hermes/workflow-config.json`:
+
+```json
+{
+  "enabled": true,
+  "work_start_hour": 8,
+  "work_end_hour": 22,
+  "preset": "daytime"
+}
+```
+
+### Built-in Presets
+
+| Preset | Hours | Use Case |
+|--------|-------|----------|
+| `daytime` | 08:00–22:00 | Default, normal business hours |
+| `night-owl` | 23:00–08:00 | Overnight development (crosses midnight) |
+| `best-deepseek` | 18:00–09:00 | Avoid DeepSeek peak pricing (09:00-12:00, 14:00-18:00 CST) |
+| `always` | 00:00–24:00 | 24/7 — no time restriction |
+
+### Slash Commands
+
+| Command | Effect |
+|---------|--------|
+| `/workflow status` | Show enabled/disabled, preset, work hours, current time |
+| `/workflow pause` | Suspend: events accumulate, no agents spawned |
+| `/workflow resume` | Restore default behavior |
+| `/workflow hours daytime` | 08:00–22:00 |
+| `/workflow hours night-owl` | 23:00–08:00 |
+| `/workflow hours best-deepseek` | 18:00–09:00 (off-peak) |
+| `/workflow hours always` | 24/7 |
+| `/workflow hours N M` | Custom window (24h format) |
+
 ## Troubleshooting
 
 ### Workflow not triggering
