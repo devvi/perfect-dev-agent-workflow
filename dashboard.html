@@ -449,8 +449,10 @@ function renderGraph() {
   deps.nodes.forEach(id => {
     const issue = data.issues.find(i=>i.id===id);
     const color = prioColor[issue?.priority]||'var(--accent-indigo)';
-    const label = '#'+id;
-    g.setNode(id.toString(), {label,style:`fill:var(--bg-card);stroke:${color};stroke-width:2;rx:6;ry:6`,labelStyle:`color:var(--text-primary);font-size:12px;font-weight:600`,width:50,height:36});
+    const title = issue?.title||'';
+    const shortTitle = title.length>12 ? title.slice(0,10)+'…' : title;
+    const label = '#'+id+'\n'+shortTitle;
+    g.setNode(id.toString(), {label,style:`fill:var(--bg-card);stroke:${color};stroke-width:2;rx:6;ry:6`,labelStyle:`color:var(--text-primary);font-size:10px;font-weight:600;white-space:pre`,width:90,height:40});
   });
   deps.edges.forEach(e => {
     g.setEdge(e.from.toString(), e.to.toString(), {style:'stroke:#30363d;stroke-width:2;fill:none',arrowheadStyle:'fill:#30363d',arrowhead:'vee'});
@@ -462,7 +464,7 @@ function renderGraph() {
   svg.attr('viewBox',`0 0 ${gw} ${gh}`).attr('height',gh);
   zoomLevel = 1;
 
-  inner.selectAll('g.node').on('click', function(id) { showDetail(parseInt(id)); });
+  inner.selectAll('g.node').on('click', function(id) { const nid=parseInt(id); highlightNode(nid); showDetail(nid); });
   svg.call(d3.zoom().scaleExtent([0.3,3]).on('zoom', (e) => { inner.attr('transform', e.transform); }));
 }
 
@@ -473,6 +475,9 @@ function applyZoom() { if(planInner) planInner.attr('transform',`scale(${zoomLev
 
 function highlightNode(id) {
   document.querySelectorAll('#issues-tbody tr').forEach(r => r.classList.toggle('active', parseInt(r.dataset.id)===id));
+  if (planSvg) {
+    planSvg.selectAll('g.node').attr('opacity', n => parseInt(n)===id ? 1 : 0.4);
+  }
 }
 
 // ── Detail Modal ──
