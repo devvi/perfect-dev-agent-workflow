@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Workflow Observability Dashboard — standalone server, port 8080."""
+"""Workflow Dashboard — supports both framework and agent-game-test, LAN access."""
 
 import http.server
 import json
@@ -9,24 +9,26 @@ import subprocess
 import time
 import urllib.request
 
-WORKDIR = os.path.expanduser("~/workspace/.pda/perfect-dev-agent-workflow")
+# ── Config ──────────────────────────────────────────────────────────
+PORT = int(os.environ.get("DASHBOARD_PORT", "8080"))
+FRAMEWORK_DIR = os.path.expanduser("~/workspace")
+GAME_DIR = os.path.expanduser("~/workspace/agent-game-test")
 STATE_DB = os.path.expanduser("~/.hermes/state.db")
-HERMES_GATEWAY_URL = "http://127.0.0.1:9119"
+HERMES_GATEWAY_URL = os.environ.get("HERMES_GATEWAY_URL", "http://127.0.0.1:8644")
+GITHUB_REPO = "devvi/agent-game-test"
 
+RAW_DIR = os.path.join(GAME_DIR, "docs", "RAW")
+
+
+# ── Data helpers ────────────────────────────────────────────────────
 
 def get_active_agents():
-    """Read currently running sub-agents from state.db.
-    
-    Title fallback: sessions table leaves `title` NULL (unique index constraint).
-    Reads first message from messages table as display name.
-    """
+    """Read currently running sub-agents from state.db."""
     if not os.path.exists(STATE_DB):
         return []
-
     conn = sqlite3.connect(STATE_DB)
     conn.row_factory = sqlite3.Row
     now = time.time()
-
     rows = conn.execute("""
         SELECT s.id, s.parent_session_id, s.title, s.model,
                s.started_at, s.message_count, s.tool_call_count,
@@ -39,22 +41,16 @@ def get_active_agents():
           AND s.source = 'subagent'
         ORDER BY s.started_at DESC
     """, (now - 600,)).fetchall()
-
     agents = []
     for r in rows:
         title = r["title"] or ""
         if not title:
-            # Fallback: read first message as display name
             msg_row = conn.execute(
                 "SELECT substr(content,1,120) as msg FROM messages "
                 "WHERE session_id = ? ORDER BY id LIMIT 1",
                 (r["id"],)
             ).fetchone()
-            if msg_row and msg_row["msg"]:
-                title = msg_row["msg"].strip()
-            else:
-                title = "(unnamed)"
-
+            title = (msg_row["msg"].strip()[:80] if msg_row and msg_row["msg"] else "(unnamed)")
         title_lower = title.lower()
         phase = "agent"
         for kw, p in [("research","research"),("plan","plan"),
@@ -63,10 +59,8 @@ def get_active_agents():
             if kw in title_lower:
                 phase = p
                 break
-
         agents.append({
-            "id": r["id"],
-            "phase": phase,
+            "id": r["id"], "phase": phase,
             "duration_seconds": int(now - r["started_at"]),
             "message_count": r["message_count"],
             "tool_call_count": r["tool_call_count"],
@@ -74,19 +68,18 @@ def get_active_agents():
             "title": title,
             "parent_title": r["parent_title"] or "",
         })
-
     conn.close()
     return agents
 
 
 def get_pipeline_issues():
-    """GitHub Issues with workflow labels."""
+    """GitHub Issues from agent-game-test with workflow labels."""
     try:
         result = subprocess.run(
-            ["gh", "issue", "list", "--state", "open",
+            ["gh", "issue", "list", "--repo", GITHUB_REPO, "--state", "open",
              "--json", "number,title,labels,createdAt",
              "--limit", "20"],
-            capture_output=True, text=True, timeout=15, cwd=WORKDIR,
+            capture_output=True, text=True, timeout=15,
         )
         issues = json.loads(result.stdout)
         stage_icons = {
@@ -108,14 +101,13 @@ def get_pipeline_issues():
 
 
 def get_gateway_status():
-    """Read gateway status, with fallback to state file."""
+    """Read gateway status."""
     try:
         resp = urllib.request.urlopen(f"{HERMES_GATEWAY_URL}/api/status", timeout=3)
         status = json.loads(resp.read())
         return {"running": True, "platforms": status.get("gateway_platforms", {})}
     except Exception:
         pass
-    # Fallback: read gateway_state.json
     try:
         with open(os.path.expanduser("~/.hermes/gateway_state.json")) as f:
             data = json.load(f)
@@ -128,6 +120,7 @@ def get_gateway_status():
 
 
 def get_cron():
+    """Parse hermes cron list output."""
     try:
         result = subprocess.run(["hermes", "cron", "list"],
                                 capture_output=True, text=True, timeout=10)
@@ -167,9 +160,49 @@ def get_opencode_status():
         return False
 
 
+def get_plan_list():
+    """List game-to-issues plan files in RAW_DIR."""
+    if not os.path.exists(RAW_DIR):
+        return []
+    plans = []
+    for f in os.listdir(RAW_DIR):
+        if f.endswith(".json") and f.startswith("game-to-issues-"):
+            path = os.path.join(RAW_DIR, f)
+            try:
+                with open(path) as fh:
+                    data = json.load(fh)
+                meta = data.get("meta", {})
+                plans.append({
+                    "file": f,
+                    "title": meta.get("title", f),
+                    "status": meta.get("status", "unknown"),
+                    "total_issues": meta.get("total_issues", 0),
+                    "engine": meta.get("engine", "?"),
+                    "platform": meta.get("platform", "?"),
+                })
+            except Exception:
+                plans.append({"file": f, "title": f, "status": "error"})
+    return plans
+
+
+# ── HTTP Handler ────────────────────────────────────────────────────
+
+MIME_TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "application/javascript",
+    ".css": "text/css",
+    ".json": "application/json",
+    ".png": "image/png",
+    ".svg": "image/svg+xml",
+}
+
+
 class DashboardHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
-        if self.path == "/api/dashboard":
+        path = self.path.split("?")[0]
+
+        # API: dashboard data
+        if path == "/api/dashboard":
             data = {
                 "now": int(time.time()),
                 "active_agents": get_active_agents(),
@@ -177,42 +210,66 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                 "cron_jobs": get_cron(),
                 "gateway": get_gateway_status(),
                 "opencode": get_opencode_status(),
+                "plans": get_plan_list(),
+                "repo": GITHUB_REPO,
             }
             self._json(data)
-        elif self.path in ("/", "/dashboard.html"):
-            self._serve("dashboard.html")
+
+        # Serve dashboard HTML
+        elif path in ("/", "/dashboard.html"):
+            self._serve_static(os.path.join(FRAMEWORK_DIR, "dashboard.html"))
+
+        # Serve raw files (game-to-issues viewer + plans)
+        elif path.startswith("/raw/"):
+            rel_path = path[5:]  # strip "/raw/"
+            if not rel_path or ".." in rel_path:
+                self._error(400, "Bad request")
+                return
+            file_path = os.path.normpath(os.path.join(RAW_DIR, rel_path))
+            if not file_path.startswith(os.path.normpath(RAW_DIR)):
+                self._error(403, "Forbidden")
+                return
+            self._serve_static(file_path)
+
         else:
-            self._serve(self.path.lstrip("/"))
+            self._error(404, "Not found")
 
     def _json(self, data):
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(json.dumps(data, ensure_ascii=False).encode())
 
-    def _serve(self, filename):
-        path = os.path.join(WORKDIR, filename)
-        if not os.path.exists(path):
-            self.send_response(404)
-            self.end_headers()
+    def _serve_static(self, path):
+        if not os.path.exists(path) or not os.path.isfile(path):
+            self._error(404, "Not found")
             return
-        ext = os.path.splitext(filename)[1]
-        ct = {".html": "text/html; charset=utf-8",
-              ".js": "application/javascript",
-              ".css": "text/css"}.get(ext, "application/octet-stream")
+        ext = os.path.splitext(path)[1]
+        ct = MIME_TYPES.get(ext, "application/octet-stream")
         self.send_response(200)
         self.send_header("Content-Type", ct)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         with open(path, "rb") as f:
             self.wfile.write(f.read())
+
+    def _error(self, code, msg):
+        self.send_response(code)
+        self.send_header("Content-Type", "text/plain")
+        self.end_headers()
+        self.wfile.write(msg.encode())
 
     def log_message(self, *args):
         pass
 
 
 if __name__ == "__main__":
-    port = 8080
-    s = http.server.HTTPServer(("0.0.0.0", port), DashboardHandler)
-    print(f"Dashboard: http://0.0.0.0:{port}/dashboard.html")
+    s = http.server.HTTPServer(("0.0.0.0", PORT), DashboardHandler)
+    print(f"Dashboard: http://0.0.0.0:{PORT}/")
+    print(f"  Issues from: {GITHUB_REPO}")
+    print(f"  Plans at:    http://0.0.0.0:{PORT}/raw/viewer.html")
+    print(f"  LAN access:  http://<your-lan-ip>:{PORT}/")
     s.serve_forever()
