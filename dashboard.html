@@ -362,7 +362,7 @@ async function loadPlan(slug) {
     $('#plan-content').style.display='block';
     $('#plan-empty').style.display='none';
     $('#plan-info').innerHTML = `<strong>${esc(data.meta.title)}</strong> · ${data.meta.total_issues||0} issues · ${data.meta.model||''} · ${data.meta.status||'draft'}`;
-    renderPlanView();
+    refreshPlanView();
     renderGraph();
   } catch(e) {
     $('#plan-content').style.display='none';
