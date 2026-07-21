@@ -468,7 +468,7 @@ function renderGraph() {
   svg.attr('viewBox',`0 0 ${gw} ${gh}`).attr('height',gh);
   zoomLevel = 1;
 
-  inner.selectAll('g.node').on('click', function(id) { const nid=parseInt(id); highlightNode(nid); showDetail(nid); });
+  inner.selectAll('g.node').on('click', (event, datum) => { const nid = parseInt(datum); if (!isNaN(nid)) { highlightNode(nid); showDetail(nid); } });
   // Native scroll wheel zoom (doesn't interfere with clicks)
   container.addEventListener('wheel', function(e) {
     e.preventDefault();
