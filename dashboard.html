@@ -469,7 +469,7 @@ function renderGraph() {
   zoomLevel = 1;
 
   inner.selectAll('g.node').on('click', function(id) { const nid=parseInt(id); highlightNode(nid); showDetail(nid); });
-  svg.call(d3.zoom().scaleExtent([0.3,3]).on('zoom', (e) => { inner.attr('transform', e.transform); }));
+  svg.call(d3.zoom().wheelDelta(d3.zoomWheel).scaleExtent([0.3,3]).filter(e => e.type==='wheel').on('zoom', (e) => { inner.attr('transform', e.transform); }));
 }
 
 function zoomIn() { zoomLevel=Math.min(3,zoomLevel+0.3); applyZoom(); }
