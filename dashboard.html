@@ -468,21 +468,31 @@ function renderGraph() {
   svg.attr('viewBox',`0 0 ${gw} ${gh}`).attr('height',gh);
   zoomLevel = 1;
 
-  inner.selectAll('g.node').on('click', (event, datum) => { const nid = parseInt(datum); if (!isNaN(nid)) { highlightNode(nid); showDetail(nid); } });
-  // Native scroll wheel zoom (doesn't interfere with clicks)
-  container.addEventListener('wheel', function(e) {
-    e.preventDefault();
-    const d = e.deltaY > 0 ? -0.15 : 0.15;
-    zoomLevel = Math.max(0.3, Math.min(3, zoomLevel + d));
-    inner.attr('transform', 'scale('+zoomLevel+')');
-  }, {passive: false});
+  inner.selectAll('g.node').on('mousedown', function(event, datum) {
+    // Distinguish click from drag: track mouse position
+    const startPos = [event.clientX, event.clientY];
+    const node = this;
+    const id = datum;
+    const mouseupHandler = function(e) {
+      window.removeEventListener('mouseup', mouseupHandler);
+      const dx = e.clientX - startPos[0], dy = e.clientY - startPos[1];
+      if (Math.abs(dx) < 5 && Math.abs(dy) < 5) {
+        const nid = parseInt(id);
+        if (!isNaN(nid)) { highlightNode(nid); showDetail(nid); }
+      }
+    };
+    window.addEventListener('mouseup', mouseupHandler);
+  });
+  // D3 zoom for wheel zoom + drag pan
+  const zoomBehavior = d3.zoom().scaleExtent([0.3,3]).on('zoom', (e) => { inner.attr('transform', e.transform); });
+  svg.call(zoomBehavior);
+  window.__graphZoom = zoomBehavior;
+  window.__graphSvg = svg;
 }
 
-function zoomIn() { zoomLevel=Math.min(3,zoomLevel+0.3); applyZoom(); }
-function zoomOut() { zoomLevel=Math.max(0.3,zoomLevel-0.3); applyZoom(); }
-function zoomReset() { zoomLevel=1; applyZoom(); }
-function applyZoom() { if(planInner) planInner.attr('transform',`scale(${zoomLevel})`); }
-
+function zoomIn() { if (window.__graphSvg) window.__graphSvg.call(window.__graphZoom.scaleBy, 1.3); }
+function zoomOut() { if (window.__graphSvg) window.__graphSvg.call(window.__graphZoom.scaleBy, 0.7); }
+function zoomReset() { if (window.__graphSvg) window.__graphSvg.call(window.__graphZoom.transform, d3.zoomIdentity); }
 function highlightNode(id) {
   document.querySelectorAll('#issues-tbody tr').forEach(r => r.classList.toggle('active', parseInt(r.dataset.id)===id));
   if (planSvg) {
