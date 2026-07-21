@@ -603,12 +603,36 @@ body {
     </div>
   </div>
 
+  <!-- ── Full Width: Game Plans ── -->
+  <div class="layout-full">
+    <div class="card" id="plansCard">
+      <div class="card-header">
+        <div class="card-title">
+          <span class="material-symbols-rounded">map</span>
+          Game Plans
+          <span class="card-count" id="plansCount">0</span>
+        </div>
+        <a href="/raw/viewer.html" target="_blank" class="card-action">
+          <span class="material-symbols-rounded">open_in_new</span>
+          打开审阅器
+        </a>
+      </div>
+      <div class="card-body" id="plansBody">
+        <div class="card-empty">
+          <div class="material-symbols-rounded">map</div>
+          No game plans
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script>
 // ── Helpers ──
 function $(sel) { return document.querySelector(sel); }
 function $$(sel) { return document.querySelectorAll(sel); }
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 
 function fmtDuration(seconds) {
   if (seconds < 60) return seconds + 's';
@@ -797,6 +821,27 @@ function renderTechStack(gateway, opencode) {
   ).join('');
 }
 
+// ── Plans ──
+function renderPlans(plans, error) {
+  const body = $('#plansBody');
+  const count = $('#plansCount');
+  if (!plans || !plans.length) {
+    body.innerHTML = '<div class="card-empty"><div class="material-symbols-rounded">map</div>No game plans</div>';
+    count.textContent = '0';
+    return;
+  }
+  count.textContent = plans.length;
+  body.innerHTML = plans.map(p => `
+    <div class="cron-row">
+      <div class="cron-id">${p.status === 'draft' ? '📝' : p.status === 'created' ? '✅' : '📋'}</div>
+      <div class="cron-schedule">${p.engine || '?'}</div>
+      <div class="cron-name"><a href="/raw/viewer.html?plan=${p.file.replace('game-to-issues-','').replace('.json','')}" target="_blank">${escHtml(p.title)}</a></div>
+      <div class="cron-status">${p.total_issues} issues</div>
+      <div class="cron-last"><span class="status-tag status-${p.status}">${p.status}</span></div>
+    </div>
+  `).join('');
+}
+
 function renderCron(jobs, error) {
   const body = $('#cronBody');
   const count = $('#cronCount');
@@ -852,6 +897,7 @@ async function refreshAll() {
     renderKanban(data.kanban_running || [], data.kanban_blocked || []);
     renderTechStack(data.gateway, data.opencode);
     renderCron(data.cron_jobs, data.cron_error);
+    renderPlans(data.plans);
   } catch (err) {
     console.error('Refresh failed:', err);
     $('#updatedTime').textContent = '⚠️ Error loading data';
