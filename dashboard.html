@@ -114,6 +114,9 @@ a:hover { text-decoration: underline; }
 .plan-table-wrap { overflow-x: auto; grid-column: 1; }
 .plan-graph-wrap { grid-column: 2; }
 .plan-graph-wrap svg { max-width: 100%; height: auto; }
+.plan-graph-wrap g.node { cursor: pointer; }
+.plan-graph-wrap g.node:hover rect { filter: brightness(1.4); }
+.plan-graph-wrap g.node text { pointer-events: none; }
 
 .plan-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .plan-table th { text-align: left; padding: 8px 10px; border-bottom: 2px solid var(--border); color: var(--text-tertiary); font-weight: 500; cursor: pointer; white-space: nowrap; user-select: none; }
@@ -450,7 +453,8 @@ function renderGraph() {
     const issue = data.issues.find(i=>i.id===id);
     const color = prioColor[issue?.priority]||'var(--accent-indigo)';
     const title = issue?.title||'';
-    const shortTitle = title.length>12 ? title.slice(0,10)+'…' : title;
+    const cleanTitle = title.replace(/^\[(Research|Design|Feature|Bug|Docs)\]\s*/,'');
+    const shortTitle = cleanTitle.length>12 ? cleanTitle.slice(0,10)+'…' : cleanTitle;
     const label = '#'+id+'\n'+shortTitle;
     g.setNode(id.toString(), {label,style:`fill:var(--bg-card);stroke:${color};stroke-width:2;rx:6;ry:6`,labelStyle:`color:var(--text-primary);font-size:10px;font-weight:600;white-space:pre`,width:90,height:40});
   });
