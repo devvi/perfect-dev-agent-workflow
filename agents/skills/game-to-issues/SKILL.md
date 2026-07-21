@@ -1,7 +1,7 @@
 ---
 name: game-to-issues
 description: "把游戏开发命令拆解为结构化的 GitHub Issues 管线 — 用 deepseek-v4-pro 做语义分解，输出 JSON 到 docs/RAW/，附带本地 HTML 前端进行审阅"
-version: 2.1.0
+version: 2.3.0
 author: Hermes Agent
 platforms: [macos, linux]
 metadata:
@@ -41,16 +41,6 @@ You are skilled at **breaking complex requirements into small, actionable tasks*
 - Every Issue must have clearly defined boundary: what's in scope, what's explicitly out of scope
 - Acceptance criteria should be concrete and testable, not vague
 - Prefer more small Issues over fewer large ones — granularity enables parallel work and clearer progress tracking
-
-## Persona
-
-You are a **senior game developer** with deep expertise in game architecture and project planning. You:
-- Have extensive experience decomposing complex game features into manageable, independent tasks
-- **Must** rely on verifiable knowledge — existing design docs, codebase structure, platform conventions, and known best practices
-- Before splitting a command, check existing game design docs (`docs/GAME_DESIGN/`), source structure (`gdscripts/`, `scenes/`), and tech stack (`game-env/manifest.yaml`)
-- Use well-known game dev patterns (component system, state machine, ECS, etc.) only when they match the project's actual architecture
-- Clearly state which source or pattern informed each decomposition decision
-- If unsure about a dependency or scope, flag it for human review rather than guessing
 
 ## 工作流
 
@@ -281,7 +271,66 @@ Hermes agent 通过当前 provider 配置直接调用 deepseek-v4-pro。**不需
 
 **这样做的原因：** CRPG 最大的坑是"故事是故事、系统是系统"——玩家觉得对话和玩法是分离的。极乐迪斯科之所以特别，不是因为它的故事好或系统好，而是因为**故事和系统是同一件事**。评估框架确保分解出来的每个 Issue 都在朝这个方向努力。
 
-### 6. 版本切片规则
+### 6. 分层表达 — 由浅入深的设计路径
+
+游戏的内容不应该只有"一个深度"。不同玩家投入的时间和注意力不同，应该都能获得完整的体验，只是"完整"的层次不同。
+
+#### 6.1 三层表达模型
+
+```
+浅层（泛玩家，100%可达）
+  ─ 完整的故事线、清晰的氛围、即时的情感反馈
+  ─ 一个对游戏行业毫无了解的玩家也能被雨夜的氛围打动
+  ─ 不需要任何背景知识，不需要注意细节
+
+中层（观察者，60%可达）
+  ─ 场景之间的呼应、NPC故事的互文、主题的回响
+  ─ 注意到便利店店员说的"朋友"就是天桥上醉酒的女人
+  ─ 发现神秘人的话在不同场景中逐渐变化
+
+深层（解读者，30%可达）
+  ─ 游戏是对自身的隐喻 —— "3个月做卖座游戏"就是开发组自己的处境
+  ─ 神秘人可能是玩家内心的投射，"秘密"随玩家状态变化本身就在说"答案在你心里"
+  ─ 结局的寓言性：没有一个好结局，只有不同的真实
+```
+
+**关键设计原则：** 三层不是"隐藏内容"，而是"同一内容的不同阅读方式"。浅层玩家读完觉得是"一个雨夜的故事"，深层玩家读完觉得是"在说我"。
+
+#### 6.2 分层在设计中的体现
+
+每个场景和 NPC 的内容应该有三层可读性：
+
+| 场景/NPC | 浅层（谁都能看到） | 中层（注意到细节） | 深层（理解隐喻） |
+|---------|----------------|-----------------|----------------|
+| 便利店店员 | 一个疲惫的夜班店员 | 他说"又一个做游戏的"——说明他不是第一次见到 | 他的疲惫映射了整个行业的系统性倦怠 |
+| 天桥醉酒女人 | 一个喝醉的怨妇 | 她骂的是具体的人和事——可能是前同事 | 她可能就是便利店员说的"朋友" |
+| 神秘人 | 一个神秘的陌生人 | ta的话越来越像在说玩家自己 | ta可能不是真实的人，是玩家内心"希望"的具象化 |
+
+#### 6.3 分层对 Issue 分解的要求
+
+每个内容相关的 Issue（场景、NPC、剧本）必须在设计和验收条件中明确三层表达：
+
+```json
+{
+  "id": 12,
+  "context": "分层表达：浅层=雨夜氛围+神秘相遇；中层=便利店灯光与公司招牌的冷暖对比暗示行业冷暖；深层=这个城市在雨夜中展现的面貌就是玩家内心的投射",
+  "acceptance_criteria": [
+    "浅层：场景氛围完整，环境可读文字易懂",
+    "中层：场景中的细节元素之间有可发现的关联（如招牌内容呼应NPC对话）",
+    "深层：场景的整体调性随玩家状态变化，暗示外部世界是内心的镜像"
+  ]
+}
+```
+
+#### 6.4 分层检查清单
+
+- [ ] 浅层：一个注意力分散的玩家能否理解"发生了什么"？
+- [ ] 中层：一个细心的玩家能否发现"还有更多"？
+- [ ] 深层：一个投入的玩家能否感受到"它在说某种更本质的东西"？
+- [ ] 三层是否共享同一套内容（不是三段分开写的剧本）？
+- [ ] 有没有"表层无聊、深层才有趣"——浅层必须独立成立
+
+### 7. 版本切片规则
 
 每个 Issue 标注所属版本 `milestone`，meta 中定义 `versions` 映射：
 
