@@ -469,6 +469,13 @@ function renderGraph() {
   zoomLevel = 1;
 
   inner.selectAll('g.node').on('click', function(id) { const nid=parseInt(id); highlightNode(nid); showDetail(nid); });
+  // Native scroll wheel zoom (doesn't interfere with clicks)
+  container.addEventListener('wheel', function(e) {
+    e.preventDefault();
+    const d = e.deltaY > 0 ? -0.15 : 0.15;
+    zoomLevel = Math.max(0.3, Math.min(3, zoomLevel + d));
+    inner.attr('transform', 'scale('+zoomLevel+')');
+  }, {passive: false});
 }
 
 function zoomIn() { zoomLevel=Math.min(3,zoomLevel+0.3); applyZoom(); }
