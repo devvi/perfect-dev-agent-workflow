@@ -456,6 +456,38 @@ POST on every phase advancement. Formats:
 
 One line per notification. No explanations, no formatting. Only POST when something actually changes — do not send "no events" messages.
 
+**Project Board sync** — Every time you advance an issue's workflow label, also update the GitHub Project board's **Stage** field:
+
+```bash
+# Get the item ID for the issue in the project
+ITEM_ID=$(gh project item-list 5 --owner devvi --format json --limit 50 \
+  --jq ".items[] | select(.content.number==N) | .id")
+
+# Map workflow label → Stage option ID
+# Stage field: PVTSSF_lAHOABFv7s4Bd7mLzhYjuS4
+# Project: PVT_kwHOABFv7s4Bd7mL
+```
+
+| Label | Stage Option | Option ID |
+|-------|-------------|-----------|
+| `workflow/available` | Available | `9cdb2bb9` |
+| `workflow/research` | Research | `d6233b1f` |
+| `workflow/plan` | Plan | `bd32d7fd` |
+| `workflow/implement` | Implement | `b130fca8` |
+| `workflow/self-correct` | Fixing | `c9fbb90c` |
+| `status/done` | Done | `2b264d98` |
+| Deploy | Deploy | `452542a3` |
+
+```bash
+gh project item-edit 5 --owner devvi \
+  --item-id "$ITEM_ID" \
+  --field-id PVTSSF_lAHOABFv7s4Bd7mLzhYjuS4 \
+  --project-id PVT_kwHOABFv7s4Bd7mL \
+  --single-select-option-id <OPTION_ID>
+```
+
+Always sync the project board after every label change.
+
 What the operator does per session:
 
 1. Reads `~/.hermes/workflow-pending.json` for pending events
