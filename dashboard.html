@@ -52,12 +52,13 @@ a:hover { text-decoration: underline; }
 .card-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px; color: var(--text-tertiary); gap: 8px; font-size: 13px; }
 .card-empty .material-symbols-rounded { font-size: 32px; opacity: .3; }
 
-/* ── Pipeline ── */
-.pipeline-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
-.pipeline-row:last-child { border-bottom: none; }
-.pipeline-icon { font-size: 16px; width: 24px; text-align: center; }
-.pipeline-info { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pipeline-time { color: var(--text-tertiary); font-size: 11px; font-family: 'JetBrains Mono', monospace; white-space: nowrap; }
+/* ── Pipeline Kanban ── */
+.pipeline-kanban { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.pipeline-col { background: var(--bg-card); border-radius: var(--radius-sm); padding: 8px; }
+.pipeline-col-title { font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; display: flex; align-items: center; gap: 4px; }
+.pipeline-col-count { font-size: 10px; background: var(--bg-surface); padding: 1px 5px; border-radius: 4px; margin-left: auto; }
+.pipeline-col-item { font-size: 11px; padding: 4px 6px; margin-bottom: 3px; background: var(--bg-surface); border-radius: 4px; cursor: default; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pipeline-col-item:hover { background: var(--bg-card-hover); }
 
 /* ── Agents ── */
 .agent-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
@@ -305,14 +306,33 @@ async function refreshAll() {
 
 function renderPipeline(issues) {
   const b = $('#pipelineBody'), c = $('#pipelineCount');
-  if (!issues||!issues.length) { b.innerHTML='<div class="card-empty"><div class="material-symbols-rounded">alt_route</div>No pipeline issues</div>'; c.textContent='0'; return; }
   c.textContent = issues.length;
-  const icons = {'workflow/backlog':'📥','workflow/available':'📋','workflow/research':'🔍','workflow/plan':'📐','workflow/implement':'⚙️','workflow/self-correct':'🔄','status/blocked':'🚫','status/done':'✅'};
-  b.innerHTML = issues.map(i => {
-    const lbl = (i.labels||[]).map(l=>l.name);
-    const icon = Object.entries(icons).find(([k])=>lbl.includes(k))?.[1]||'📋';
-    return `<div class="pipeline-row"><div class="pipeline-icon">${icon}</div><div class="pipeline-info">#${i.number} ${esc(i.title)}</div><div class="pipeline-time">${new Date(i.createdAt).toLocaleDateString('zh-CN')}</div></div>`;
-  }).join('');
+  const stages = [
+    ['📥','Backlog','workflow/backlog'],
+    ['📋','Available','workflow/available'],
+    ['🔍','Research','workflow/research'],
+    ['📐','Plan','workflow/plan'],
+    ['⚙️','Implement','workflow/implement'],
+    ['🔄','Fixing','workflow/self-correct'],
+    ['🚫','Blocked','status/blocked'],
+    ['✅','Done','status/done'],
+  ];
+  const stageColors = {
+    'workflow/backlog':'#6b6b7b','workflow/available':'#3b82f6',
+    'workflow/research':'#38bdf8','workflow/plan':'#facc15',
+    'workflow/implement':'#4ade80','workflow/self-correct':'#fb923c',
+    'status/blocked':'#ef4444','status/done':'#22c55e'
+  };
+  b.innerHTML = '<div class="pipeline-kanban">' + stages.map(([emoji,label,stage]) => {
+    const items = issues.filter(i => (i.labels||[]).some(l => l.name === stage));
+    return `<div class="pipeline-col">
+      <div class="pipeline-col-title" style="color:${stageColors[stage]||'var(--text-secondary)'}">
+        ${emoji} ${label}
+        <span class="pipeline-col-count">${items.length}</span>
+      </div>
+      ${items.map(i => `<div class="pipeline-col-item" title="${esc(i.title)}">#${i.number} ${esc(i.title).slice(0,20)}</div>`).join('')}
+    </div>`;
+  }).join('') + '</div>';
 }
 
 function renderAgents(agents, now) {
