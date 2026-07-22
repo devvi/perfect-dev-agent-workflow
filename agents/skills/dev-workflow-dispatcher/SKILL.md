@@ -488,6 +488,28 @@ gh project item-edit 5 --owner devvi \
 
 Always sync the project board after every label change.
 
+**Progress field** — Also update the **Progress** number field on the project board (field ID: `PVTF_lAHOABFv7s4Bd7mLzhYkAsw`). Maps to stage:
+
+| Stage | Progress |
+|-------|----------|
+| `workflow/backlog` | 0% |
+| `workflow/available` | 10% |
+| `workflow/research` | 25% |
+| `workflow/plan` | 40% |
+| `workflow/implement` | 60% |
+| `workflow/self-correct` | 75% |
+| `status/done` | 100% |
+
+```bash
+gh project item-edit 5 --owner devvi \
+  --item-id "$ITEM_ID" \
+  --field-id PVTF_lAHOABFv7s4Bd7mLzhYkAsw \
+  --project-id PVT_kwHOABFv7s4Bd7mL \
+  --number "$PROGRESS_PCT"
+```
+
+Always sync Progress whenever Stage changes.
+
 What the operator does per session:
 
 1. Reads `~/.hermes/workflow-pending.json` for pending events
