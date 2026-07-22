@@ -3,7 +3,7 @@
 ## Webhook URL
 
 ```
-https://open.feishu.cn/open-apis/bot/v2/hook/7bd125b1-172a-41ad-a0da-ccd54e63a982
+https://open.feishu.cn/open-apis/bot/v2/hook/76101281-b359-49ab-ae2f-fc486bf65958
 ```
 
 ## When to POST
@@ -23,7 +23,7 @@ All workflow lifecycle notifications go through this webhook:
 ```bash
 curl -X POST -H "Content-Type: application/json" \
   -d '{"msg_type":"text","content":{"text":"✅ test: workflow notification channel"}}' \
-  https://open.feishu.cn/open-apis/bot/v2/hook/7bd125b1-172a-41ad-a0da-ccd54e63a982
+  https://open.feishu.cn/open-apis/bot/v2/hook/76101281-b359-49ab-ae2f-fc486bf65958
 # Response: {"StatusCode":0,"StatusMessage":"success"}
 ```
 

@@ -440,7 +440,21 @@ The operator agent is spawned via `delegate_task(role='orchestrator')` — it ne
 
 **Notification format** — See `references/notification-format.md`. All status messages MUST be one-line emoji format (`📋 #N → phase`). No explanations.
 
-**Notification channel** — All workflow lifecycle notifications POST to the Feishu webhook (see `references/feishu-webhook-notification.md`). The webhook URL is configured in `deploy.yml` and the cron job prompt.
+**Notification channel** — All workflow lifecycle notifications POST to the Feishu webhook:
+
+```bash
+curl -s -X POST -H "Content-Type: application/json" \
+  -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"📋 #N → phase\"}}" \
+  https://open.feishu.cn/open-apis/bot/v2/hook/76101281-b359-49ab-ae2f-fc486bf65958
+```
+
+POST on every phase advancement. Formats:
+- Phase start: `📋 #N → research` / `📋 #N → plan` / `📋 #N → implement`
+- Review/merge: `✅ #N → merged`
+- Blocked: `❌ #N → blocked: <reason>`
+- Self-correct: `🔄 #N → self-correct`
+
+One line per notification. No explanations, no formatting. Only POST when something actually changes — do not send "no events" messages.
 
 What the operator does per session:
 
