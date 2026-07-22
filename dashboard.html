@@ -125,6 +125,8 @@ a:hover { text-decoration: underline; }
 .plan-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
 .plan-table tr:hover { background: var(--bg-card-hover); cursor: pointer; }
 .plan-table tr.active { background: rgba(99,102,241,.08); }
+.progress-bar { width: 100%; height: 6px; background: var(--bg-card); border-radius: 3px; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 3px; transition: width .3s; }
 .priority-tag, .depth-tag, .estimate-tag { font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 500; white-space: nowrap; }
 .priority-critical { background: rgba(239,68,68,.15); color: var(--accent-red); }
 .priority-high { background: rgba(245,158,11,.15); color: var(--accent-amber); }
@@ -250,7 +252,7 @@ a:hover { text-decoration: underline; }
             <th onclick="sortBy('priority')">优先级</th>
             <th onclick="sortBy('depth')">深度</th>
             <th onclick="sortBy('estimate')">工作量</th>
-            <th onclick="sortBy('milestone')">版本</th>
+            <th>进度</th>
           </tr></thead>
           <tbody id="issues-tbody"></tbody>
         </table>
@@ -442,14 +444,16 @@ function renderTable(issues) {
   }
   tbody.innerHTML = filtered.map(i => {
     const depStr = (i.dependencies||[]).map(d=>'#'+d).join(', ')||'—';
-    const mil = i.milestone||'—';
+    const pctMap = {mvp:35, v1:60, v2:85, full:100};
+    const pct = pctMap[i.milestone] || (i.priority==='critical'?50:25);
+    const color = pct >= 100 ? '#22c55e' : pct >= 60 ? '#3b82f6' : '#6366f1';
     return `<tr onclick="showDetail(${i.id})" onmouseenter="highlightNode(${i.id})" data-id="${i.id}">
       <td>${i.id}</td>
       <td style="font-weight:500">${esc(i.title)}</td>
       <td><span class="priority-tag priority-${i.priority}">${i.priority}</span></td>
       <td><span class="depth-tag depth-${i.depth}">${i.depth}</span></td>
       <td><span class="estimate-tag estimate-${i.estimate}">${i.estimate}</span></td>
-      <td style="color:var(--text-tertiary);font-size:11px">${mil}</td>
+      <td style="min-width:60px"><div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${color}"></div></div></td>
     </tr>`;
   }).join('');
 }
