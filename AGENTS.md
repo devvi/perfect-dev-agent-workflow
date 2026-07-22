@@ -114,7 +114,7 @@ Python 脚本在 cron tick 的 LLM 阶段之前运行，做纯数据加工：
 
 | 命令 | 效果 |
 |------|------|
-| `/workflow status` | 查看状态：是否启用、预设、时间段、当前是否在工作时段 |
+| `/workflow status` | 查看状态：是否启用、预设、时间段、当前是否在工作时段 + **Webhook 连通性检查**（GitHub ping → 200） |
 | `/workflow pause` | 暂停：event-processor 输出空 → 无 LLM 调用，事件累积 |
 | `/workflow resume` | 恢复：启用 daytime 预设，下个 tick 正常处理 |
 | `/workflow hours daytime` | 8:00-22:00（默认） |
@@ -125,3 +125,5 @@ Python 脚本在 cron tick 的 LLM 阶段之前运行，做纯数据加工：
 > **slash 命令不可用时：** gateway 重启前 /workflow 不会生效。用自然语言代替，如"暂停 workflow"、"workflow 什么状态"。
 >
 > **原理：** `scripts/event-processor.py` 每分钟读取 `~/.hermes/workflow-config.json`，判断是否在工作时间 + 是否启用。配置更改后下一个 cron tick 自动生效。
+>
+> **自动健康检查：** 每次进入工作时段时，`event-processor.py` 自动运行 `health_check()`，输出 `[HEALTH] gateway=200 ngrok=UP webhook=OK`。如果 webhook 不通，会在 stderr 打印告警。

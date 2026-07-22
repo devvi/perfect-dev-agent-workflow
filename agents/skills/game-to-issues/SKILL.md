@@ -1,7 +1,7 @@
 ---
 name: game-to-issues
 description: "把游戏开发命令拆解为结构化的 GitHub Issues 管线 — 用 deepseek-v4-pro 做语义分解，输出 JSON 到 docs/RAW/，附带本地 HTML 前端进行审阅"
-version: 2.1.0
+version: 2.3.0
 author: Hermes Agent
 platforms: [macos, linux]
 metadata:

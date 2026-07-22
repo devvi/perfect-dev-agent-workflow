@@ -7,858 +7,538 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0,200">
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script src="https://cdn.jsdelivr.net/npm/dagre-d3@0.6.4/dist/dagre-d3.min.js"></script>
 <style>
 :root {
-  --bg-base: #0b0b0e;
-  --bg-surface: #141417;
-  --bg-card: #1c1c21;
-  --bg-card-hover: #24242b;
-  --border: #2a2a32;
-  --text-primary: #f0f0f4;
-  --text-secondary: #9696a6;
-  --text-tertiary: #6b6b7b;
-  --accent-indigo: #6366f1;
-  --accent-blue: #3b82f6;
-  --accent-amber: #f59e0b;
-  --accent-green: #22c55e;
-  --accent-red: #ef4444;
-  --accent-purple: #a855f7;
-  --accent-pink: #ec4899;
-  --radius: 12px;
-  --radius-sm: 8px;
+  --bg-base: #0b0b0e; --bg-surface: #141417; --bg-card: #1c1c21;
+  --bg-card-hover: #24242b; --border: #2a2a32;
+  --text-primary: #f0f0f4; --text-secondary: #9696a6; --text-tertiary: #6b6b7b;
+  --accent-indigo: #6366f1; --accent-blue: #3b82f6; --accent-amber: #f59e0b;
+  --accent-green: #22c55e; --accent-red: #ef4444; --accent-purple: #a855f7; --accent-pink: #ec4899;
+  --radius: 12px; --radius-sm: 8px;
 }
-
 * { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg-base); color: var(--text-primary); min-height: 100vh; padding: 24px; }
+a { color: var(--accent-blue); text-decoration: none; }
+a:hover { text-decoration: underline; }
 
-body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  background: var(--bg-base);
-  color: var(--text-primary);
-  min-height: 100vh;
-  padding: 24px;
-}
+/* ── Tabs ── */
+.tab-bar { display: flex; gap: 4px; margin-bottom: 24px; background: var(--bg-surface); border-radius: var(--radius); padding: 4px; width: fit-content; }
+.tab-btn { padding: 10px 24px; border: none; background: transparent; color: var(--text-tertiary); font-size: 14px; font-weight: 500; cursor: pointer; border-radius: var(--radius-sm); transition: all .15s; }
+.tab-btn:hover { color: var(--text-primary); background: var(--bg-card); }
+.tab-btn.active { color: #fff; background: var(--accent-indigo); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
 
 /* ── Header ── */
-.dashboard-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 28px;
-  flex-wrap: wrap;
-  gap: 12px;
-}
+.dashboard-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; flex-wrap: wrap; gap: 12px; }
+.dashboard-header h1 { font-size: 22px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+.header-right { display: flex; align-items: center; gap: 16px; }
+#updatedTime { font-size: 12px; color: var(--text-tertiary); font-family: 'JetBrains Mono', monospace; }
+.refresh-btn { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-secondary); padding: 6px 14px; border-radius: var(--radius-sm); cursor: pointer; font-size: 12px; }
 
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
+/* ── Grid ── */
+.layout-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.layout-full { margin-bottom: 16px; }
+.card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.card-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.card-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
+.card-title .material-symbols-rounded { font-size: 18px; color: var(--accent-indigo); }
+.card-count { background: var(--bg-card); color: var(--text-secondary); font-size: 11px; padding: 2px 8px; border-radius: 10px; font-family: 'JetBrains Mono', monospace; }
+.card-action { font-size: 12px; color: var(--accent-blue); display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.card-action .material-symbols-rounded { font-size: 14px; }
+.card-body { padding: 12px 18px; }
+.card-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px; color: var(--text-tertiary); gap: 8px; font-size: 13px; }
+.card-empty .material-symbols-rounded { font-size: 32px; opacity: .3; }
 
-.header-icon {
-  width: 40px; height: 40px;
-  background: linear-gradient(135deg, var(--accent-indigo), var(--accent-purple));
-  border-radius: 10px;
-  display: flex; align-items: center; justify-content: center;
-  color: white;
-  font-size: 22px;
-}
+/* ── Pipeline ── */
+.pipeline-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.pipeline-row:last-child { border-bottom: none; }
+.pipeline-icon { font-size: 16px; width: 24px; text-align: center; }
+.pipeline-info { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pipeline-time { color: var(--text-tertiary); font-size: 11px; font-family: 'JetBrains Mono', monospace; white-space: nowrap; }
 
-.header-title {
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.3px;
-}
-
-.header-subtitle {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-top: 2px;
-}
-
-.header-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.header-refresh {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.header-refresh:hover {
-  background: var(--bg-card-hover);
-  color: var(--text-primary);
-}
-
-.header-refresh .material-symbols-rounded {
-  font-size: 18px;
-}
-
-.header-updated {
-  font-size: 12px;
-  color: var(--text-tertiary);
-  font-family: 'JetBrains Mono', monospace;
-}
-
-/* ── Layout ── */
-.layout-main {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-}
-
-.layout-full {
-  grid-column: 1 / -1;
-}
-
-@media (max-width: 900px) {
-  .layout-main { grid-template-columns: 1fr; }
-  body { padding: 16px; }
-}
-
-/* ── Cards ── */
-.card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-  transition: border-color 0.2s;
-}
-
-.card:hover {
-  border-color: #3a3a45;
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px 12px;
-  border-bottom: 1px solid var(--border);
-}
-
-.card-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.card-title .material-symbols-rounded {
-  font-size: 18px;
-  color: var(--accent-indigo);
-}
-
-.card-count {
-  background: var(--bg-base);
-  color: var(--text-secondary);
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-family: 'JetBrains Mono', monospace;
-}
-
-.card-body {
-  padding: 16px 20px;
-}
-
-.card-empty {
-  padding: 32px 20px;
-  text-align: center;
-  color: var(--text-tertiary);
-  font-size: 13px;
-}
-
-.card-empty .material-symbols-rounded {
-  font-size: 32px;
-  margin-bottom: 8px;
-  opacity: 0.4;
-}
-
-/* ── Pipeline Stage Labels ── */
-.issue-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border);
-  transition: background 0.15s;
-}
-
-.issue-card:last-child { border-bottom: none; }
-
-.issue-icon {
-  font-size: 18px;
-  width: 28px;
-  text-align: center;
-  flex-shrink: 0;
-}
-
-.issue-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.issue-title {
-  font-size: 14px;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.issue-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 4px;
-  flex-wrap: wrap;
-}
-
-.issue-number {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  color: var(--text-tertiary);
-}
-
-.issue-stage {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-
-.stage-available { background: #1a1a2e; color: #818cf8; }
-.stage-research { background: #0f2937; color: #38bdf8; }
-.stage-plan { background: #1f2e0f; color: #facc15; }
-.stage-implement { background: #0f2915; color: #4ade80; }
-.stage-self-correct { background: #2e1a0f; color: #fb923c; }
-.stage-done { background: #0f1a2e; color: #60a5fa; }
-
-/* ── Agent Cards ── */
-.agent-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.agent-item:last-child { border-bottom: none; }
-
-.pulse-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  margin-top: 5px;
-  flex-shrink: 0;
-  animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.6; transform: scale(0.9); }
-}
-
-.agent-body { flex: 1; min-width: 0; }
-
-.agent-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.agent-title {
-  font-size: 14px;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.agent-phase-tag {
-  font-size: 9px;
-  font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 4px;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-}
-
-.agent-phase-research { background: rgba(56,189,248,0.15); color: #38bdf8; }
-.agent-phase-plan { background: rgba(250,204,21,0.15); color: #facc15; }
-.agent-phase-implement { background: rgba(74,222,128,0.15); color: #4ade80; }
-.agent-phase-review { background: rgba(168,85,247,0.15); color: #a855f7; }
-.agent-phase-self-correct { background: rgba(251,146,60,0.15); color: #fb923c; }
-.agent-phase-agent { background: rgba(99,102,241,0.15); color: #818cf8; }
-
-.agent-meta {
-  display: flex;
-  gap: 12px;
-  margin-top: 6px;
-  flex-wrap: wrap;
-}
-
-.agent-meta-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.agent-meta-item .material-symbols-rounded {
-  font-size: 14px;
-}
-
-.agent-parent {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  margin-top: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.agent-parent::before {
-  content: '← ';
-  opacity: 0.5;
-}
-
-/* ── Kanban Tasks ── */
-.kanban-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.kanban-item:last-child { border-bottom: none; }
-
-.kanban-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.kanban-dot-running { background: var(--accent-green); }
-.kanban-dot-blocked { background: var(--accent-red); }
-.kanban-dot-stale { background: var(--accent-amber); animation: pulse 1.5s infinite; }
-
-.kanban-body { flex: 1; min-width: 0; }
-
-.kanban-title {
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.kanban-meta {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  margin-top: 2px;
-}
+/* ── Agents ── */
+.agent-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.agent-row:last-child { border-bottom: none; }
+.agent-phase { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.agent-title { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-duration { color: var(--text-tertiary); font-size: 11px; font-family: 'JetBrains Mono', monospace; }
+.agent-model { color: var(--text-tertiary); font-size: 11px; background: var(--bg-card); padding: 1px 6px; border-radius: 4px; }
 
 /* ── Tech Stack ── */
-.tech-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+.tech-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.tech-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--bg-card); border-radius: var(--radius-sm); font-size: 13px; }
+.tech-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.tech-dot.on { background: var(--accent-green); }
+.tech-dot.off { background: var(--accent-red); }
+
+/* ── Cron ── */
+.cron-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.cron-row:last-child { border-bottom: none; }
+.cron-id { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-tertiary); width: 80px; overflow: hidden; text-overflow: ellipsis; }
+.cron-schedule { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-tertiary); width: 100px; }
+.cron-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cron-status { font-size: 11px; width: 60px; text-align: right; }
+.cron-last { width: 80px; text-align: right; }
+.status-tag { font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: 500; font-family: 'JetBrains Mono', monospace; text-transform: uppercase; }
+.status-ok { background: rgba(34,197,94,.15); color: var(--accent-green); }
+.status-error { background: rgba(239,68,68,.15); color: var(--accent-red); }
+.status-scheduled { background: rgba(59,130,246,.15); color: var(--accent-blue); }
+.status-draft { background: rgba(245,158,11,.15); color: var(--accent-amber); }
+
+/* ── Plans Tab ── */
+.plan-toolbar { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+.plan-toolbar select { background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 14px; }
+.plan-toolbar select:focus { outline: none; border-color: var(--accent-indigo); }
+.plan-info { flex: 1; font-size: 13px; color: var(--text-secondary); }
+.plan-info strong { color: var(--text-primary); }
+
+.summary-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.summary-card { background: var(--bg-card); border-radius: var(--radius-sm); padding: 10px 16px; text-align: center; min-width: 64px; }
+.summary-card .num { font-size: 20px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+.summary-card .num.total { color: var(--text-primary); }
+.summary-card .num.critical { color: var(--accent-red); }
+.summary-card .num.high { color: var(--accent-amber); }
+.summary-card .num.medium { color: var(--accent-blue); }
+.summary-card .num.low { color: var(--text-tertiary); }
+.summary-card .label { font-size: 10px; color: var(--text-tertiary); margin-top: 2px; text-transform: uppercase; }
+
+.filters { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.filters select, .filters input { background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border); padding: 6px 10px; border-radius: var(--radius-sm); font-size: 12px; }
+.filters select:focus, .filters input:focus { outline: none; border-color: var(--accent-indigo); }
+.filters input { flex: 1; min-width: 150px; }
+
+.plan-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.plan-table-wrap { overflow-x: auto; grid-column: 1; }
+.plan-graph-wrap { grid-column: 2; }
+.plan-graph-wrap svg { max-width: 100%; height: auto; }
+.plan-graph-wrap g.node { cursor: pointer; }
+.plan-graph-wrap g.node:hover rect { filter: brightness(1.4); }
+.plan-graph-wrap g.node text { pointer-events: none; }
+
+.plan-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.plan-table th { text-align: left; padding: 8px 10px; border-bottom: 2px solid var(--border); color: var(--text-tertiary); font-weight: 500; cursor: pointer; white-space: nowrap; user-select: none; }
+.plan-table th:hover { color: var(--text-primary); }
+.plan-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.plan-table tr:hover { background: var(--bg-card-hover); cursor: pointer; }
+.plan-table tr.active { background: rgba(99,102,241,.08); }
+.priority-tag, .depth-tag, .estimate-tag { font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 500; white-space: nowrap; }
+.priority-critical { background: rgba(239,68,68,.15); color: var(--accent-red); }
+.priority-high { background: rgba(245,158,11,.15); color: var(--accent-amber); }
+.priority-medium { background: rgba(59,130,246,.15); color: var(--accent-blue); }
+.priority-low { background: rgba(107,107,123,.15); color: var(--text-tertiary); }
+.depth-deep { background: rgba(168,85,247,.15); color: var(--accent-purple); }
+.depth-standard { background: rgba(99,102,241,.15); color: var(--accent-indigo); }
+.depth-light { background: rgba(34,197,94,.15); color: var(--accent-green); }
+.estimate-large { background: rgba(239,68,68,.1); color: var(--accent-red); }
+.estimate-medium { background: rgba(245,158,11,.1); color: var(--accent-amber); }
+.estimate-small { background: rgba(34,197,94,.1); color: var(--accent-green); }
+
+/* ── Modal ── */
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.modal { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius); max-width: 640px; width: 90%; max-height: 80vh; overflow-y: auto; padding: 24px; }
+.modal h2 { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+.modal h4 { font-size: 13px; font-weight: 600; margin: 16px 0 8px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
+.modal p { font-size: 13px; line-height: 1.6; color: var(--text-secondary); }
+.modal ul { font-size: 13px; color: var(--text-secondary); padding-left: 18px; }
+.modal ul li { margin-bottom: 4px; }
+.modal-meta { display: flex; gap: 6px; align-items: center; margin-bottom: 12px; font-size: 12px; color: var(--text-tertiary); flex-wrap: wrap; }
+.modal .close-btn { float: right; background: none; border: none; color: var(--text-tertiary); font-size: 22px; cursor: pointer; padding: 0 4px; }
+.modal .close-btn:hover { color: var(--text-primary); }
+
+@media (max-width: 900px) {
+  .layout-grid { grid-template-columns: 1fr; }
+  .plan-layout { grid-template-columns: 1fr; }
+  .plan-graph-wrap { grid-column: 1; }
 }
-
-@media (max-width: 600px) {
-  .tech-grid { grid-template-columns: 1fr; }
-}
-
-.tech-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-}
-
-.tech-icon {
-  width: 32px; height: 32px;
-  border-radius: 8px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.tech-icon-gateway { background: rgba(99,102,241,0.15); }
-.tech-icon-feishu { background: rgba(56,189,248,0.15); }
-.tech-icon-discord { background: rgba(114,137,218,0.15); }
-.tech-icon-opencode { background: rgba(74,222,128,0.15); }
-.tech-icon-webhook { background: rgba(168,85,247,0.15); }
-.tech-icon-cron { background: rgba(251,191,36,0.15); }
-
-.tech-name {
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.tech-status {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  margin-top: 1px;
-}
-
-.tech-status-ok { color: var(--accent-green); }
-.tech-status-err { color: var(--accent-red); }
-
-/* ── Cron Jobs ── */
-.cron-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.cron-item:last-child { border-bottom: none; }
-
-.cron-icon {
-  font-size: 18px;
-  width: 24px;
-  text-align: center;
-  flex-shrink: 0;
-}
-
-.cron-body { flex: 1; min-width: 0; }
-
-.cron-name {
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.cron-schedule {
-  font-size: 11px;
-  font-family: 'JetBrains Mono', monospace;
-  color: var(--text-tertiary);
-  margin-top: 2px;
-}
-
-.cron-last-run {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  text-align: right;
-  flex-shrink: 0;
-}
-
-/* ── Error Card ── */
-.error-banner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background: rgba(239,68,68,0.1);
-  border: 1px solid rgba(239,68,68,0.2);
-  border-radius: var(--radius-sm);
-  margin-top: 8px;
-  font-size: 12px;
-  color: #fca5a5;
-}
-
-.error-banner .material-symbols-rounded {
-  font-size: 16px;
-}
-
-/* ── Scrollbar ── */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 </style>
 </head>
 <body>
 
-<!-- ──── Header ──── -->
 <div class="dashboard-header">
-  <div class="header-left">
-    <div class="header-icon">
-      <span class="material-symbols-rounded">dashboard</span>
-    </div>
-    <div>
-      <div class="header-title">Workflow Dashboard</div>
-      <div class="header-subtitle">Perfect Dev Agent Pipeline</div>
-    </div>
-  </div>
-  <div class="header-controls">
-    <span class="header-updated" id="updatedTime">—</span>
-    <button class="header-refresh" onclick="refreshAll()">
-      <span class="material-symbols-rounded">refresh</span>
-      Refresh
-    </button>
+  <h1><span class="material-symbols-rounded" style="color:var(--accent-indigo)">dashboard</span> Workflow Dashboard</h1>
+  <div class="header-right">
+    <span id="updatedTime">Loading...</span>
+    <button class="refresh-btn" onclick="refreshAll()">↻ Refresh</button>
   </div>
 </div>
 
-<!-- ──── Main Layout ──── -->
-<div class="layout-main">
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('overview')" id="tab-overview">📊 Overview</button>
+  <button class="tab-btn" onclick="switchTab('plans')" id="tab-plans">📋 Plans</button>
+</div>
 
-  <!-- ── Left Column Top: Pipeline ── -->
-  <div>
+<!-- ════ Overview Tab ════ -->
+<div class="tab-content active" id="content-overview">
+
+  <div class="layout-grid">
     <div class="card" id="pipelineCard">
       <div class="card-header">
-        <div class="card-title">
-          <span class="material-symbols-rounded">account_tree</span>
-          Pipeline
-          <span class="card-count" id="pipelineCount">0</span>
-        </div>
+        <div class="card-title"><span class="material-symbols-rounded">alt_route</span> Pipeline Issues</div>
+        <span class="card-count" id="pipelineCount">0</span>
       </div>
-      <div class="card-body" id="pipelineBody">
-        <div class="card-empty">
-          <div class="material-symbols-rounded">account_tree</div>
-          No active pipeline issues
-        </div>
-      </div>
+      <div class="card-body" id="pipelineBody"><div class="card-empty"><div class="material-symbols-rounded">alt_route</div>No pipeline issues</div></div>
     </div>
-  </div>
-
-  <!-- ── Right Column Top: Running Agents ── -->
-  <div>
     <div class="card" id="agentCard">
       <div class="card-header">
-        <div class="card-title">
-          <span class="material-symbols-rounded">smart_toy</span>
-          Running Agents
-          <span class="card-count" id="agentCount">0</span>
-        </div>
+        <div class="card-title"><span class="material-symbols-rounded">robot_2</span> Active Agents</div>
+        <span class="card-count" id="agentCount">0</span>
       </div>
-      <div class="card-body" id="agentBody">
-        <div class="card-empty">
-          <div class="material-symbols-rounded">smart_toy</div>
-          No active agents
-        </div>
-      </div>
-    </div>
-
-    <!-- Kanban Tasks (sub-card) -->
-    <div class="card" style="margin-top:16px" id="kanbanCard">
-      <div class="card-header">
-        <div class="card-title">
-          <span class="material-symbols-rounded">assignment</span>
-          Kanban Tasks
-          <span class="card-count" id="kanbanCount">0</span>
-        </div>
-      </div>
-      <div class="card-body" id="kanbanBody">
-        <div class="card-empty">
-          <div class="material-symbols-rounded">assignment</div>
-          No kanban tasks
-        </div>
-      </div>
+      <div class="card-body" id="agentBody"><div class="card-empty"><div class="material-symbols-rounded">robot_2</div>No active agents</div></div>
     </div>
   </div>
 
-  <!-- ── Full Width: Tech Stack ── -->
   <div class="layout-full">
     <div class="card" id="techCard">
-      <div class="card-header">
-        <div class="card-title">
-          <span class="material-symbols-rounded">hub</span>
-          Tech Stack Status
-        </div>
-      </div>
-      <div class="card-body">
-        <div class="tech-grid" id="techGrid">
-          <!-- Rendered by JS -->
-        </div>
-      </div>
+      <div class="card-header"><div class="card-title"><span class="material-symbols-rounded">memory</span> Tech Stack</div></div>
+      <div class="card-body"><div class="tech-grid" id="techGrid"></div></div>
     </div>
   </div>
 
-  <!-- ── Full Width: Cron Jobs ── -->
   <div class="layout-full">
     <div class="card" id="cronCard">
-      <div class="card-header">
-        <div class="card-title">
-          <span class="material-symbols-rounded">schedule</span>
-          Cron Jobs
-          <span class="card-count" id="cronCount">0</span>
-        </div>
+      <div class="card-header"><div class="card-title"><span class="material-symbols-rounded">schedule</span> Cron Jobs</div><span class="card-count" id="cronCount">0</span></div>
+      <div class="card-body" id="cronBody"><div class="card-empty"><div class="material-symbols-rounded">schedule</div>No cron jobs</div></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ════ Plans Tab ════ -->
+<div class="tab-content" id="content-plans">
+
+  <div class="plan-toolbar">
+    <select id="plan-select" onchange="loadPlan(this.value)">
+      <option value="">— 选择 Plan —</option>
+    </select>
+    <div class="plan-info" id="plan-info">选择一个 Plan 查看 Issue 详情和依赖关系</div>
+  </div>
+
+  <div id="plan-empty" class="card-empty" style="display:flex">
+    <div class="material-symbols-rounded" style="font-size:48px">map</div>
+    <div style="font-size:16px;margin-top:8px">选择一个游戏开发计划，查看 Issue 分解和依赖关系图</div>
+    <div style="font-size:13px;color:var(--text-tertiary);margin-top:4px">DAG 节点可点击查看 Issue 详情</div>
+  </div>
+
+  <div id="plan-content" style="display:none">
+    <div class="summary-bar" id="summary-bar"></div>
+    <div class="filters">
+      <select id="priority-filter" onchange="refreshPlanView()">
+        <option value="all">全部优先级</option>
+        <option value="critical">Critical</option><option value="high">High</option>
+        <option value="medium">Medium</option><option value="low">Low</option>
+      </select>
+      <select id="depth-filter" onchange="refreshPlanView()">
+        <option value="all">全部深度</option>
+        <option value="deep">Deep</option><option value="standard">Standard</option><option value="light">Light</option>
+      </select>
+      <select id="estimate-filter" onchange="refreshPlanView()">
+        <option value="all">全部工作量</option>
+        <option value="large">Large</option><option value="medium">Medium</option><option value="small">Small</option>
+      </select>
+      <input type="text" id="search-input" placeholder="搜索..." oninput="refreshPlanView()">
+    </div>
+    <div class="plan-layout">
+      <div class="plan-table-wrap">
+        <table class="plan-table">
+          <thead><tr>
+            <th onclick="sortBy('id')">#</th>
+            <th onclick="sortBy('title')" style="width:40%">Issue</th>
+            <th onclick="sortBy('priority')">优先级</th>
+            <th onclick="sortBy('depth')">深度</th>
+            <th onclick="sortBy('estimate')">工作量</th>
+            <th onclick="sortBy('milestone')">版本</th>
+          </tr></thead>
+          <tbody id="issues-tbody"></tbody>
+        </table>
       </div>
-      <div class="card-body" id="cronBody">
-        <div class="card-empty">
-          <div class="material-symbols-rounded">schedule</div>
-          No cron jobs
+      <div class="plan-graph-wrap">
+        <div style="display:flex;gap:4px;margin-bottom:8px">
+          <button class="refresh-btn" onclick="zoomIn()">🔍+</button>
+          <button class="refresh-btn" onclick="zoomOut()">🔍−</button>
+          <button class="refresh-btn" onclick="zoomReset()">⟲</button>
         </div>
+        <div id="graph-container"></div>
       </div>
     </div>
   </div>
 
+  <div id="modal-root"></div>
 </div>
 
 <script>
+// ── State ──
+let currentPlanData = null;
+let sortCol = null, sortDir = 1;
+let highlightIssueId = null;
+let zoomLevel = 1;
+let planSvg = null, planInner = null;
+
 // ── Helpers ──
-function $(sel) { return document.querySelector(sel); }
-function $$(sel) { return document.querySelectorAll(sel); }
+function $(s) { return document.querySelector(s); }
+function esc(s) { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
 
-function fmtDuration(seconds) {
-  if (seconds < 60) return seconds + 's';
-  if (seconds < 3600) return Math.floor(seconds/60) + 'm ' + (seconds%60) + 's';
-  return Math.floor(seconds/3600) + 'h ' + Math.floor((seconds%3600)/60) + 'm';
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  document.getElementById('content-'+name).classList.add('active');
 }
 
-function fmtTime(ts) {
-  const d = new Date(ts * 1000);
-  const pad = (n) => String(n).padStart(2, '0');
-  return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
-}
-
-function phaseColor(phase) {
-  const m = { research:'#38bdf8', plan:'#facc15', implement:'#4ade80', review:'#a855f7', 'self-correct':'#fb923c' };
-  return m[phase] || '#818cf8';
-}
-
-function phaseTagClass(phase) {
-  return 'agent-phase-' + (phase || 'agent');
-}
-
-// ── Renderers ──
-
-function renderPipeline(issues, error) {
-  const body = $('#pipelineBody');
-  const count = $('#pipelineCount');
-  count.textContent = issues.length;
-
-  if (error) {
-    body.innerHTML =
-      `<div class="error-banner">
-        <span class="material-symbols-rounded">error</span>
-        ${error}
-      </div>`;
-    return;
+// ── Overview ──
+async function refreshAll() {
+  try {
+    const r = await fetch('/api/dashboard');
+    const d = await r.json();
+    $('#updatedTime').textContent = 'Updated: '+new Date(d.now*1000).toLocaleTimeString('zh-CN');
+    renderPipeline(d.issues);
+    renderAgents(d.active_agents, d.now);
+    renderTech(d.gateway, d.opencode);
+    renderCron(d.cron_jobs);
+    renderPlanList(d.plans);
+  } catch(e) {
+    $('#updatedTime').textContent = '⚠️ Error';
   }
+}
 
-  if (issues.length === 0) {
-    body.innerHTML =
-      `<div class="card-empty">
-        <div class="material-symbols-rounded">check_circle</div>
-        All clear — no open pipeline issues
-      </div>`;
-    return;
-  }
-
-  body.innerHTML = issues.map(iss =>
-    `<div class="issue-card">
-      <div class="issue-icon">${iss.icon}</div>
-      <div class="issue-info">
-        <div class="issue-title" title="${iss.title.replace(/"/g, '&quot;')}">${iss.title}</div>
-        <div class="issue-meta">
-          <span class="issue-number">#${iss.number}</span>
-          <span class="issue-stage stage-${iss.stage}">${iss.stage}</span>
-        </div>
-      </div>
-    </div>`
-  ).join('');
+function renderPipeline(issues) {
+  const b = $('#pipelineBody'), c = $('#pipelineCount');
+  if (!issues||!issues.length) { b.innerHTML='<div class="card-empty"><div class="material-symbols-rounded">alt_route</div>No pipeline issues</div>'; c.textContent='0'; return; }
+  c.textContent = issues.length;
+  const icons = {'workflow/backlog':'📥','workflow/available':'📋','workflow/research':'🔍','workflow/plan':'📐','workflow/implement':'⚙️','workflow/self-correct':'🔄','status/blocked':'🚫','status/done':'✅'};
+  b.innerHTML = issues.map(i => {
+    const lbl = (i.labels||[]).map(l=>l.name);
+    const icon = Object.entries(icons).find(([k])=>lbl.includes(k))?.[1]||'📋';
+    return `<div class="pipeline-row"><div class="pipeline-icon">${icon}</div><div class="pipeline-info">#${i.number} ${esc(i.title)}</div><div class="pipeline-time">${new Date(i.createdAt).toLocaleDateString('zh-CN')}</div></div>`;
+  }).join('');
 }
 
 function renderAgents(agents, now) {
-  const body = $('#agentBody');
-  const count = $('#agentCount');
-  count.textContent = agents.length;
-
-  if (agents.length === 0) {
-    body.innerHTML =
-      `<div class="card-empty">
-        <div class="material-symbols-rounded">smart_toy</div>
-        No active sub-agents
-      </div>`;
-    return;
-  }
-
-  body.innerHTML = agents.map(a =>
-    `<div class="agent-item">
-      <div class="pulse-dot" style="background:${phaseColor(a.phase)}"></div>
-      <div class="agent-body">
-        <div class="agent-head">
-          <span class="agent-title" title="${a.title.replace(/"/g, '&quot;')}">${a.title}</span>
-          <span class="agent-phase-tag ${phaseTagClass(a.phase)}">${a.phase.toUpperCase()}</span>
-        </div>
-        <div class="agent-meta">
-          <span class="agent-meta-item"><span class="material-symbols-rounded">timer</span> ${fmtDuration(a.duration_seconds)}</span>
-          <span class="agent-meta-item"><span class="material-symbols-rounded">chat</span> ${a.message_count}</span>
-          <span class="agent-meta-item"><span class="material-symbols-rounded">build</span> ${a.tool_call_count}</span>
-          <span class="agent-meta-item"><span class="material-symbols-rounded">psychology</span> ${a.model}</span>
-        </div>
-        ${a.parent_title ? `<div class="agent-parent">${a.parent_title}</div>` : ''}
-      </div>
-    </div>`
-  ).join('');
-}
-
-function renderKanban(running, blocked) {
-  const body = $('#kanbanBody');
-  const count = $('#kanbanCount');
-  count.textContent = running.length + blocked.length;
-
-  const items = [];
-
-  running.forEach(t => {
-    items.push({
-      type: 'running',
-      title: t.title,
-      meta: t.current_step_key ? 'step: ' + t.current_step_key : 'PID: ' + (t.worker_pid || '—'),
-      stale: t.stale
-    });
-  });
-
-  blocked.forEach(t => {
-    items.push({
-      type: 'blocked',
-      title: t.title,
-      meta: t.current_step_key ? 'step: ' + t.current_step_key : (t.assignee ? 'assignee: ' + t.assignee : ''),
-      stale: t.stale
-    });
-  });
-
-  if (items.length === 0) {
-    body.innerHTML =
-      `<div class="card-empty">
-        <div class="material-symbols-rounded">assignment</div>
-        No running or blocked tasks
-      </div>`;
-    return;
-  }
-
-  body.innerHTML = items.map(t => {
-    const dotClass = t.stale ? 'kanban-dot-stale' : (t.type === 'running' ? 'kanban-dot-running' : 'kanban-dot-blocked');
-    const label = t.type === 'running' ? '🟢 Running' : '🔴 Blocked';
-    return `<div class="kanban-item">
-      <div class="kanban-dot ${dotClass}"></div>
-      <div class="kanban-body">
-        <div class="kanban-title">${t.title}</div>
-        <div class="kanban-meta">${label}${t.stale ? ' ⚠️ stale' : ''} · ${t.meta}</div>
-      </div>
-    </div>`;
+  const b = $('#agentBody'), c = $('#agentCount');
+  if (!agents||!agents.length) { b.innerHTML='<div class="card-empty"><div class="material-symbols-rounded">robot_2</div>No active agents</div>'; c.textContent='0'; return; }
+  c.textContent = agents.length;
+  const cols = {research:'#38bdf8',plan:'#facc15',implement:'#4ade80',review:'#a855f7','self-correct':'#fb923c'};
+  b.innerHTML = agents.map(a => {
+    const dur = a.duration_seconds<60?a.duration_seconds+'s':Math.floor(a.duration_seconds/60)+'m';
+    return `<div class="agent-row"><div class="agent-phase" style="background:${cols[a.phase]||'#818cf8'}"></div><div class="agent-title">${esc(a.title)}</div><div class="agent-model">${a.model}</div><div class="agent-duration">${dur}</div></div>`;
   }).join('');
 }
 
-function renderTechStack(gateway, opencode) {
-  const grid = $('#techGrid');
-  const items = [];
-  const gw = gateway || {};
-  const platforms = gw.platforms || {};
-
-  items.push({
-    icon: 'dns',
-    label: 'Gateway',
-    status: gw.running ? 'Running' : 'Stopped',
-    statusClass: gw.running ? 'tech-status-ok' : 'tech-status-err',
-    iconClass: 'tech-icon-gateway'
-  });
-
-  for (const [name, info] of Object.entries(platforms || {})) {
-    const connected = (info.state === 'connected');
-    items.push({
-      icon: name === 'feishu' ? 'forum' : name === 'discord' ? 'smart_toy' : 'webhook',
-      label: name.charAt(0).toUpperCase() + name.slice(1),
-      status: connected ? 'Connected' : (info.error_message || 'Disconnected'),
-      statusClass: connected ? 'tech-status-ok' : 'tech-status-err',
-      iconClass: name === 'feishu' ? 'tech-icon-feishu' : name === 'discord' ? 'tech-icon-discord' : 'tech-icon-webhook'
-    });
-  }
-
-  items.push({
-    icon: 'code',
-    label: 'OpenCode',
-    status: opencode ? 'Running' : 'Stopped',
-    statusClass: opencode ? 'tech-status-ok' : 'tech-status-err',
-    iconClass: 'tech-icon-opencode'
-  });
-
-  grid.innerHTML = items.map(t =>
-    `<div class="tech-item">
-      <div class="tech-icon ${t.iconClass}">
-        <span class="material-symbols-rounded" style="font-size:18px">${t.icon}</span>
-      </div>
-      <div>
-        <div class="tech-name">${t.label}</div>
-        <div class="tech-status ${t.statusClass}">${t.status}</div>
-      </div>
-    </div>`
-  ).join('');
+function renderTech(gw, oc) {
+  const g = $('#techGrid');
+  const items = [
+    {name:'Gateway',on:gw?.running,port:8644},
+    {name:'OpenCode',on:oc,port:18765},
+    {name:'ngrok',on:true,port:4040},
+  ];
+  g.innerHTML = items.map(i => `<div class="tech-item"><div class="tech-dot ${i.on?'on':'off'}"></div>${i.name}<span style="color:var(--text-tertiary);font-size:11px">:${i.port}</span></div>`).join('');
 }
 
-function renderCron(jobs, error) {
-  const body = $('#cronBody');
-  const count = $('#cronCount');
-  count.textContent = jobs.length;
-
-  if (error) {
-    body.innerHTML =
-      `<div class="error-banner">
-        <span class="material-symbols-rounded">error</span>
-        ${error}
-      </div>`;
-    return;
-  }
-
-  if (jobs.length === 0) {
-    body.innerHTML =
-      `<div class="card-empty">
-        <div class="material-symbols-rounded">schedule</div>
-        No scheduled cron jobs
-      </div>`;
-    return;
-  }
-
-  body.innerHTML = jobs.map(j => {
-    const statusIcon = (j.state === 'active' || j.status === 'active') ? '🟢'
-      : (j.state === 'paused' || j.status === 'paused') ? '⏸️'
-      : '🔴';
-    const name = j.name || j.id;
-    const schedule = j.schedule || '—';
-    const lastRun = j.last_run || '';
-    return `<div class="cron-item">
-      <div class="cron-icon">${statusIcon}</div>
-      <div class="cron-body">
-        <div class="cron-name">${name}</div>
-        <div class="cron-schedule">${schedule}</div>
-      </div>
-      ${lastRun ? `<div class="cron-last-run">${lastRun}</div>` : ''}
-    </div>`;
-  }).join('');
+function renderCron(jobs) {
+  const b = $('#cronBody'), c = $('#cronCount');
+  if (!jobs||!jobs.length) { b.innerHTML='<div class="card-empty"><div class="material-symbols-rounded">schedule</div>No cron jobs</div>'; c.textContent='0'; return; }
+  c.textContent = jobs.length;
+  b.innerHTML = jobs.map(j => `<div class="cron-row"><div class="cron-id">${j.id||'?'}</div><div class="cron-schedule">${j.schedule||'?'}</div><div class="cron-name">${esc(j.name||'?')}</div><div class="cron-status"><span class="status-tag status-${j.status||'scheduled'}">${j.status||'?'}</span></div><div class="cron-last">${j.state||''}</div></div>`).join('');
 }
 
-// ── Main Refresh ──
-async function refreshAll() {
+function renderPlanList(plans) {
+  const sel = $('#plan-select');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">— 选择 Plan —</option>';
+  (plans||[]).forEach(p => {
+    const slug = p.file.replace('game-to-issues-','').replace('.json','');
+    sel.innerHTML += `<option value="${slug}">${esc(p.title)} (${p.total_issues||0} issues)</option>`;
+  });
+  if (current && [...sel.options].some(o=>o.value===current)) sel.value = current;
+}
+
+// ── Plans Tab ──
+async function loadPlan(slug) {
+  if (!slug) { $('#plan-content').style.display='none'; $('#plan-empty').style.display='flex'; return; }
   try {
-    const res = await fetch('/api/dashboard');
-    const data = await res.json();
-    const now = data.now;
-
-    $('#updatedTime').textContent = 'Updated: ' + fmtTime(now);
-
-    renderPipeline(data.issues);
-    renderAgents(data.active_agents, now);
-    renderKanban(data.kanban_running || [], data.kanban_blocked || []);
-    renderTechStack(data.gateway, data.opencode);
-    renderCron(data.cron_jobs, data.cron_error);
-  } catch (err) {
-    console.error('Refresh failed:', err);
-    $('#updatedTime').textContent = '⚠️ Error loading data';
+    const r = await fetch(`/raw/game-to-issues-${slug}.json`);
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    const data = await r.json();
+    currentPlanData = data;
+    $('#plan-content').style.display='block';
+    $('#plan-empty').style.display='none';
+    $('#plan-info').innerHTML = `<strong>${esc(data.meta.title)}</strong> · ${data.meta.total_issues||0} issues · ${data.meta.model||''} · ${data.meta.status||'draft'}`;
+    refreshPlanView();
+    renderGraph();
+  } catch(e) {
+    $('#plan-content').style.display='none';
+    $('#plan-empty').style.display='flex';
+    $('#plan-empty').innerHTML = `<div class="material-symbols-rounded" style="font-size:48px">error</div><div style="font-size:14px;color:var(--accent-red)">无法加载: ${e.message}</div>`;
   }
 }
 
-// ── Auto-refresh ──
+function refreshPlanView() {
+  if (!currentPlanData) return;
+  renderSummary(currentPlanData.issues);
+  renderTable(currentPlanData.issues);
+}
+
+function renderSummary(issues) {
+  const bar = $('#summary-bar');
+  const total = issues.length, c={critical:0,high:0,medium:0,low:0}, d={deep:0,standard:0,light:0}, e={large:0,medium:0,small:0};
+  issues.forEach(i => { if(c[i.priority]!==undefined) c[i.priority]++; if(d[i.depth]!==undefined) d[i.depth]++; if(e[i.estimate]!==undefined) e[i.estimate]++; });
+  bar.innerHTML = `
+    <div class="summary-card"><div class="num total">${total}</div><div class="label">全部</div></div>
+    <div class="summary-card"><div class="num critical">${c.critical}</div><div class="label">Critical</div></div>
+    <div class="summary-card"><div class="num high">${c.high}</div><div class="label">High</div></div>
+    <div class="summary-card"><div class="num medium">${c.medium}</div><div class="label">Medium</div></div>
+    <div class="summary-card"><div class="num low">${c.low}</div><div class="label">Low</div></div>
+    <div class="summary-card"><div class="num" style="color:var(--accent-purple)">${d.deep}</div><div class="label">Deep</div></div>
+    <div class="summary-card"><div class="num" style="color:var(--accent-indigo)">${d.standard}</div><div class="label">Std</div></div>
+    <div class="summary-card"><div class="num" style="color:var(--text-tertiary)">${d.light}</div><div class="label">Light</div></div>`;
+}
+
+function renderTable(issues) {
+  const tbody = $('#issues-tbody');
+  const pf = $('#priority-filter').value, df = $('#depth-filter').value, ef = $('#estimate-filter').value;
+  const search = $('#search-input').value.toLowerCase().trim();
+  let filtered = issues.filter(i => {
+    if(pf!=='all'&&i.priority!==pf) return false;
+    if(df!=='all'&&i.depth!==df) return false;
+    if(ef!=='all'&&i.estimate!==ef) return false;
+    if(search) {
+      const t=(i.title||'').toLowerCase(), desc=(i.description||'').toLowerCase(), ctx=(i.context||'').toLowerCase();
+      if(!t.includes(search)&&!desc.includes(search)&&!ctx.includes(search)) return false;
+    }
+    return true;
+  });
+  const po={critical:0,high:1,medium:2,low:3}, do_={deep:0,standard:1,light:2}, eo={large:0,medium:1,small:2};
+  if(sortCol) {
+    filtered.sort((a,b)=>{
+      let va,vb;
+      if(sortCol==='priority'){va=po[a.priority]??99;vb=po[b.priority]??99;}
+      else if(sortCol==='depth'){va=do_[a.depth]??99;vb=do_[b.depth]??99;}
+      else if(sortCol==='estimate'){va=eo[a.estimate]??99;vb=eo[b.estimate]??99;}
+      else{va=(a[sortCol]||'').toString().toLowerCase();vb=(b[sortCol]||'').toString().toLowerCase();}
+      return va<vb?-sortDir:va>vb?sortDir:0;
+    });
+  }
+  tbody.innerHTML = filtered.map(i => {
+    const depStr = (i.dependencies||[]).map(d=>'#'+d).join(', ')||'—';
+    const mil = i.milestone||'—';
+    return `<tr onclick="showDetail(${i.id})" onmouseenter="highlightNode(${i.id})" data-id="${i.id}">
+      <td>${i.id}</td>
+      <td style="font-weight:500">${esc(i.title)}</td>
+      <td><span class="priority-tag priority-${i.priority}">${i.priority}</span></td>
+      <td><span class="depth-tag depth-${i.depth}">${i.depth}</span></td>
+      <td><span class="estimate-tag estimate-${i.estimate}">${i.estimate}</span></td>
+      <td style="color:var(--text-tertiary);font-size:11px">${mil}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderGraph() {
+  const container = $('#graph-container');
+  container.innerHTML = '';
+  const data = currentPlanData;
+  if (!data.dependency_graph||!data.dependency_graph.nodes.length) { container.innerHTML='<div style="color:var(--text-tertiary);padding:20px">No dependency graph</div>'; return; }
+
+  const svg = d3.select('#graph-container').append('svg').attr('width','100%').attr('height',400);
+  planSvg = svg;
+  const inner = svg.append('g');
+  planInner = inner;
+
+  const g = new dagreD3.graphlib.Graph().setGraph({rankdir:'LR',nodesep:20,ranksep:40,marginx:20,marginy:20});
+  const deps = data.dependency_graph;
+  const prioColor = {critical:'var(--accent-red)',high:'var(--accent-amber)',medium:'var(--accent-blue)',low:'var(--text-tertiary)'};
+
+  deps.nodes.forEach(id => {
+    const issue = data.issues.find(i=>i.id===id);
+    const color = prioColor[issue?.priority]||'var(--accent-indigo)';
+    const title = issue?.title||'';
+    const cleanTitle = title.replace(/^\[(Research|Design|Feature|Bug|Docs)\]\s*/,'');
+    const shortTitle = cleanTitle.length>12 ? cleanTitle.slice(0,10)+'…' : cleanTitle;
+    const label = '#'+id+'\n'+shortTitle;
+    g.setNode(id.toString(), {label,style:`fill:var(--bg-card);stroke:${color};stroke-width:2;rx:6;ry:6`,labelStyle:`color:var(--text-primary);font-size:10px;font-weight:600;white-space:pre`,width:90,height:40});
+  });
+  deps.edges.forEach(e => {
+    g.setEdge(e.from.toString(), e.to.toString(), {style:'stroke:#30363d;stroke-width:2;fill:none',arrowheadStyle:'fill:#30363d',arrowhead:'vee'});
+  });
+
+  const render = new dagreD3.render();
+  render(inner, g);
+  const gw = g.graph().width+40, gh = Math.max(g.graph().height+40,200);
+  svg.attr('viewBox',`0 0 ${gw} ${gh}`).attr('height',gh);
+  zoomLevel = 1;
+
+  inner.selectAll('g.node').on('click', function(event, datum) {
+    const nid = parseInt(datum);
+    if (!isNaN(nid)) { highlightNode(nid); showDetail(nid); }
+  });
+  // Manual drag on SVG background + wheel zoom
+  let dragging = false, dragStart = null, svgTransform = {x:0,y:0,k:1};
+  window.__svgT = svgTransform;
+  window.__svgInner = inner;
+  svg.on('mousedown', function(event) {
+    if (event.target.closest('.node')) return; // don't drag on nodes
+    dragging = true;
+    dragStart = {x: event.clientX - svgTransform.x, y: event.clientY - svgTransform.y};
+  });
+  d3.select(window).on('mousemove.zoom', function(event) {
+    if (!dragging) return;
+    svgTransform.x = event.clientX - dragStart.x;
+    svgTransform.y = event.clientY - dragStart.y;
+    inner.attr('transform', `translate(${svgTransform.x},${svgTransform.y}) scale(${svgTransform.k})`);
+  }).on('mouseup.zoom', function() { dragging = false; });
+  container.addEventListener('wheel', function(e) {
+    e.preventDefault();
+    const d = e.deltaY > 0 ? -0.15 : 0.15;
+    svgTransform.k = Math.max(0.3, Math.min(3, svgTransform.k + d));
+    inner.attr('transform', `translate(${svgTransform.x},${svgTransform.y}) scale(${svgTransform.k})`);
+  }, {passive: false});
+}
+
+function zoomIn() { if (window.__svgT) { window.__svgT.k = Math.min(3, window.__svgT.k + 0.3); applyT(); } }
+function zoomOut() { if (window.__svgT) { window.__svgT.k = Math.max(0.3, window.__svgT.k - 0.3); applyT(); } }
+function zoomReset() { if (window.__svgT) { window.__svgT.x=0; window.__svgT.y=0; window.__svgT.k=1; applyT(); } }
+function applyT() { if (window.__svgInner) window.__svgInner.attr('transform', 'translate('+window.__svgT.x+','+window.__svgT.y+') scale('+window.__svgT.k+')'); }
+function highlightNode(id) {
+  document.querySelectorAll('#issues-tbody tr').forEach(r => r.classList.toggle('active', parseInt(r.dataset.id)===id));
+  if (planSvg) {
+    planSvg.selectAll('g.node').attr('opacity', n => parseInt(n)===id ? 1 : 0.4);
+  }
+}
+
+// ── Detail Modal ──
+function showDetail(id) {
+  if(!currentPlanData) return;
+  const issue = currentPlanData.issues.find(i=>i.id===id);
+  if(!issue) return;
+  const root = $('#modal-root');
+  const deps = (issue.dependencies||[]).length ? issue.dependencies.map(d=>'#'+d).join(', ') : '无';
+  const ac = (issue.acceptance_criteria||[]).map(a=>`<li>${esc(a)}</li>`).join('');
+  root.innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <button class="close-btn" onclick="closeModal()">&times;</button>
+        <h2>#${issue.id} ${esc(issue.title)}</h2>
+        <div class="modal-meta">
+          <span class="priority-tag priority-${issue.priority}">${issue.priority}</span>
+          <span class="depth-tag depth-${issue.depth}">${issue.depth}</span>
+          <span class="estimate-tag estimate-${issue.estimate}">${issue.estimate}</span>
+          &nbsp;· 依赖: ${deps} · 版本: ${issue.milestone||'—'}
+        </div>
+        ${issue.description?`<h4>📝 功能描述</h4><p>${esc(issue.description)}</p>`:''}
+        ${issue.context?`<h4>🔍 上下文</h4><p>${esc(issue.context)}</p>`:''}
+        ${ac?`<h4>✅ 验收条件</h4><ul>${ac}</ul>`:''}
+      </div>
+    </div>`;
+}
+function closeModal() { $('#modal-root').innerHTML=''; }
+
+function sortBy(col) {
+  if(sortCol===col) sortDir*=-1; else { sortCol=col; sortDir=1; }
+  refreshPlanView();
+}
+
+// ── Init ──
 refreshAll();
 setInterval(refreshAll, 30000);
 </script>

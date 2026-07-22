@@ -38,6 +38,8 @@ Spawned by `dev-workflow-dispatcher` when an issue is labeled `workflow/availabl
 
 ## Depth-Aware Mode
 
+**Model selection:** When the issue has `depth/deep` label, use `deepseek/deepseek-v4-pro` (stronger reasoning for complex research). Otherwise use the default pipeline model (`deepseek/deepseek-v4-flash`).
+
 Read the `depth/` label from the issue to determine output format. Your output changes based on depth:
 
 | Aspect | depth/light | depth/standard | depth/deep |
