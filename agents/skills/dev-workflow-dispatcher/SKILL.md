@@ -388,7 +388,9 @@ In both cases the cron handled it by checking the pending file after processing
 the script output — the events for the other issue were still in the file.
 
 ### If script output is empty (or nothing remains in the file):
+**🚫 Never advance issues from `workflow/backlog` or `workflow/available`.** Only the dependency-aware picker handles backlog→research.
 Run proactive scans (stalled labels, stalled PRs, stalled phases).
+The stalled-label scan only applies to labels beyond `workflow/available` (research/plan/implement).
 If nothing → run housekeeping (clean stale local branches, prune remote refs, check for orphaned output files), then [SILENT].
 
 ### ⚠️ Pitfall: Same-issue label prioritization gap
@@ -1052,6 +1054,10 @@ for issue in gh_issues_with_workflow_labels():
 - Include pre-existing test failure data in the implement agent context so it knows which failures are expected
 
 ## Proactive Stalled Label Advancement Detection
+
+**🚫 CRITICAL RULE: Never advance issues from `workflow/backlog` or `workflow/available`.** 
+Only the event-processor's dependency-aware picker (`pick_next_issue()`) handles backlog→research advancement.
+Stalled label advancement is for issues that already have a merged PR but whose label didn't advance (e.g., `workflow/research` but `research/xxx` PR is merged).
 
 The cron poller should also detect and fix stalled label advancement, not just stalled PRs. A PR can merge successfully but `workflow-chain.yml` may fail to advance the issue label (regex mismatch, 403 on label add, action crash).
 
