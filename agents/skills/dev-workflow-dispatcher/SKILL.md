@@ -479,16 +479,26 @@ ITEM_ID=$(gh project item-list 5 --owner devvi --format json --limit 50 \
 | Deploy | Deploy | `452542a3` |
 
 ```bash
-gh project item-edit 5 --owner devvi \
+gh project item-edit \
+  --project-id PVT_kwHOABFv7s4Bd7mL \
   --item-id "$ITEM_ID" \
   --field-id PVTSSF_lAHOABFv7s4Bd7mLzhYjuS4 \
-  --project-id PVT_kwHOABFv7s4Bd7mL \
   --single-select-option-id <OPTION_ID>
 ```
 
 Always sync the project board after every label change.
 
 **Progress field** — Also update the **Progress** number field on the project board (field ID: `PVTF_lAHOABFv7s4Bd7mLzhYkAsw`). Maps to stage:
+
+```bash
+gh project item-edit \
+  --project-id PVT_kwHOABFv7s4Bd7mL \
+  --item-id "$ITEM_ID" \
+  --field-id PVTF_lAHOABFv7s4Bd7mLzhYkAsw \
+  --number "$PROGRESS_PCT"
+```
+
+### Progress mapping
 
 | Stage | Progress |
 |-------|----------|
@@ -500,15 +510,8 @@ Always sync the project board after every label change.
 | `workflow/self-correct` | 75% |
 | `status/done` | 100% |
 
-```bash
-gh project item-edit 5 --owner devvi \
-  --item-id "$ITEM_ID" \
-  --field-id PVTF_lAHOABFv7s4Bd7mLzhYkAsw \
-  --project-id PVT_kwHOABFv7s4Bd7mL \
-  --number "$PROGRESS_PCT"
-```
-
 Always sync Progress whenever Stage changes.
+
 
 What the operator does per session:
 
