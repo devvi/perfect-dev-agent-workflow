@@ -253,6 +253,7 @@ a:hover { text-decoration: underline; }
             <th onclick="sortBy('depth')">深度</th>
             <th onclick="sortBy('estimate')">工作量</th>
             <th>进度</th>
+            <th onclick="sortBy('ghState')" style="width:70px">GH状态</th>
           </tr></thead>
           <tbody id="issues-tbody"></tbody>
         </table>
@@ -278,6 +279,7 @@ let sortCol = null, sortDir = 1;
 let highlightIssueId = null;
 let zoomLevel = 1;
 let planSvg = null, planInner = null;
+let ghIssuesMap = {};
 
 // ── Helpers ──
 function $(s) { return document.querySelector(s); }
@@ -296,11 +298,14 @@ async function refreshAll() {
     const r = await fetch('/api/dashboard');
     const d = await r.json();
     $('#updatedTime').textContent = 'Updated: '+new Date(d.now*1000).toLocaleTimeString('zh-CN');
+    ghIssuesMap = d.gh_issues_map || {};
     renderPipeline(d.issues);
     renderAgents(d.active_agents, d.now);
     renderTech(d.gateway, d.opencode);
     renderCron(d.cron_jobs);
     renderPlanList(d.plans);
+    // Re-render plan table if a plan is loaded (progress may have changed)
+    if (currentPlanData) refreshPlanView();
   } catch(e) {
     $('#updatedTime').textContent = '⚠️ Error';
   }
@@ -310,29 +315,29 @@ function renderPipeline(issues) {
   const b = $('#pipelineBody'), c = $('#pipelineCount');
   c.textContent = issues.length;
   const stages = [
-    ['📥','Backlog','workflow/backlog'],
-    ['📋','Available','workflow/available'],
-    ['🔍','Research','workflow/research'],
-    ['📐','Plan','workflow/plan'],
-    ['⚙️','Implement','workflow/implement'],
-    ['🔄','Fixing','workflow/self-correct'],
-    ['🚫','Blocked','status/blocked'],
-    ['✅','Done','status/done'],
+    ['📥','Backlog','Backlog'],
+    ['📋','Available','Available'],
+    ['🔍','Research','Research'],
+    ['📐','Plan','Plan'],
+    ['⚙️','Implement','Implement'],
+    ['🔄','Fixing','Fixing'],
+    ['🚫','Blocked','Blocked'],
+    ['✅','Done','Done'],
   ];
   const stageColors = {
-    'workflow/backlog':'#6b6b7b','workflow/available':'#3b82f6',
-    'workflow/research':'#38bdf8','workflow/plan':'#facc15',
-    'workflow/implement':'#4ade80','workflow/self-correct':'#fb923c',
-    'status/blocked':'#ef4444','status/done':'#22c55e'
+    'Backlog':'#6b6b7b','Available':'#3b82f6',
+    'Research':'#38bdf8','Plan':'#facc15',
+    'Implement':'#4ade80','Fixing':'#fb923c',
+    'Blocked':'#ef4444','Done':'#22c55e'
   };
   b.innerHTML = '<div class="pipeline-kanban">' + stages.map(([emoji,label,stage]) => {
-    const items = issues.filter(i => (i.labels||[]).some(l => l.name === stage));
+    const items = issues.filter(i => i.stage === stage);
     return `<div class="pipeline-col">
       <div class="pipeline-col-title" style="color:${stageColors[stage]||'var(--text-secondary)'}">
         ${emoji} ${label}
         <span class="pipeline-col-count">${items.length}</span>
       </div>
-      ${items.map(i => `<div class="pipeline-col-item" title="${esc(i.title)}">#${i.number} ${esc(i.title).slice(0,20)}</div>`).join('')}
+      ${items.map(i => `<div class="pipeline-col-item" title="${esc(i.title)}">${i.icon} #${i.number} ${esc(i.title).slice(0,20)}</div>`).join('')}
     </div>`;
   }).join('') + '</div>';
 }
@@ -386,7 +391,10 @@ async function loadPlan(slug) {
     currentPlanData = data;
     $('#plan-content').style.display='block';
     $('#plan-empty').style.display='none';
-    $('#plan-info').innerHTML = `<strong>${esc(data.meta.title)}</strong> · ${data.meta.total_issues||0} issues · ${data.meta.model||''} · ${data.meta.status||'draft'}`;
+    const ghTotal = data.issues.filter(i => ghIssuesMap[i.github_number]).length;
+    const ghDone = data.issues.filter(i => (ghIssuesMap[i.github_number]||{}).is_done).length;
+    const syncInfo = ghTotal?(` · GH同步: ${ghDone}/${data.issues.length} ✅`):' · ⚠️ 未同步到GH';
+    $('#plan-info').innerHTML = `<strong>${esc(data.meta.title)}</strong> · ${data.meta.total_issues||0} issues · ${data.meta.model||''} · ${data.meta.status||'draft'}${syncInfo}`;
     refreshPlanView();
     renderGraph();
   } catch(e) {
@@ -404,17 +412,25 @@ function refreshPlanView() {
 
 function renderSummary(issues) {
   const bar = $('#summary-bar');
-  const total = issues.length, c={critical:0,high:0,medium:0,low:0}, d={deep:0,standard:0,light:0}, e={large:0,medium:0,small:0};
+  const total = issues.length;
+  const ghDone = issues.filter(i => (ghIssuesMap[i.github_number]||{}).is_done).length;
+  const ghProgress = issues.filter(i => {
+    const s = (ghIssuesMap[i.github_number]||{}).state;
+    return s === 'open' || s === 'closed';
+  }).length;
+  const c={critical:0,high:0,medium:0,low:0}, d={deep:0,standard:0,light:0}, e={large:0,medium:0,small:0};
   issues.forEach(i => { if(c[i.priority]!==undefined) c[i.priority]++; if(d[i.depth]!==undefined) d[i.depth]++; if(e[i.estimate]!==undefined) e[i.estimate]++; });
   bar.innerHTML = `
     <div class="summary-card"><div class="num total">${total}</div><div class="label">全部</div></div>
+    <div class="summary-card"><div class="num" style="color:var(--accent-green)">${ghDone}</div><div class="label">✅ GH Done</div></div>
     <div class="summary-card"><div class="num critical">${c.critical}</div><div class="label">Critical</div></div>
     <div class="summary-card"><div class="num high">${c.high}</div><div class="label">High</div></div>
     <div class="summary-card"><div class="num medium">${c.medium}</div><div class="label">Medium</div></div>
     <div class="summary-card"><div class="num low">${c.low}</div><div class="label">Low</div></div>
     <div class="summary-card"><div class="num" style="color:var(--accent-purple)">${d.deep}</div><div class="label">Deep</div></div>
     <div class="summary-card"><div class="num" style="color:var(--accent-indigo)">${d.standard}</div><div class="label">Std</div></div>
-    <div class="summary-card"><div class="num" style="color:var(--text-tertiary)">${d.light}</div><div class="label">Light</div></div>`;
+    <div class="summary-card"><div class="num" style="color:var(--text-tertiary)">${d.light}</div><div class="label">Light</div></div>
+    ${ghProgress<total?`<div class="summary-card"><div class="num low">${total-ghProgress}</div><div class="label">未同步到GH</div></div>`:''}`;
 }
 
 function renderTable(issues) {
@@ -438,22 +454,26 @@ function renderTable(issues) {
       if(sortCol==='priority'){va=po[a.priority]??99;vb=po[b.priority]??99;}
       else if(sortCol==='depth'){va=do_[a.depth]??99;vb=do_[b.depth]??99;}
       else if(sortCol==='estimate'){va=eo[a.estimate]??99;vb=eo[b.estimate]??99;}
+      else if(sortCol==='ghState'){va=(ghIssuesMap[a.github_number]||{}).state||'';vb=(ghIssuesMap[b.github_number]||{}).state||'';}
       else{va=(a[sortCol]||'').toString().toLowerCase();vb=(b[sortCol]||'').toString().toLowerCase();}
       return va<vb?-sortDir:va>vb?sortDir:0;
     });
   }
   tbody.innerHTML = filtered.map(i => {
-    const depStr = (i.dependencies||[]).map(d=>'#'+d).join(', ')||'—';
-    const pctMap = {mvp:35, v1:60, v2:85, full:100};
-    const pct = pctMap[i.milestone] || (i.priority==='critical'?50:25);
-    const color = pct >= 100 ? '#22c55e' : pct >= 60 ? '#3b82f6' : '#6366f1';
+    const gh = ghIssuesMap[i.github_number] || {};
+    const realPct = gh.progress !== undefined ? gh.progress : (i.progress || 0);
+    const ghState = gh.state || '—';
+    const ghLabel = ghState === 'closed' ? '✅' : ghState === 'open' ? '🟢' : '⚪';
+    const color = realPct >= 100 ? '#22c55e' : realPct >= 60 ? '#3b82f6' : realPct > 0 ? '#6366f1' : 'transparent';
+    const fillWidth = realPct > 0 ? `${realPct}%` : '0';
     return `<tr onclick="showDetail(${i.id})" onmouseenter="highlightNode(${i.id})" data-id="${i.id}">
       <td>${i.id}</td>
-      <td style="font-weight:500">${esc(i.title)}</td>
+      <td style="font-weight:500">${esc(i.title)} <span style="font-size:10px;color:var(--text-tertiary)">#${i.github_number}</span></td>
       <td><span class="priority-tag priority-${i.priority}">${i.priority}</span></td>
       <td><span class="depth-tag depth-${i.depth}">${i.depth}</span></td>
       <td><span class="estimate-tag estimate-${i.estimate}">${i.estimate}</span></td>
-      <td style="min-width:60px"><div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${color}"></div></div></td>
+      <td style="min-width:60px"><div class="progress-bar"><div class="progress-fill" style="width:${fillWidth};background:${color}"></div></div></td>
+      <td style="font-size:11px;text-align:center">${ghLabel} ${realPct}%</td>
     </tr>`;
   }).join('');
 }
@@ -475,12 +495,17 @@ function renderGraph() {
 
   deps.nodes.forEach(id => {
     const issue = data.issues.find(i=>i.id===id);
-    const color = prioColor[issue?.priority]||'var(--accent-indigo)';
+    const gh = ghIssuesMap[issue?.github_number] || {};
+    const realPct = gh.progress !== undefined ? gh.progress : (issue?.progress||0);
+    const isDone = realPct >= 100;
+    const isPartial = realPct > 0;
+    const color = isDone ? 'var(--accent-green)' : isPartial ? 'var(--accent-blue)' : (prioColor[issue?.priority]||'var(--accent-indigo)');
     const title = issue?.title||'';
     const cleanTitle = title.replace(/^\[(Research|Design|Feature|Bug|Docs)\]\s*/,'');
     const shortTitle = cleanTitle.length>12 ? cleanTitle.slice(0,10)+'…' : cleanTitle;
-    const label = '#'+id+'\n'+shortTitle;
-    g.setNode(id.toString(), {label,style:`fill:var(--bg-card);stroke:${color};stroke-width:2;rx:6;ry:6`,labelStyle:`color:var(--text-primary);font-size:10px;font-weight:600;white-space:pre`,width:90,height:40});
+    const label = '#'+id+'\\n'+shortTitle + (isDone?'✅':'');
+    const fillC = isDone ? 'rgba(34,197,94,.15)' : 'var(--bg-card)';
+    g.setNode(id.toString(), {label,style:`fill:${fillC};stroke:${color};stroke-width:${isDone?3:2};rx:6;ry:6`,labelStyle:`color:var(--text-primary);font-size:10px;font-weight:600;white-space:pre`,width:90,height:40});
   });
   deps.edges.forEach(e => {
     g.setEdge(e.from.toString(), e.to.toString(), {style:'stroke:#30363d;stroke-width:2;fill:none',arrowheadStyle:'fill:#30363d',arrowhead:'vee'});
@@ -536,6 +561,9 @@ function showDetail(id) {
   const issue = currentPlanData.issues.find(i=>i.id===id);
   if(!issue) return;
   const root = $('#modal-root');
+  const gh = ghIssuesMap[issue.github_number] || {};
+  const ghStatus = gh.state ? (gh.state === 'closed' ? '✅ 已关闭' : '🟢 开放中') : '⚪ 未同步';
+  const realPct = gh.progress !== undefined ? gh.progress : (issue.progress || 0);
   const deps = (issue.dependencies||[]).length ? issue.dependencies.map(d=>'#'+d).join(', ') : '无';
   const ac = (issue.acceptance_criteria||[]).map(a=>`<li>${esc(a)}</li>`).join('');
   root.innerHTML = `
@@ -548,6 +576,7 @@ function showDetail(id) {
           <span class="depth-tag depth-${issue.depth}">${issue.depth}</span>
           <span class="estimate-tag estimate-${issue.estimate}">${issue.estimate}</span>
           &nbsp;· 依赖: ${deps} · 版本: ${issue.milestone||'—'}
+          &nbsp;· <span style="${gh.state==='closed'?'color:var(--accent-green)':''}">GH#${issue.github_number} ${ghStatus} ${realPct}%</span>
         </div>
         ${issue.description?`<h4>📝 功能描述</h4><p>${esc(issue.description)}</p>`:''}
         ${issue.context?`<h4>🔍 上下文</h4><p>${esc(issue.context)}</p>`:''}

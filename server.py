@@ -73,31 +73,92 @@ def get_active_agents():
 
 
 def get_pipeline_issues():
-    """GitHub Issues from agent-game-test with workflow labels."""
+    """GitHub Issues from agent-game-test with workflow labels.
+    
+    Fetches ALL issues (open + closed) with a generous limit so that
+    closed issues carrying status/done appear in the pipeline Done column.
+    """
     try:
         result = subprocess.run(
-            ["gh", "issue", "list", "--repo", GITHUB_REPO, "--state", "open",
-             "--json", "number,title,labels,createdAt",
-             "--limit", "20"],
+            ["gh", "issue", "list", "--repo", GITHUB_REPO, "--state", "all",
+             "--json", "number,title,labels,state,createdAt,closedAt",
+             "--limit", "50"],
             capture_output=True, text=True, timeout=15,
         )
         issues = json.loads(result.stdout)
+        # Cache for gh_issues_map
+        get_pipeline_issues._last_raw = issues
+        get_pipeline_issues._last_fetch = time.time()
         stage_icons = {
-            "workflow/backlog": "📥", "workflow/available": "📋",
-            "workflow/research": "🔍", "workflow/plan": "📐",
-            "workflow/implement": "⚙️", "workflow/self-correct": "🔄",
-            "status/blocked": "🚫", "status/done": "✅",
+            "status/done": "✅",
+            "status/blocked": "🚫",
+            "workflow/backlog": "📥",
+            "workflow/available": "📋",
+            "workflow/research": "🔍",
+            "workflow/plan": "📐",
+            "workflow/implement": "⚙️",
+            "workflow/self-correct": "🔄",
+        }
+        stage_names = {
+            "status/done": "Done",
+            "status/blocked": "Blocked",
+            "workflow/backlog": "Backlog",
+            "workflow/available": "Available",
+            "workflow/research": "Research",
+            "workflow/plan": "Plan",
+            "workflow/implement": "Implement",
+            "workflow/self-correct": "Fixing",
         }
         for iss in issues:
             labels = [l["name"] for l in iss.get("labels", [])]
             iss["icon"] = "📋"
-            for lbl, icon in stage_icons.items():
+            iss["stage"] = "Available"
+            for lbl in stage_icons:
                 if lbl in labels:
-                    iss["icon"] = icon
+                    iss["icon"] = stage_icons[lbl]
+                    iss["stage"] = stage_names[lbl]
                     break
         return issues
     except Exception:
         return []
+
+
+def get_gh_issues_map():
+    """Return a dict mapping GH issue number → {state, labels, progress, is_done}."""
+    raw = getattr(get_pipeline_issues, '_last_raw', None)
+    if raw is None:
+        get_pipeline_issues()
+        raw = getattr(get_pipeline_issues, '_last_raw', [])
+    
+    stage_weights = {
+        "status/done": 100,
+        "workflow/self-correct": 85,
+        "workflow/implement": 60,
+        "workflow/plan": 30,
+        "workflow/research": 15,
+        "workflow/available": 5,
+        "workflow/backlog": 0,
+    }
+    
+    result = {}
+    for iss in raw:
+        num = iss.get("number")
+        labels = [l["name"] for l in iss.get("labels", [])]
+        best = 0
+        for lbl, wt in stage_weights.items():
+            if lbl in labels and wt > best:
+                best = wt
+        if iss.get("state", "").lower() == "closed":
+            best = max(best, 100)
+        result[num] = {
+            "state": iss.get("state", "open").lower(),
+            "labels": labels,
+            "progress": best,
+            "is_done": "status/done" in labels,
+            "closed_at": iss.get("closedAt", None),
+            "title": iss.get("title", ""),
+        }
+    return result
 
 
 def get_gateway_status():
@@ -207,6 +268,7 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                 "now": int(time.time()),
                 "active_agents": get_active_agents(),
                 "issues": get_pipeline_issues(),
+                "gh_issues_map": get_gh_issues_map(),
                 "cron_jobs": get_cron(),
                 "gateway": get_gateway_status(),
                 "opencode": get_opencode_status(),
