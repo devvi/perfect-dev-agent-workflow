@@ -111,8 +111,10 @@ def get_pipeline_issues():
         }
         for iss in issues:
             labels = [l["name"] for l in iss.get("labels", [])]
-            iss["icon"] = "📋"
-            iss["stage"] = "Available"
+            # Closed issues without any workflow stage label go to Done
+            is_closed = iss.get("state", "open").lower() == "closed"
+            iss["icon"] = "✅" if is_closed else "📋"
+            iss["stage"] = "Done" if is_closed else "Available"
             for lbl in stage_icons:
                 if lbl in labels:
                     iss["icon"] = stage_icons[lbl]
