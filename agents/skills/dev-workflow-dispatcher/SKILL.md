@@ -516,7 +516,10 @@ What the operator does per session:
 2. For each pending event, checks the actual GitHub issue/PR state
 3. Determines what action is needed (advance label, create PR, spawn phase agent)
 4. Takes the action using gh CLI
-5. For light/standard depth, handles all phases end-to-end with auto-merge
+5. For light/standard depth, handles research/plan phases end-to-end.
+   Implement phase: the review agent handles merge (not the operator).
+   The event-processor generates `SPAWN: review` on CI success, then the review
+   agent reviews code quality and merges if passed.
 6. For deep depth, spawns a phase agent via `delegate_task(role='leaf')`
 7. After processing, marks events as done
 
@@ -578,8 +581,9 @@ workflow (`opencode-review.yml`) runs automatically on GitHub — the cron/opera
 does NOT need to spawn an agent for this. However, the pending file will still
 contain the event, and the cron poller must handle it gracefully:
 
-1. **Check if the PR is already merged** — phase agents can merge their own PRs
-   in under 60s, making the event stale. If merged → skip silently.
+1. **Check if the PR is already merged** — research/plan agents can merge
+   their own PRs in under 60s, making the event stale. If merged → skip silently.
+   **Do NOT merge implement PRs here** — they must go through the review agent.
 2. **Check CI status** via `gh api repos/<owner>/<repo>/commits/<sha>/check-runs`.
    - CI success → nothing to do (PR is fine)
    - CI running/queued → skip (wait for `check_run.completed`)
@@ -588,8 +592,8 @@ contain the event, and the cron poller must handle it gracefully:
    because the operator agent can't add PR labels (no `read:org` scope). In this
    case, if the PR is valid (clean merge status, correct body, proper scope):
    a. Verify via quick local `npm run test` (safe on RPi)
-   b. If tests pass for the changed code → merge via `gh pr merge`
-   c. After merge → manually advance issue labels via `gh issue edit`
+   b. If tests pass for the changed code and the branch is NOT impl/* → merge via `gh pr merge`
+   c. If the branch IS impl/* → do NOT merge. The review agent must handle it.
 4. **CI failed** → spawn self-correct agent (same as check_run.completed path).
 
 Key rule: `pull_request.synchronize` alone is NOT a reason to spawn a new agent.
