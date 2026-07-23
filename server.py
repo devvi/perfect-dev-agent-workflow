@@ -40,7 +40,7 @@ def get_active_agents():
           AND s.message_count > 0
           AND s.source = 'subagent'
         ORDER BY s.started_at DESC
-    """, (now - 600,)).fetchall()
+    """, (now - 3600,)).fetchall()
     agents = []
     for r in rows:
         title = r["title"] or ""
