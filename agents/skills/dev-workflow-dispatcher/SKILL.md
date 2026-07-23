@@ -770,11 +770,14 @@ The command tries to check out the target branch locally to validate the merge. 
 
 ```bash
 git stash
-gh pr merge <N> --auto --squash --delete-branch
+# Only set auto-merge for research/plan PRs. Implement PRs need review first.
+if [[ "$BRANCH" != impl/* ]]; then
+    gh pr merge <N> --auto --squash --delete-branch
+fi
 git stash pop 2>/dev/null
 ```
 
-This applies to all phases (research, plan, implement) at light/standard depth.
+This applies to research and plan phases. For implement PRs, do NOT set auto-merge — the review agent must review and merge manually.
 
 ## Golden Rule
 
