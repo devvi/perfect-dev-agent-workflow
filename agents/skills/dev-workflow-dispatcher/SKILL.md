@@ -229,6 +229,7 @@ Step 1: gh pr list --state open; find research/plan PRs that are mergeable,
   branch from master, body has Parent #N
   🛡️ Add "state" to --json fields; verify each PR is still OPEN
 Step 2: gh pr merge <N> --squash --delete-branch for each (after state verification)
+  ❗ Skip if branch starts with `impl/` — implement PRs must go through review agent.
 Step 3: Extract parent issue, advance workflow label
   (workflow/research→plan, workflow/plan→implement)
 Step 4: Do NOT touch impl/* branches
