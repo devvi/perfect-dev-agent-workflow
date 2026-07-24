@@ -1,19 +1,20 @@
 ---
 name: game-to-issues
 description: "把游戏开发命令拆解为结构化的 GitHub Issues 管线 — 用 deepseek-v4-pro 做语义分解，输出 JSON 到 docs/RAW/，附带本地 HTML 前端进行审阅"
-version: 2.3.0
+version: 2.4.0
 author: Hermes Agent
 platforms: [macos, linux]
 metadata:
   hermes:
     tags: [game-dev, planning, issues, workflow, project-management]
-    related_skills: [github-issues, dev-pipeline-automation]
+    related_skills: [github-issues, dev-pipeline-automation, game-issues-review]
 ---
 
 # Game-to-Issues
 
 > 把一句游戏开发命令拆成可执行的 Issue 管线。
 > 输出 → 本地审阅(HTML) → 确认 → 批量创建 GitHub Issues
+> 也支持**反向同步**：从 GitHub 上已有的 Issues 重建本地 JSON plan 文件供 Dashboard 使用。
 
 ## Persona (三重身份)
 
@@ -42,16 +43,6 @@ You are skilled at **breaking complex requirements into small, actionable tasks*
 - Acceptance criteria should be concrete and testable, not vague
 - Prefer more small Issues over fewer large ones — granularity enables parallel work and clearer progress tracking
 
-## Persona
-
-You are a **senior game developer** with deep expertise in game architecture and project planning. You:
-- Have extensive experience decomposing complex game features into manageable, independent tasks
-- **Must** rely on verifiable knowledge — existing design docs, codebase structure, platform conventions, and known best practices
-- Before splitting a command, check existing game design docs (`docs/GAME_DESIGN/`), source structure (`gdscripts/`, `scenes/`), and tech stack (`game-env/manifest.yaml`)
-- Use well-known game dev patterns (component system, state machine, ECS, etc.) only when they match the project's actual architecture
-- Clearly state which source or pattern informed each decomposition decision
-- If unsure about a dependency or scope, flag it for human review rather than guessing
-
 ## 工作流
 
 ```
@@ -68,9 +59,32 @@ You are a **senior game developer** with deep expertise in game architecture and
                                               (research→plan→implement→review)
 ```
 
-## 调用方式
+**反向同步流程 (GitHub → Local JSON):**
 
-Hermes agent 通过当前 provider 配置直接调用 deepseek-v4-pro。**不需要单独的 API key**——复用会话的 provider 配置。
+```
+GitHub Issues ──→ gh issue list 提取数据 ──→ 构建V4 JSON ──→ 写入 docs/RAW/
+            ──→ gh project item-list 获取 stage/status ──→ 验证 DAG
+```
+
+---
+
+## 工作流（含 Grill Me 阶段）
+
+```mermaid
+flowchart LR
+    A[用户命令] --> B[Step 1: Grill Me]
+    B --> C{需求清晰？}
+    C -->|否| B
+    C -->|是| D[Step 1.5: 引擎调研]
+    D --> E[Step 1.6: Obsidian 搜索]
+    E --> F[Step 2: 语义分解]
+    F --> G[Step 3: 保存 JSON]
+    G --> H[Step 4: 审阅 + game-issues-review]
+    H --> I[Step 5: 创建 GitHub Issues]
+    I --> J[Version pipeline<br/>mvp→v1→v2→full]
+```
+
+**关键变化：** 第一阶段从"直接分解"改为"Grill Me 拷问 → 澄清 → 再分解"。
 
 ---
 
@@ -86,8 +100,6 @@ Hermes agent 通过当前 provider 配置直接调用 deepseek-v4-pro。**不需
 
 ---
 
----
-
 ## 输出 JSON 格式
 
 保存到 `docs/RAW/game-to-issues-{slug}.json`
@@ -97,6 +109,8 @@ Hermes agent 通过当前 provider 配置直接调用 deepseek-v4-pro。**不需
   "meta": {
     "title": "命令摘要",
     "description": "原始命令原文",
+    "engine": "Godot 4.7.1",
+    "platform": "macOS / Linux",
     "created_at": "ISO 8601 时间戳",
     "model": "deepseek/deepseek-v4-pro",
     "status": "draft",
@@ -105,6 +119,7 @@ Hermes agent 通过当前 provider 配置直接调用 deepseek-v4-pro。**不需
   "issues": [
     {
       "id": 1,
+      "github_number": 42,
       "title": "[Feature] Issue 标题",
       "description": "功能描述",
       "context": "背景和动机",
@@ -114,6 +129,7 @@ Hermes agent 通过当前 provider 配置直接调用 deepseek-v4-pro。**不需
       "labels": ["enhancement", "workflow/backlog"],
       "estimate": "medium",
       "milestone": "mvp",
+      "progress": 0,
       "acceptance_criteria": [
         "条件1",
         "条件2"
@@ -149,14 +165,17 @@ Hermes agent 通过当前 provider 配置直接调用 deepseek-v4-pro。**不需
 | 字段 | 来源 | 说明 |
 |------|------|------|
 | `title` | 分解生成 | 用作 GitHub Issue title，格式 `[Feature] xxx` |
-| `description` | 分解生成 | Issue body 的 `feature-description` 字段 |
-| `context` | 分解生成 | Issue body 的 `context` 字段 |
-| `depth` | 分解判断 | 映射为 `depth/light\|standard\|deep` label |
-| `priority` | 分解判断 | 映射为 `priority/critical\|high\|medium\|low` label |
+| `description` | 分解生成 | Issue body 的 feature-description 字段 |
+| `context` | 分解生成 | Issue body 的 context 字段 |
+| `depth` | 分解判断 | 映射为 `depth/light` / `depth/standard` / `depth/deep` label |
+| `priority` | 分解判断 | 映射为 `priority/critical` / `high` / `medium` / `low` label |
 | `dependencies` | 分解生成 | issue id 数组，表示前置依赖 |
 | `labels` | 自动添加 | 至少包含 `enhancement` + `workflow/backlog` |
 | `acceptance_criteria` | 分解生成 | 3-5 条验收条件，放入 body |
 | `milestone` | 分解判断 | 所属版本：`mvp` / `v1` / `v2` / `full` |
+| `estimate` | 分解判断 | 工作量：`small` / `medium` / `large` |
+| `progress` | 反向同步时填充 | 0-100 整数，表示实际完成进度。反向同步时从 GitHub issue state / PR merge 状态推导。0=backlog，100=closed。Dashboard 据此渲染进度条，0% 时显示空条 |
+| `github_number` | 可选 | GitHub Issue 编号（仅在反向同步时填充），供 Dashboard 交叉引用 |
 | `dependency_graph` | 自动生成 | 从 dependencies 推导的边列表，供 HTML 前端渲染 |
 
 ---
@@ -281,7 +300,66 @@ Hermes agent 通过当前 provider 配置直接调用 deepseek-v4-pro。**不需
 
 **这样做的原因：** CRPG 最大的坑是"故事是故事、系统是系统"——玩家觉得对话和玩法是分离的。极乐迪斯科之所以特别，不是因为它的故事好或系统好，而是因为**故事和系统是同一件事**。评估框架确保分解出来的每个 Issue 都在朝这个方向努力。
 
-### 6. 版本切片规则
+### 6. 分层表达 — 由浅入深的设计路径
+
+游戏的内容不应该只有"一个深度"。不同玩家投入的时间和注意力不同，应该都能获得完整的体验，只是"完整"的层次不同。
+
+#### 6.1 三层表达模型
+
+```
+浅层（泛玩家，100%可达）
+  ─ 完整的故事线、清晰的氛围、即时的情感反馈
+  ─ 一个对游戏行业毫无了解的玩家也能被雨夜的氛围打动
+  ─ 不需要任何背景知识，不需要注意细节
+
+中层（观察者，60%可达）
+  ─ 场景之间的呼应、NPC故事的互文、主题的回响
+  ─ 注意到便利店店员说的"朋友"就是天桥上醉酒的女人
+  ─ 发现神秘人的话在不同场景中逐渐变化
+
+深层（解读者，30%可达）
+  ─ 游戏是对自身的隐喻 —— "3个月做卖座游戏"就是开发组自己的处境
+  ─ 神秘人可能是玩家内心的投射，"秘密"随玩家状态变化本身就在说"答案在你心里"
+  ─ 结局的寓言性：没有一个好结局，只有不同的真实
+```
+
+**关键设计原则：** 三层不是"隐藏内容"，而是"同一内容的不同阅读方式"。浅层玩家读完觉得是"一个雨夜的故事"，深层玩家读完觉得是"在说我"。
+
+#### 6.2 分层在设计中的体现
+
+每个场景和 NPC 的内容应该有三层可读性：
+
+| 场景/NPC | 浅层（谁都能看到） | 中层（注意到细节） | 深层（理解隐喻） |
+|---------|----------------|-----------------|----------------|
+| 便利店店员 | 一个疲惫的夜班店员 | 他说"又一个做游戏的"——说明他不是第一次见到 | 他的疲惫映射了整个行业的系统性倦怠 |
+| 天桥醉酒女人 | 一个喝醉的怨妇 | 她骂的是具体的人和事——可能是前同事 | 她可能就是便利店员说的"朋友" |
+| 神秘人 | 一个神秘的陌生人 | ta的话越来越像在说玩家自己 | ta可能不是真实的人，是玩家内心"希望"的具象化 |
+
+#### 6.3 分层对 Issue 分解的要求
+
+每个内容相关的 Issue（场景、NPC、剧本）必须在设计和验收条件中明确三层表达：
+
+```json
+{
+  "id": 12,
+  "context": "分层表达：浅层=雨夜氛围+神秘相遇；中层=便利店灯光与公司招牌的冷暖对比暗示行业冷暖；深层=这个城市在雨夜中展现的面貌就是玩家内心的投射",
+  "acceptance_criteria": [
+    "浅层：场景氛围完整，环境可读文字易懂",
+    "中层：场景中的细节元素之间有可发现的关联（如招牌内容呼应NPC对话）",
+    "深层：场景的整体调性随玩家状态变化，暗示外部世界是内心的镜像"
+  ]
+}
+```
+
+#### 6.4 分层检查清单
+
+- [ ] 浅层：一个注意力分散的玩家能否理解"发生了什么"？
+- [ ] 中层：一个细心的玩家能否发现"还有更多"？
+- [ ] 深层：一个投入的玩家能否感受到"它在说某种更本质的东西"？
+- [ ] 三层是否共享同一套内容（不是三段分开写的剧本）？
+- [ ] 有没有"表层无聊、深层才有趣"——浅层必须独立成立
+
+### 7. 版本切片规则
 
 每个 Issue 标注所属版本 `milestone`，meta 中定义 `versions` 映射：
 
@@ -302,13 +380,13 @@ Hermes agent 通过当前 provider 配置直接调用 deepseek-v4-pro。**不需
 
 **MVP = 最小可展示、可玩、可验证的游戏体验，不是"大部分功能但都没做完"。**
 
-### 7. 节奏控制（Pacing）— 游戏体验的呼吸感
+### 8. 节奏控制（Pacing）— 游戏体验的呼吸感
 
 无论 MVP 还是完整版，游戏必须有自己的节奏。节奏不是"做完再调"的东西，而是从设计阶段就要考虑的。
 
 **节奏的本质：** 玩家的情绪需要起伏。持续的高强度让玩家疲惫，持续的低强度让玩家无聊。好的节奏是"呼吸"——紧绷释放、紧绷释放。
 
-#### 7.1 节奏分解原则
+#### 8.1 节奏分解原则
 
 每个分解出的 Issue 应该问自己：
 
@@ -319,7 +397,7 @@ Hermes agent 通过当前 provider 配置直接调用 deepseek-v4-pro。**不需
 | 这个 Issue 相邻的前后 Issue 是什么情绪？ | 不能连续3个高强度，不能连续3个低强度 |
 | 这个 Issue 为下一个 Issue 做了什么情感铺垫？ | 每个环节应为下一环节蓄力或释放 |
 
-#### 7.2 MVP 的节奏弧线
+#### 8.2 MVP 的节奏弧线
 
 即使是最短的 MVP，也必须有完整的节奏弧：
 
@@ -342,7 +420,7 @@ Hermes agent 通过当前 provider 配置直接调用 deepseek-v4-pro。**不需
 - [ ] 结局是否有余韵（不是突然黑屏，有收尾感）？
 - [ ] 整个体验是否让玩家觉得"短但完整"？
 
-#### 7.3 完整版的节奏多样性
+#### 8.3 完整版的节奏多样性
 
 完整版游戏的节奏需要更多变化：
 
@@ -358,7 +436,7 @@ Hermes agent 通过当前 provider 配置直接调用 deepseek-v4-pro。**不需
 | 完整版 | 多弧线，有"风景"场景（不推进剧情但营造氛围） | 除了主线弧，还有"只是走路不说话"的间隔场景 |
 | 完整版 | 允许"沉默"的存在 | 没有对话的纯环境漫步，让玩家消化前面发生的事情 |
 
-#### 7.4 节奏在 Issue 中的体现
+#### 8.4 节奏在 Issue 中的体现
 
 每个 Issue 的 `context` 字段应包含节奏定位：
 
@@ -377,6 +455,97 @@ Hermes agent 通过当前 provider 配置直接调用 deepseek-v4-pro。**不需
 ---
 
 ## 执行步骤
+
+### Step 0: Grill Me — 深度需求拷问
+
+> 在分解之前，先拷问用户到底想做什么。不要接受一句"做个XXX游戏"就开工。
+> 这一步的目标是产出一份**澄清设计简报（Clarified Design Brief）**，为后续分解提供坚实基础。
+
+**重要：这一步是交互式的。** 输出问题给用户，等待用户回答，再基于回答提出更深的问题。至少进行 2-3 轮问答，直到你认为可以清晰分解为止。
+
+#### 0.1 第一轮：表层理解 — 确认基本事实
+
+根据用户的第一句话，确认最基本的参数。不是所有问题都需要问——如果用户已经提供了，就不要重复问：
+
+| 问题 | 目的 |
+|------|------|
+| 什么类型的游戏？ | 类型决定后续所有分解决策 |
+| 用什么引擎？ | 引擎决定语言和生态 |
+| 目标平台？ | 平台决定性能预算和输入方式 |
+| 核心玩法是什么（一句话）？ | 确定 MVP 的核心 |
+
+**但是不要只问这些基础问题。** 这些只是热身。真正的拷问从现在开始。
+
+#### 0.2 第二轮：深层拷问 — 挑战用户的假设
+
+根据第一轮的回答，提出尖锐的、让用户不得不思考的问题。每一类游戏有不同的拷问方向：
+
+**如果用户想做叙事/CRPG游戏：**
+- "你想通过这个游戏让玩家感受到什么情绪？不是'讲一个故事'——是'感受什么'？"
+- "这个游戏的核心张力是什么？玩家在哪个时刻会觉得'我做个选择是有代价的'？"
+- "如果玩家只玩 30 分钟，你希望他离开时在想什么？"
+- "你的游戏和《极乐迪斯科》《Florence》《Kentucky Route Zero》有什么本质不同？"
+- "这个游戏的 '失败状态' 是什么样的？玩家什么时候会觉得'我搞砸了'——然后呢？"
+- "你的主题（比如'资本对人的异化'）对应的具体机制是什么？不要告诉我是'对话选项'——极乐迪斯科也有对话选项，但它的技能检定系统才是灵魂。"
+
+**如果用户想做平台跳跃/动作游戏：**
+- "你的跳跃手感参考哪个游戏？马里奥的弹性？蔚蓝的精确？空洞骑士的沉重？"
+- "玩家死亡的成本是什么？原地复活？回检查点？丢金币？"
+- "你的核心动作组合是什么？跑+跳+攻击？还是只有跳跃？"
+- "关卡设计的核心机制是什么？是一个机制贯穿始终（蔚蓝的水Dash），还是不断引入新机制（马里奥）？"
+- "敌人的设计目的是什么？是障碍（马里奥的板栗仔）还是谜题（蔚蓝的泡泡）？"
+
+**如果用户想做模拟/策略游戏：**
+- "玩家在游戏中的'决策频率'是多少？每秒一个决策（星际争霸）还是每回合一个决策（文明）？"
+- "游戏的经济系统是闭环（Stardew Valley）还是开环（Factorio）？"
+- "玩家的失败状态是什么？破产？饿死？被摧毁？"
+
+**如果用户想做解谜游戏：**
+- "你的谜题是序列式（Portal——线性通过）还是组合式（Baba Is You——自由组合）？"
+- "你的谜题机制有多少个？一个好的解谜游戏通常只有 2-3 个核心机制（传送枪+重力靴）。"
+- "如果玩家卡住了，你的暗示系统是什么样的？"
+
+#### 0.3 第三轮：版本规划 — 确定 MVP 边界
+
+必须让用户明确：
+- **MVP 长什么样？** 不要回答"做完核心功能"——具体到"玩家能从 A 走到 B，和 C 对话，做出选择，看到 D 结束画面"
+- **什么功能可以被推迟到 v1/v2？** 主动建议推迟非核心功能
+- **MVP 的体验时长是多少？** 5 分钟？15 分钟？30 分钟？
+- **MVP 测试目标是什么？** "验证核心循环"还是"给投资人展示"？
+
+#### 0.4 决策记录
+
+每轮问答后，记录用户的回答到 `clarified_brief` 中。最终输出：
+
+```json
+{
+  "clarified_brief": {
+    "original_command": "用户的第一句话",
+    "game_type": "确定的游戏类型",
+    "engine": "确定的引擎",
+    "platform": "确定的平台",
+    "core_loop": "一句话描述核心玩法循环",
+    "target_emotion": "玩家应该感受到的情绪",
+    "mvp_boundary": "MVP 包含什么、不包含什么",
+    "mvp_duration": "MVP 预期体验时长",
+    "key_design_decisions": [
+      "决策1：为什么不做X",
+      "决策2：为什么选择Y机制"
+    ],
+    "obsidian_references": ["用到的 Obsidian 笔记"],
+    "web_references": ["搜索到的参考资料"],
+    "rounds": [
+      {"round": 1, "question": "第一轮问题", "answer": "用户回答"},
+      {"round": 2, "question": "第二轮问题", "answer": "用户回答"},
+      {"round": 3, "question": "第三轮问题", "answer": "用户回答"}
+    ]
+  }
+}
+```
+
+这个 `clarified_brief` 将作为 Step 2 语义分解的输入上下文。
+
+---
 
 ### Step 1: 接收命令 + 确认引擎与平台
 
@@ -411,6 +580,24 @@ Hermes agent 通过当前 provider 配置直接调用 deepseek-v4-pro。**不需
 - Unity + 2D叙事 → 查 Unity Asset Store 的对话插件、ink叙事脚本语言
 - 这类调研帮助避免"从零造轮子"，也帮助更准确地预估每个 Issue 的工作量
 
+### Step 1.6: Obsidian 知识库搜索
+
+在分解之前，先搜索 Obsidian 知识库中已有的设计笔记，避免重复设计或遗漏已有的架构决策。
+
+```
+1. 读取 OBSIDIAN_VAULT_PATH 环境变量，解析 vault 路径
+2. 搜索 wiki/ 目录：search_files(pattern="<项目关键词>", path="/Volumes/Obsidian/Knowledge Ocean/wiki/")
+3. 搜索 raw/ 目录（如果 wiki 命中不够）：search_files(pattern="<项目关键词>", path="/Volumes/Obsidian/Knowledge Ocean/raw/")
+4. 如果找到相关笔记 → read_file 读取内容 → 在后续分解中引用
+```
+
+**搜索关键词：** 从用户命令中提取核心概念（如"夜行"、"对话树"、"CRPG"等），每个概念单独搜索。
+
+**使用规则：**
+- wiki/ 命中优先（精炼笔记），raw/ 作为回退（原始资料）
+- 匹配到的笔记内容注入到 Step 2 的分解 prompt 中作为上下文
+- 如果没有命中，正常继续，不需要通知用户
+
 ### Step 2: 语义分解（含类型专项分解规则）
 
 读 `game-env/manifest.yaml` 获取项目上下文（engine, language, source.dir, test.cmd），然后调用 deepseek-v4-pro（通过当前 Hermes provider）将命令分解为结构化 Issues。输出严格 JSON，不含 markdown 包裹。
@@ -428,6 +615,7 @@ mkdir -p docs/RAW/
 打开 HTML viewer 审阅依赖图：
 
 提示用户：`file://{绝对路径}/docs/RAW/viewer.html?plan={slug}`
+```
 ## 📋 审阅：{项目标题}
 
 共分解出 **{N}** 个 Issue
@@ -435,9 +623,19 @@ mkdir -p docs/RAW/
 🌐 打开 HTML 前端查看完整详情和依赖图：
   file://{绝对路径}/docs/RAW/viewer.html?plan={slug}
 
+### Step 4.5: 可选 — 运行 game-issues-review
+
+在用户确认创建前，建议运行 `game-issues-review` 对 Issue 集进行专家级完整性审查：
+
+```
+▶ 用 game-issues-review 审阅 docs/RAW/game-to-issues-{slug}.json
+```
+
+该技能会检测 3C 缺口、隐藏依赖、MVP 可玩性、优先级合理性。确认审阅通过后进入 Step 5。
+
 ---
 
-| # | Issue | 优先级 | 深度 | 前置依赖 | 工作量 |
+### Step 5: 反向同步 — 从已有 GitHub Issues 重建本地 JSON
 |---|-------|--------|------|---------|--------|
 | 1 | [Feature] ... | critical | standard | — | L |
 | 2 | [Feature] ... | high | standard | #1 | M |
@@ -448,7 +646,60 @@ mkdir -p docs/RAW/
   #1 → #4
 ```
 
-### Step 6: 用户确认后创建 GitHub Issues
+### Step 5: 反向同步 — 从已有 GitHub Issues 重建本地 JSON
+
+当用户要求"本地保留一份和GitHub当前工作issue相同的版本"时，执行反向同步：
+
+**5.1 提取 GitHub 数据**
+
+```bash
+# 获取所有 open/closed issues 及完整 body（含验收条件、依赖引用）
+gh issue list --limit 100 --state all --json number,title,labels,state,body,id
+
+# 获取项目 board 的 stage/status（用于 Dashboard 进度显示）
+gh project item-list <PROJECT_NUMBER> --owner <OWNER> --limit 100 --format json
+```
+
+**5.2 构建依赖映射**
+
+GitHub issue numbers（如 #42-#59）是连续的但不是从1开始。JSON plan 使用顺序 id (1-N)。创建一个显式映射表：
+
+```
+V4 JSON id → GitHub #:
+1  → #42,  2 → #43,  3 → #44,  ...  18 → #59
+```
+
+转换 dependencies：读取 issue body 中 `## 前置依赖` 段落的 `#N` 引用，将 GitHub # 映射为 JSON id。
+
+**5.3 添加 `github_number` 字段**
+
+每个 issue 条目添加 `github_number: <N>` 字段，供 Dashboard Plans tab 做交叉引用（如锚定到 GitHub 详情页）。
+
+**5.4 更新 `plans.json`**
+
+`docs/RAW/plans.json` 是一个 JSON 数组，每条记录 `{slug, title, total_issues, created_at, status}`。创建/更新 plan 后必须同步修改此文件。格式：
+
+```json
+{
+  "slug": "urban-night-walker",
+  "title": "项目标题",
+  "total_issues": 18,
+  "created_at": "ISO 8601",
+  "status": "created"
+}
+```
+
+**5.5 里程碑分配**
+
+反向同步时需自行分配 milestone。原则：
+- **mvp**: 脚手架 + 核心引擎（对话/状态/渲染/UI） + 最少1条完整场景链（含NPC和结局）
+- **v1**: 内容补齐（完整剧本、音效、测试）
+- **v2**: 打磨/额外内容
+- **full**: 全部 issues
+
+### Step 6: 用户确认后创建 GitHub Issues（含 Version 标签）
+
+创建 Issue 时，除了 `workflow/backlog` 和 `enhancement`，还要添加版本标签 `version/<milestone>`：
 
 ```bash
 set -a && source ~/.hermes/.env 2>/dev/null; set +a
@@ -462,14 +713,20 @@ with open("{{PLAN_FILE}}") as f:
     data = json.load(f)
 
 # 按拓扑排序创建 Issue
-# (gh issue create 需要提前知道 labels)
 for issue in data['issues']:
     labels = ",".join(issue['labels'])
+    # 添加 version 标签
+    milestone = issue.get('milestone', 'full')
+    labels += f",version/{milestone}"
+    
     body = f"""## 功能描述
 {issue['description']}
 
 ## 上下文
 {issue['context']}
+
+## 版本
+{milestone}
 
 ## 验收条件
 """ + "\n".join(f"- [ ] {ac}" for ac in issue['acceptance_criteria'])
@@ -497,6 +754,50 @@ PYEOF
 
 ---
 
+## 版本管线（Version Pipeline）
+
+> 版本不是一次性的标签——它是贯穿整个工作流的控制维度。
+> Picker 优先拣 MVP 的 Issue，再拣 v1/v2/full。
+> Dashboard 按版本分组展示进度。
+> 版本标签也在 GitHub 和 Project Board 上可见。
+
+### 版本标签
+
+每个 Issue 在创建时自动添加 `version/<milestone>` 标签（`version/mvp`、`version/v1`、`version/v2`、`version/full`）。
+
+### Picker 版本优先级
+
+在 `event-processor.py` 的 `pick_next_issue()` 中，排序键优先考虑：
+1. 优先级（priority/critical > high > medium > low）
+2. 版本（version/mvp > v1 > v2 > full）
+3. 依赖数（依赖少的优先）
+
+### Dashboard 版本分组
+
+Dashboard 的 Plans tab 按版本分组显示：
+- **MVP** — 红色进度条（0-100%）
+- **v1** — 橙色进度条
+- **v2** — 蓝色进度条
+- **full** — 灰色进度条
+
+每个分组的进度 = 该版本内已关闭 Issue / 总 Issue 数。
+
+### 项目面板版本过滤
+
+GitHub Project Board 添加 `Version` 字段（single-select），与 `version/*` 标签同步。
+当 Issue 的 `version/*` 标签变更时，自动更新 Board 的 Version 字段。
+
+### 版本对照表
+
+| 版本标签 | 目标 | 应该包含 |
+|---------|------|---------|
+| `version/mvp` | 最小可玩产品 | 核心循环 + 最少1条完整路径 + 1个结局 |
+| `version/v1` | 功能完整 | 所有核心功能 + 内容 + 音效 |
+| `version/v2` | 完善打磨 | 多结局、性能优化、额外内容 |
+| `version/full` | 全部 | 计划中的所有 Issue |
+
+---
+
 ## 关键规则
 
 1. **deepseek-v4-pro** 专用于分解任务 — 通过 Hermes provider 调用
@@ -505,13 +806,29 @@ PYEOF
 4. 每个 Issue 的初始 label 必须包含 `workflow/backlog`
 5. 文件命名：`docs/RAW/game-to-issues-{简短英文slug}.json`
 6. 每次编辑后更新 `docs/RAW/viewer.html` 的 `availablePlans` 或让它自动扫描
+7. 反向同步后必须更新 `plans.json`
 
 ---
 
 ## Pitfalls
 
 ### 模型返回非 JSON
+
 deepseek-v4-pro 可能会返回 markdown 包裹的 JSON（代码块）。LLM 响应需 strip 掉 markdown 代码围栏再解析。
+
+### deepseek-v4-pro API 超时（504 Gateway Timeout）
+
+coconut proxy 对 v4-pro 的上游超时较短（约 30-60s）。当 prompt 长、max_tokens 大时容易超时。
+
+**解决：draft + polish 两阶段法**
+```json
+// 阶段1: v4-flash 起草（快速，输出完整 JSON）
+{"model": "deepseek/deepseek-v4-flash", "max_tokens": 8192}
+
+// 阶段2: v4-pro 精修（输入小，生成少，不易超时）
+{"model": "deepseek/deepseek-v4-pro", "temperature": 0.2, "max_tokens": 2048}
+```
+阶段2 的 prompt 只包含「审查并修正这个 JSON」——输入是阶段1的输出，远小于完整规则文档。也可以只用 v4-flash 单阶段，质量接近手写但粒度偏粗，需人工调整。
 
 ### 空依赖数组
 如果没有依赖，`dependencies` 必须为 `[]`，不要省略。
@@ -522,5 +839,69 @@ deepseek-v4-pro 可能会返回 markdown 包裹的 JSON（代码块）。LLM 响
 ### 依赖图循环
 如果 deepseek 返回循环依赖（A→B→A），需要检测并报错，让用户手动修正。
 
+**Python DAG 检测代码（可在反向同步后或分解后立即执行）：**
+```python
+edges = [(e['from'], e['to']) for e in data['dependency_graph']['edges']]
+nodes = set(n for e in edges for n in e)
+visited, stack = set(), set()
+def has_cycle(n):
+    visited.add(n); stack.add(n)
+    for _, t in [(f,t) for f,t in edges if f == n]:
+        if t not in visited:
+            if has_cycle(t): return True
+        elif t in stack:
+            return True
+    stack.discard(n)
+    return False
+cycle = any(has_cycle(n) for n in nodes)
+print(f"{'❌ HAS CYCLE' if cycle else '✅ DAG valid'}")
+```
+
 ### gh Issue 创建顺序
 必须按拓扑顺序创建，否则 body 里引用 `#N` 时还不知道 issue number。
+
+### 不要手动推进 workflow — 让 webhook 来驱动
+
+创建 Issue 后**不要手动改 label 来触发 pipeline**。Issues 创建时会自动触发 GitHub webhook（`issues.opened`），webhook → workflow-dispatcher.py → pending.json → cron → event-processor → SPAWN → agent。
+
+如果手动改 label（如 `gh issue edit --add-label workflow/available`），可能会绕过依赖检查、跳过阶段门控、破坏管线状态机。
+
+正确的流程：
+1. `gh issue create` → 自动带 `workflow/backlog` label
+2. webhook 自动收到 `issues.opened` → 写入 pending.json
+3. 下一个 cron tick → event-processor 读 pending → 输出 SPAWN
+4. LLM 执行 SPAWN
+
+只有在需要**紧急测试 webhook 连通性**时才手动触发，且恢复后立即切回自动流程。
+
+### 创建前先确认 gh auth 状态
+
+`gh issue create` 使用 GraphQL API（限额 5000/h），需先确认已登录：
+
+```bash
+gh auth status
+# 如果显示 "not logged in" 或 token invalid 则先登录
+echo 'ghp_...' | gh auth login --with-token
+```
+
+未认证状态下 GraphQL 限额为 0，`gh issue create` 会返回假成功（Issue 不会真正创建）。用 `curl` + REST API 做 fallback：
+
+```bash
+curl -s -X POST "https://api.github.com/repos/owner/repo/issues" \
+  -H "Authorization: Bearer $GH_TOKEN" \
+  -d '{"title":"...","body":"...","labels":[...]}'
+```
+
+### JSON 输出必须先验证再展示
+
+分解生成的 JSON **必须先通过语法和逻辑验证再展示给用户**。验证清单：
+1. `json.dumps()` 确认无语法错误
+2. 验证依赖图是 DAG（无循环引用）——使用上方 Python 代码
+3. 验证每个 Issue 有唯一 id
+4. 确认 `meta.total_issues` 与实际 issues 数量一致
+5. 确认 `dependency_graph` 中所有 `from`/`to` 引用都是有效节点 id
+6. 反向同步时额外确认每个 issue 的 `github_number` 对应到真实的 GitHub issue
+
+未通过验证的 JSON 直接报错，不展示给用户。
+
+### GH_TOKEN vs gh auth: Phantom Issues
