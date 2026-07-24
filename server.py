@@ -120,6 +120,12 @@ def get_pipeline_issues():
                     iss["icon"] = stage_icons[lbl]
                     iss["stage"] = stage_names[lbl]
                     break
+            # Extract version label
+            iss["version"] = ""
+            for lbl in labels:
+                if lbl.startswith("version/"):
+                    iss["version"] = lbl.replace("version/", "")
+                    break
         return issues
     except Exception:
         return []

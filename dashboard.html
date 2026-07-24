@@ -180,6 +180,10 @@ a:hover { text-decoration: underline; }
     <div class="card" id="pipelineCard">
       <div class="card-header">
         <div class="card-title"><span class="material-symbols-rounded">alt_route</span> Pipeline Issues</div>
+        <select id="pipeline-version-filter" onchange="refreshAll()" style="background:var(--bg-card);color:var(--text-primary);border:1px solid var(--border);padding:4px 8px;border-radius:var(--radius-sm);font-size:12px;margin-left:8px">
+          <option value="all">全部版本</option>
+          <option value="mvp">MVP</option><option value="v1">v1</option><option value="v2">v2</option><option value="full">Full</option>
+        </select>
         <span class="card-count" id="pipelineCount">0</span>
       </div>
       <div class="card-body" id="pipelineBody"><div class="card-empty"><div class="material-symbols-rounded">alt_route</div>No pipeline issues</div></div>
@@ -240,6 +244,10 @@ a:hover { text-decoration: underline; }
       <select id="estimate-filter" onchange="refreshPlanView()">
         <option value="all">全部工作量</option>
         <option value="large">Large</option><option value="medium">Medium</option><option value="small">Small</option>
+      </select>
+      <select id="version-filter" onchange="refreshPlanView()">
+        <option value="all">全部版本</option>
+        <option value="mvp">MVP</option><option value="v1">v1</option><option value="v2">v2</option><option value="full">Full</option>
       </select>
       <input type="text" id="search-input" placeholder="搜索..." oninput="refreshPlanView()">
     </div>
@@ -313,7 +321,10 @@ async function refreshAll() {
 
 function renderPipeline(issues) {
   const b = $('#pipelineBody'), c = $('#pipelineCount');
-  c.textContent = issues.length;
+  const vf = $('#pipeline-version-filter').value;
+  let filtered = issues;
+  if(vf !== 'all') filtered = issues.filter(i => i.version === vf);
+  c.textContent = filtered.length;
   const stages = [
     ['📥','Backlog','Backlog'],
     ['📋','Available','Available'],
@@ -331,7 +342,7 @@ function renderPipeline(issues) {
     'Blocked':'#ef4444','Done':'#22c55e'
   };
   b.innerHTML = '<div class="pipeline-kanban">' + stages.map(([emoji,label,stage]) => {
-    const items = issues.filter(i => i.stage === stage);
+    const items = filtered.filter(i => i.stage === stage);
     return `<div class="pipeline-col">
       <div class="pipeline-col-title" style="color:${stageColors[stage]||'var(--text-secondary)'}">
         ${emoji} ${label}
@@ -436,11 +447,13 @@ function renderSummary(issues) {
 function renderTable(issues) {
   const tbody = $('#issues-tbody');
   const pf = $('#priority-filter').value, df = $('#depth-filter').value, ef = $('#estimate-filter').value;
+  const vf = $('#version-filter').value;
   const search = $('#search-input').value.toLowerCase().trim();
   let filtered = issues.filter(i => {
     if(pf!=='all'&&i.priority!==pf) return false;
     if(df!=='all'&&i.depth!==df) return false;
     if(ef!=='all'&&i.estimate!==ef) return false;
+    if(vf!=='all'&&(i.milestone||'')!==vf) return false;
     if(search) {
       const t=(i.title||'').toLowerCase(), desc=(i.description||'').toLowerCase(), ctx=(i.context||'').toLowerCase();
       if(!t.includes(search)&&!desc.includes(search)&&!ctx.includes(search)) return false;
