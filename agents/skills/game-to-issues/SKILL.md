@@ -79,9 +79,12 @@ flowchart LR
     D --> E[Step 1.6: Obsidian 搜索]
     E --> F[Step 2: 语义分解]
     F --> G[Step 3: 保存 JSON]
-    G --> H[Step 4: 审阅 + game-issues-review]
-    H --> I[Step 5: 创建 GitHub Issues]
-    I --> J[Version pipeline<br/>mvp→v1→v2→full]
+    G --> H[Step 4: 展示 + game-issues-review]
+    H --> I[Step 5: 与用户讨论修改]
+    I --> J{用户满意？}
+    J -->|否| F
+    J -->|是| K[Step 6: 创建 GitHub Issues]
+    K --> L[Version pipeline<br/>mvp→v1→v2→full]
 ```
 
 **关键变化：** 第一阶段从"直接分解"改为"Grill Me 拷问 → 澄清 → 再分解"。
@@ -658,12 +661,11 @@ mkdir -p docs/RAW/
 
 保存为 `docs/RAW/game-to-issues-{slug}.json`
 
-### Step 4: 展示审阅并引导用户
+### Step 4: 展示审阅 + 运行 game-issues-review
 
-打开 HTML viewer 审阅依赖图：
+JSON 文件保存后，**先展示给用户审阅，然后自动运行 game-issues-review**：
 
-提示用户：`file://{绝对路径}/docs/RAW/viewer.html?plan={slug}`
-```
+```markdown
 ## 📋 审阅：{项目标题}
 
 共分解出 **{N}** 个 Issue
@@ -671,30 +673,54 @@ mkdir -p docs/RAW/
 🌐 打开 HTML 前端查看完整详情和依赖图：
   file://{绝对路径}/docs/RAW/viewer.html?plan={slug}
 
-### Step 4.5: 可选 — 运行 game-issues-review
+---
 
-在用户确认创建前，建议运行 `game-issues-review` 对 Issue 集进行专家级完整性审查：
-
+**应用 game-issues-review 进行专家级完整性审查...**
 ```
+
+运行审查：
+
+```bash
 ▶ 用 game-issues-review 审阅 docs/RAW/game-to-issues-{slug}.json
 ```
 
-该技能会检测 3C 缺口、隐藏依赖、MVP 可玩性、优先级合理性。确认审阅通过后进入 Step 5。
+该技能会检测：
+- 3C 缺口（角色/控制/相机）
+- 隐藏依赖
+- MVP 可玩性
+- 优先级合理性
+- 缺失的边界处理
+
+### Step 5: 与用户讨论修改
+
+展示 game-issues-review 的输出报告，逐条与用户讨论：
+
+```markdown
+## 🔍 Review 发现
+
+### 🔴 必须修复
+1. {问题1} — {建议}
+2. {问题2} — {建议}
+
+### 🟡 建议修复
+1. {问题3}
+
+### 🟢 确认项
+- MVP 可玩性：{评级}
+- 依赖关系：{是否合理}
 
 ---
 
-### Step 5: 反向同步 — 从已有 GitHub Issues 重建本地 JSON
-|---|-------|--------|------|---------|--------|
-| 1 | [Feature] ... | critical | standard | — | L |
-| 2 | [Feature] ... | high | standard | #1 | M |
-...
-
-🔗 依赖流向图：
-  #1 → #2 → #3
-  #1 → #4
+**需要修改吗？**
 ```
 
-### Step 5: 反向同步 — 从已有 GitHub Issues 重建本地 JSON
+- 用户可能要求增加/删除/合并 Issue
+- 用户可能要求调整依赖关系
+- 用户可能要求修改版本规划
+- 根据用户反馈，修改 JSON 文件
+- **重复 Step 4 → Step 5 直到用户满意**
+
+### Step 6: 用户确认后创建 GitHub Issues（含 Version 标签）
 
 当用户要求"本地保留一份和GitHub当前工作issue相同的版本"时，执行反向同步：
 
